@@ -1,0 +1,98 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Block {
+  id         String   @id @default(uuid())
+  identifier String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  lots Lot[]
+}
+
+model Lot {
+  id         String   @id @default(uuid())
+  identifier String
+  blockId    String
+  front      Float
+  back       Float
+  leftSide   Float
+  rightSide  Float
+  totalArea  Float
+  price      Float
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  block        Block    @relation(fields: [blockId], references: [id])
+  reservations Reservation[]
+  sale         Sale?    // 👈 one-to-one back relation
+}
+
+model Customer {
+  id            String        @id @default(uuid())
+  name          String
+  cpf           String        @unique
+  address       String
+  birthDate     DateTime
+  rg            String
+  email         String        @unique
+  profession    String
+  birthplace    String
+  maritalStatus String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  reservations   Reservation[] // 👈 add this if not present
+  sales          Sale[]        // 👈 back relation for Sale
+
+  @@map("Client")
+}
+
+model Reservation {
+  id         String   @id @default(uuid())
+  customerId String
+  lotId      String
+  proposal   String
+  status     String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer   Customer @relation(fields: [customerId], references: [id])
+  lot        Lot      @relation(fields: [lotId], references: [id])
+  sale     Sale?   // 👈 if only one sale can reference a reservation
+
+  @@unique([lotId]) // 👈 prevents multiple reservations for the same lot
+}
+
+model Sale {
+  id                String     @id @default(uuid())
+  customerId        String
+  lotId             String     @unique
+  reservationId     String?    @unique
+  installmentCount  Int
+  installmentValue  Float
+  downPayment       Float
+  annualAdjustment  Boolean    @default(true)
+  totalValue        Float
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  customer      Customer   @relation(fields: [customerId], references: [id])
+  lot         Lot        @relation(fields: [lotId], references: [id])
+  reservation Reservation? @relation(fields: [reservationId], references: [id])
+  
+}
+
