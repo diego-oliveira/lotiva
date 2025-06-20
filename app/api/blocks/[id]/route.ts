@@ -3,9 +3,11 @@ import { NextResponse } from 'next/server'
 
 type Params = { params: { id: string } }
 
-export async function GET(_: Request, { params }: Params) {
+export async function GET(_: Request, { params }: { params: { id: string } }) {
+  const { id } = params
+
   const block = await prisma.block.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { lots: true },
   })
 
