@@ -1,11 +1,13 @@
 import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'
 
-type Params = { params: { id: string } }
+type Params = { params: Promise<{ id: string }> }
 
 export async function GET(_: Request, { params }: Params) {
+  const { id } = await params
+
   const reservation = await prisma.reservation.findUnique({
-    where: { id: params.id },
+    where: { id: id },
     include: { customer: true, lot: true },
   })
 
@@ -17,11 +19,12 @@ export async function GET(_: Request, { params }: Params) {
 }
 
 export async function PUT(req: Request, { params }: Params) {
+  const { id } = await params
   const data = await req.json()
 
   try {
     const updated = await prisma.reservation.update({
-      where: { id: params.id },
+      where: { id: id },
       data: {
         customerId: data.customerId,
         lotId: data.lotId,
@@ -36,7 +39,7 @@ export async function PUT(req: Request, { params }: Params) {
     if (error.code === 'P2002') {
       return NextResponse.json(
         { error: 'This lot already has a reservation.' },
-        { status: 400 }
+        { status: 400 },
       )
     }
     return NextResponse.json({ error: 'Unknown error.' }, { status: 500 })
@@ -44,8 +47,10 @@ export async function PUT(req: Request, { params }: Params) {
 }
 
 export async function DELETE(_: Request, { params }: Params) {
+  const { id } = await params
+
   await prisma.reservation.delete({
-    where: { id: params.id },
+    where: { id: id },
   })
 
   return NextResponse.json({ deleted: true })

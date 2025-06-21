@@ -1,12 +1,14 @@
-// app/api/lots/[id]/route.ts
 import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'
 
-type Params = { params: { id: string } }
+type Params = { params: Promise<{ id: string }> }
+
 
 export async function GET(_: Request, { params }: Params) {
+  const { id } = await params
+
   const lot = await prisma.lot.findUnique({
-    where: { id: params.id },
+    where: { id: id },
     include: { block: true },
   })
 
@@ -18,10 +20,11 @@ export async function GET(_: Request, { params }: Params) {
 }
 
 export async function PUT(req: Request, { params }: Params) {
+  const { id } = await params
   const data = await req.json()
 
   const updated = await prisma.lot.update({
-    where: { id: params.id },
+    where: { id: id },
     data: {
       identifier: data.identifier,
       blockId: data.blockId,
@@ -39,8 +42,10 @@ export async function PUT(req: Request, { params }: Params) {
 }
 
 export async function DELETE(_: Request, { params }: Params) {
+  const { id } = await params
+
   await prisma.lot.delete({
-    where: { id: params.id },
+    where: { id: id },
   })
 
   return NextResponse.json({ deleted: true })

@@ -1,39 +1,33 @@
 import { prisma } from '@/lib/prisma'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
-type Params = { params: { id: string } }
-
-export async function GET(_: Request, { params }: { params: { id: string } }) {
-  const { id } = params
-
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const block = await prisma.block.findUnique({
     where: { id },
     include: { lots: true },
   })
-
   if (!block) return NextResponse.json({ error: 'Block not found' }, { status: 404 })
-
   return NextResponse.json(block)
 }
 
-export async function PUT(req: Request, { params }: Params) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const data = await req.json()
-
   const updated = await prisma.block.update({
-    where: { id: params.id },
+    where: { id },
     data: {
       identifier: data.identifier,
       updatedAt: new Date(),
     },
   })
-
   return NextResponse.json(updated)
 }
 
-export async function DELETE(_: Request, { params }: Params) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   await prisma.block.delete({
-    where: { id: params.id },
+    where: { id },
   })
-
   return NextResponse.json({ deleted: true })
 }

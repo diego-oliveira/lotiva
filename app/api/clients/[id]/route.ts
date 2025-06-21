@@ -2,25 +2,24 @@
 import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'
 
-type Params = { params: { id: string } }
+type Params = { params: Promise<{ id: string }> }
 
 export async function GET(_: Request, { params }: Params) {
-    const client = await prisma.customer.findUnique({
-    where: { id: params.id },
+  const { id } = await params
+  const client = await prisma.customer.findUnique({
+    where: { id },
   })
-
   if (!client) {
     return NextResponse.json({ error: 'Client not found' }, { status: 404 })
   }
-
   return NextResponse.json(client)
 }
 
 export async function PUT(req: Request, { params }: Params) {
+  const { id } = await params
   const data = await req.json()
-
   const updated = await prisma.customer.update({
-    where: { id: params.id },
+    where: { id },
     data: {
       name: data.name,
       cpf: data.cpf,
@@ -34,14 +33,13 @@ export async function PUT(req: Request, { params }: Params) {
       updatedAt: new Date(),
     },
   })
-
   return NextResponse.json(updated)
 }
 
 export async function DELETE(_: Request, { params }: Params) {
-  await prisma.client.delete({
-    where: { id: params.id },
+  const { id } = await params
+  await prisma.customer.delete({
+    where: { id },
   })
-
   return NextResponse.json({ deleted: true })
 }
