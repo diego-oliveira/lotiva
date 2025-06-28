@@ -33,6 +33,7 @@ model Lot {
   rightSide  Float
   totalArea  Float
   price      Float
+  status     String   @default("available")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

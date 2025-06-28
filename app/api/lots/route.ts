@@ -24,6 +24,7 @@ export async function POST(req: Request) {
       rightSide: data.rightSide,
       totalArea: data.totalArea,
       price: data.price,
+      status: data.status || 'available',
     },
   })
 

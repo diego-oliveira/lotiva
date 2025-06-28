@@ -34,6 +34,7 @@ export async function PUT(req: Request, { params }: Params) {
       rightSide: data.rightSide,
       totalArea: data.totalArea,
       price: data.price,
+      status: data.status,
       updatedAt: new Date(),
     },
   })
