@@ -1,48 +1,74 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import ClientForm from './components/ClientForm'
-import DeleteConfirmModal from './components/DeleteConfirmModal'
+import SalesForm from './components/SalesForm'
 
-interface Client {
+interface Block {
   id: string
-  name: string
-  cpf: string
-  email: string
-  address: string
-  birthDate: string
-  rg: string
-  profession: string
-  birthplace: string
-  maritalStatus: string
-  createdAt: string
-  updatedAt: string
+  identifier: string
 }
 
-export default function ClientsPage() {
-  const [clients, setClients] = useState<Client[]>([])
+interface Lot {
+  id: string
+  identifier: string
+  totalArea: number
+  price: number
+  block: Block
+}
+
+interface Customer {
+  id: string
+  name: string
+  email: string
+  cpf: string
+}
+
+interface Reservation {
+  id: string
+  proposal: string
+  status: string
+}
+
+interface Sale {
+  id: string
+  customerId: string
+  lotId: string
+  reservationId?: string
+  installmentCount: number
+  installmentValue: number
+  downPayment: number
+  annualAdjustment: boolean
+  totalValue: number
+  createdAt: string
+  updatedAt: string
+  customer: Customer
+  lot: Lot
+  reservation?: Reservation
+}
+
+export default function SalesPage() {
+  const [sales, setSales] = useState<Sale[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showForm, setShowForm] = useState(false)
-  const [editingClient, setEditingClient] = useState<Client | null>(null)
-  const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [deletingClient, setDeletingClient] = useState<Client | null>(null)
-  const [deleteLoading, setDeleteLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [showForm, setShowForm] = useState(false)
+  const [editingSale, setEditingSale] = useState<Sale | null>(null)
 
   useEffect(() => {
-    fetchClients()
+    fetchSales()
   }, [])
 
-  const fetchClients = async () => {
+  const fetchSales = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/clients')
+      const response = await fetch('/api/sales', {
+        cache: 'no-store'
+      })
       if (!response.ok) {
-        throw new Error('Failed to fetch clients')
+        throw new Error('Failed to fetch sales')
       }
       const data = await response.json()
-      setClients(data)
+      setSales(data)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
@@ -51,73 +77,12 @@ export default function ClientsPage() {
     }
   }
 
-  const handleAddClient = () => {
-    setEditingClient(null)
-    setShowForm(true)
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(value)
   }
-
-  const handleEditClient = (client: Client) => {
-    setEditingClient(client)
-    setShowForm(true)
-  }
-
-  const handleDeleteClient = (client: Client) => {
-    setDeletingClient(client)
-    setShowDeleteModal(true)
-  }
-
-  const confirmDelete = async () => {
-    if (!deletingClient) return
-
-    setDeleteLoading(true)
-    try {
-      const response = await fetch(`/api/clients/${deletingClient.id}`, {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to delete client')
-      }
-
-      await fetchClients()
-      setShowDeleteModal(false)
-      setDeletingClient(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao excluir cliente')
-    } finally {
-      setDeleteLoading(false)
-    }
-  }
-
-  const handleFormSave = async () => {
-    await fetchClients()
-    setShowForm(false)
-    setEditingClient(null)
-  }
-
-  const handleFormClose = () => {
-    setShowForm(false)
-    setEditingClient(null)
-  }
-
-  const handleDeleteModalClose = () => {
-    setShowDeleteModal(false)
-    setDeletingClient(null)
-  }
-
-  const filteredClients = clients.filter(client => {
-    if (!searchTerm) return true
-    
-    const searchLower = searchTerm.toLowerCase()
-    const nameMatch = client.name.toLowerCase().includes(searchLower)
-    const emailMatch = client.email.toLowerCase().includes(searchLower)
-    
-    // Only check CPF if search term contains digits
-    const searchDigits = searchTerm.replace(/\D/g, '')
-    const cpfMatch = searchDigits.length > 0 && client.cpf.replace(/\D/g, '').includes(searchDigits)
-    
-    return nameMatch || emailMatch || cpfMatch
-  })
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('pt-BR')
@@ -132,22 +97,38 @@ export default function ClientsPage() {
       .slice(0, 2)
   }
 
-  const getMaritalStatusBadge = (status: string) => {
-    const styles = {
-      'Solteiro': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
-      'Casado': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
-      'Divorciado': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
-      'Viúvo': 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300',
-    }
-    
-    const styleClass = styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300'
-    
-    return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${styleClass}`}>
-        {status}
-      </span>
-    )
+  const handleAddSale = () => {
+    setEditingSale(null)
+    setShowForm(true)
   }
+
+  const handleEditSale = (sale: Sale) => {
+    setEditingSale(sale)
+    setShowForm(true)
+  }
+
+  const handleFormClose = () => {
+    setShowForm(false)
+    setEditingSale(null)
+  }
+
+  const handleFormSave = async () => {
+    await fetchSales()
+    setShowForm(false)
+    setEditingSale(null)
+  }
+
+  const filteredSales = sales.filter(sale => {
+    if (!searchTerm) return true
+    
+    const searchLower = searchTerm.toLowerCase()
+    return (
+      sale.customer.name.toLowerCase().includes(searchLower) ||
+      sale.customer.email.toLowerCase().includes(searchLower) ||
+      sale.customer.cpf.replace(/\D/g, '').includes(searchTerm.replace(/\D/g, '')) ||
+      `${sale.lot.block.identifier}${sale.lot.identifier}`.toLowerCase().includes(searchLower)
+    )
+  })
 
   if (loading) {
     return (
@@ -176,14 +157,14 @@ export default function ClientsPage() {
             <div className="flex">
               <div className="ml-3">
                 <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
-                  Erro ao carregar clientes
+                  Erro ao carregar vendas
                 </h3>
                 <div className="mt-2 text-sm text-red-700 dark:text-red-300">
                   <p>{error}</p>
                 </div>
                 <div className="mt-4">
                   <button
-                    onClick={fetchClients}
+                    onClick={fetchSales}
                     className="bg-red-100 dark:bg-red-800 hover:bg-red-200 dark:hover:bg-red-700 text-red-800 dark:text-red-200 px-3 py-2 rounded-md text-sm font-medium"
                   >
                     Tentar novamente
@@ -202,10 +183,10 @@ export default function ClientsPage() {
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Clientes
+            Vendas
           </h1>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-            Lista de todos os clientes cadastrados no sistema
+            Gerenciar todas as vendas de lotes realizadas
           </p>
         </div>
 
@@ -214,11 +195,12 @@ export default function ClientsPage() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 space-y-3 sm:space-y-0">
               <h2 className="text-lg font-medium text-gray-900 dark:text-white">
                 {searchTerm ? (
-                  `${filteredClients.length} de ${clients.length} clientes`
+                  `${filteredSales.length} de ${sales.length} vendas`
                 ) : (
-                  `Total de clientes: ${clients.length}`
+                  `Total de vendas: ${sales.length}`
                 )}
               </h2>
+              
               <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -228,7 +210,7 @@ export default function ClientsPage() {
                   </div>
                   <input
                     type="text"
-                    placeholder="Buscar por nome, email ou CPF..."
+                    placeholder="Buscar por cliente ou lote..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md leading-5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
@@ -247,17 +229,19 @@ export default function ClientsPage() {
                     </div>
                   )}
                 </div>
+
                 <button
-                  onClick={handleAddClient}
+                  onClick={handleAddSale}
                   className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 dark:focus:ring-offset-gray-800"
                 >
                   <svg className="-ml-1 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
                   </svg>
-                  Novo Cliente
+                  Nova Venda
                 </button>
+                
                 <button
-                  onClick={fetchClients}
+                  onClick={fetchSales}
                   className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800"
                 >
                   <svg className="-ml-1 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -268,23 +252,36 @@ export default function ClientsPage() {
               </div>
             </div>
 
-            {filteredClients.length === 0 ? (
+            {filteredSales.length === 0 ? (
               <div className="text-center py-8">
                 <div className="mx-auto h-12 w-12 text-gray-400">
                   <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                   </svg>
                 </div>
                 <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
-                  {searchTerm ? 'Nenhum cliente encontrado' : 'Nenhum cliente cadastrado'}
+                  {searchTerm ? 'Nenhuma venda encontrada' : 'Nenhuma venda realizada'}
                 </h3>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                   {searchTerm ? (
-                    <>Nenhum cliente corresponde à busca "<span className="font-medium">{searchTerm}</span>". Tente outros termos.</>
+                    <>Nenhuma venda corresponde à busca "<span className="font-medium">{searchTerm}</span>". Tente outros termos.</>
                   ) : (
-                    'Comece adicionando um novo cliente ao sistema.'
+                    'Comece realizando uma nova venda.'
                   )}
                 </p>
+                {!searchTerm && (
+                  <div className="mt-6">
+                    <button
+                      onClick={handleAddSale}
+                      className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                    >
+                      <svg className="-ml-1 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                      </svg>
+                      Primeira Venda
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -295,19 +292,19 @@ export default function ClientsPage() {
                         Cliente
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Documentos
+                        Lote
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Profissão
+                        Valor Total
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Estado Civil
+                        Entrada
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Data de Nascimento
+                        Parcelas
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Cadastrado em
+                        Data da Venda
                       </th>
                       <th scope="col" className="relative px-6 py-3">
                         <span className="sr-only">Ações</span>
@@ -315,73 +312,67 @@ export default function ClientsPage() {
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {filteredClients.map((client) => (
-                      <tr key={client.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    {filteredSales.map((sale) => (
+                      <tr key={sale.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
                             <div className="h-10 w-10 flex-shrink-0">
                               <div className="h-10 w-10 rounded-full bg-indigo-500 flex items-center justify-center">
                                 <span className="text-sm font-medium text-white">
-                                  {getInitials(client.name)}
+                                  {getInitials(sale.customer.name)}
                                 </span>
                               </div>
                             </div>
                             <div className="ml-4">
                               <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                {client.name}
+                                {sale.customer.name}
                               </div>
                               <div className="text-sm text-gray-500 dark:text-gray-400">
-                                {client.email}
-                              </div>
-                              <div className="text-xs text-gray-400 dark:text-gray-500">
-                                {client.address}
+                                {sale.customer.email}
                               </div>
                             </div>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 dark:text-white">
-                            CPF: {client.cpf}
+                          <div className="text-sm font-medium text-gray-900 dark:text-white">
+                            Bloco {sale.lot.block.identifier} - Lote {sale.lot.identifier}
                           </div>
                           <div className="text-sm text-gray-500 dark:text-gray-400">
-                            RG: {client.rg}
+                            {sale.lot.totalArea.toFixed(2)} m²
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900 dark:text-white">
+                            {formatCurrency(sale.totalValue)}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900 dark:text-white">
-                            {client.profession}
-                          </div>
-                          <div className="text-sm text-gray-500 dark:text-gray-400">
-                            {client.birthplace}
+                            {formatCurrency(sale.downPayment)}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {getMaritalStatusBadge(client.maritalStatus)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                          {formatDate(client.birthDate)}
+                          <div className="text-sm text-gray-900 dark:text-white">
+                            {sale.installmentCount}x {formatCurrency(sale.installmentValue)}
+                          </div>
+                          {sale.annualAdjustment && (
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              Com reajuste anual
+                            </div>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                          {formatDate(client.createdAt)}
+                          {formatDate(sale.createdAt)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex items-center justify-end space-x-2">
                             <button
-                              onClick={() => handleEditClient(client)}
+                              onClick={() => handleEditSale(sale)}
                               className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
-                              title="Editar cliente"
+                              title="Editar venda"
                             >
                               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => handleDeleteClient(client)}
-                              className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
-                              title="Excluir cliente"
-                            >
-                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                               </svg>
                             </button>
                           </div>
@@ -394,22 +385,14 @@ export default function ClientsPage() {
             )}
           </div>
         </div>
+
+        <SalesForm
+          sale={editingSale}
+          isOpen={showForm}
+          onClose={handleFormClose}
+          onSave={handleFormSave}
+        />
       </div>
-
-      <ClientForm
-        client={editingClient}
-        isOpen={showForm}
-        onClose={handleFormClose}
-        onSave={handleFormSave}
-      />
-
-      <DeleteConfirmModal
-        isOpen={showDeleteModal}
-        clientName={deletingClient?.name || ''}
-        onClose={handleDeleteModalClose}
-        onConfirm={confirmDelete}
-        loading={deleteLoading}
-      />
     </div>
   )
 }
