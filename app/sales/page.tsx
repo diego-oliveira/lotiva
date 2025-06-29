@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import SalesForm from './components/SalesForm'
+import ContractViewer from './components/ContractViewer'
 
 interface Block {
   id: string
@@ -53,6 +54,8 @@ export default function SalesPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
+  const [showContract, setShowContract] = useState(false)
+  const [contractSaleId, setContractSaleId] = useState<string>('')
 
   useEffect(() => {
     fetchSales()
@@ -116,6 +119,16 @@ export default function SalesPage() {
     await fetchSales()
     setShowForm(false)
     setEditingSale(null)
+  }
+
+  const handleViewContract = (saleId: string) => {
+    setContractSaleId(saleId)
+    setShowContract(true)
+  }
+
+  const handleCloseContract = () => {
+    setShowContract(false)
+    setContractSaleId('')
   }
 
   const filteredSales = sales.filter(sale => {
@@ -367,6 +380,15 @@ export default function SalesPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex items-center justify-end space-x-2">
                             <button
+                              onClick={() => handleViewContract(sale.id)}
+                              className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
+                              title="Ver contrato"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </button>
+                            <button
                               onClick={() => handleEditSale(sale)}
                               className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
                               title="Editar venda"
@@ -391,6 +413,12 @@ export default function SalesPage() {
           isOpen={showForm}
           onClose={handleFormClose}
           onSave={handleFormSave}
+        />
+
+        <ContractViewer
+          saleId={contractSaleId}
+          isOpen={showContract}
+          onClose={handleCloseContract}
         />
       </div>
     </div>

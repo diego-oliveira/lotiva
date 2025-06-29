@@ -1,6 +1,7 @@
 // app/api/sales/route.ts
 import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'
+import { generateContractNumber, generateContractHTML } from '@/lib/contractGenerator'
 
 export async function GET() {
   const sales = await prisma.sale.findMany({
@@ -11,7 +12,8 @@ export async function GET() {
           block: true
         }
       },
-      reservation: true 
+      reservation: true,
+      contract: true
     },
     orderBy: { createdAt: 'desc' },
   })
@@ -53,6 +55,28 @@ export async function POST(req: Request) {
         where: { id: data.lotId },
         data: { status: 'sold' }
       })
+
+      // Auto-generate contract
+      try {
+        const contractNumber = generateContractNumber()
+        const contractData = {
+          contractNumber,
+          sale,
+          generatedAt: new Date()
+        }
+        const contractHTML = generateContractHTML(contractData)
+
+        await prisma.contract.create({
+          data: {
+            saleId: sale.id,
+            contractNumber,
+            content: contractHTML
+          }
+        })
+      } catch (contractError) {
+        console.error('Error auto-generating contract:', contractError)
+        // Don't fail the sale creation if contract generation fails
+      }
 
       return sale
     })

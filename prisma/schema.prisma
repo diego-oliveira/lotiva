@@ -94,6 +94,20 @@ model Sale {
   customer      Customer   @relation(fields: [customerId], references: [id])
   lot         Lot        @relation(fields: [lotId], references: [id])
   reservation Reservation? @relation(fields: [reservationId], references: [id])
+  contract    Contract?
   
+}
+
+model Contract {
+  id           String    @id @default(uuid())
+  saleId       String    @unique
+  contractNumber String  @unique
+  content      String    @db.Text
+  emailSent    Boolean   @default(false)
+  emailSentAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sale Sale @relation(fields: [saleId], references: [id])
 }
 
