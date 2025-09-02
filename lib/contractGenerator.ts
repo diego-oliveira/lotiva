@@ -589,18 +589,24 @@ export function generateContractPDFHTML(data: ContractData): string {
         
         body {
           font-family: 'Crimson Text', serif;
-          font-size: 12px;
+          font-size: 14px; /* Increased font size for better PDF rendering */
           line-height: 1.6;
           margin: 0;
-          padding: 20px;
+          padding: 0; /* Remove body padding for PDF */
           color: #000;
+          background: white;
+          width: 100%;
+          height: 100%;
         }
         
         .container {
-          max-width: 210mm;
-          margin: 0 auto;
+          width: 100%;
+          max-width: none; /* Remove max-width constraint for PDF */
+          margin: 0;
           background: white;
-          padding: 30mm 20mm 20mm 30mm; /* ABNT margins: top 3cm, right 2cm, bottom 2cm, left 3cm */
+          padding: 0; /* Padding will be handled by @page margins */
+          min-height: 100vh;
+          box-sizing: border-box;
         }
         
         .header {
@@ -609,24 +615,24 @@ export function generateContractPDFHTML(data: ContractData): string {
         }
         
         .title {
-          font-size: 16px;
+          font-size: 18px;
           font-weight: bold;
           margin-bottom: 20px;
           text-transform: uppercase;
         }
         
         .section {
-          margin-bottom: 20px;
+          margin-bottom: 25px;
         }
         
         .section-title {
-          font-size: 12px;
+          font-size: 16px;
           font-weight: bold;
           margin-bottom: 10px;
         }
         
         .paragraph {
-          margin-bottom: 12px;
+          margin-bottom: 15px;
           text-align: justify;
           line-height: 1.5;
         }

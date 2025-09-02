@@ -136,10 +136,10 @@ lotiva/
 ### Prerequisites
 
 - Node.js 18+
-- PostgreSQL database
+- Docker and Docker Compose
 - SMTP email service (Gmail, etc.)
 
-### Installation
+### Quick Setup (Recommended)
 
 1. **Clone the repository**
 
@@ -148,46 +148,99 @@ git clone https://github.com/diego-oliveira/lotiva.git
 cd lotiva
 ```
 
-2. **Install dependencies**
+2. **Run the setup script**
 
 ```bash
-npm install
+./setup.sh
 ```
 
-3. **Environment Setup**
-   Create a `.env` file in the root directory:
+This script will:
+
+- Create `.env` file from template
+- Start PostgreSQL container with Docker
+- Install dependencies
+- Generate Prisma client
+- Run database migrations
+
+3. **Configure email settings**
+   Edit `.env` file with your SMTP credentials:
 
 ```env
-# Database
-DATABASE_URL="postgresql://username:password@localhost:5432/lotiva"
-
-# Email Configuration
-SMTP_HOST="smtp.gmail.com"
-SMTP_PORT="587"
-SMTP_SECURE="false"
 SMTP_USER="your-email@gmail.com"
 SMTP_PASSWORD="your-app-password"
 SMTP_FROM="your-email@gmail.com"
 ```
 
-4. **Database Setup**
-
-```bash
-# Generate Prisma client
-npx prisma generate
-
-# Run migrations
-npx prisma migrate deploy
-
-# Optional: View database
-npx prisma studio
-```
-
-5. **Development Server**
+4. **Start development server**
 
 ```bash
 npm run dev
 ```
+
+### Manual Setup
+
+1. **Clone and install**
+
+```bash
+git clone https://github.com/diego-oliveira/lotiva.git
+cd lotiva
+npm install
+```
+
+2. **Start PostgreSQL with Docker**
+
+```bash
+docker-compose up -d postgres
+```
+
+3. **Environment Setup**
+   Copy `.env.example` to `.env` and update with your settings:
+
+```bash
+cp .env.example .env
+```
+
+4. **Database Setup**
+
+```bash
+npx prisma generate
+npx prisma migrate deploy
+```
+
+5. **Start development server**
+
+```bash
+npm run dev
+```
+
+### Available Commands
+
+Using Make (recommended):
+
+```bash
+make setup      # Complete setup
+make dev        # Start development
+make docker-up  # Start containers
+make docker-down # Stop containers
+make studio     # Open database viewer
+make reset      # Reset database
+make help       # Show all commands
+```
+
+Using npm scripts:
+
+```bash
+npm run dev     # Development server
+npm run build   # Build for production
+npm start       # Start production server
+```
+
+### Database Access
+
+- **Application**: http://localhost:3000
+- **Prisma Studio**: `npx prisma studio` or `make studio`
+- **pgAdmin**: http://localhost:8080 (admin@lotiva.com / admin123)
+- **Direct PostgreSQL**: localhost:5432 (lotiva_user / lotiva_password)
 
 The application will be available at `http://localhost:3000`
 
