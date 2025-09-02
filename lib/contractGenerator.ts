@@ -1,107 +1,158 @@
-import React from 'react'
+import React from 'react';
 
 interface ContractData {
-  contractNumber: string
-  sale: any
-  generatedAt: Date
+  contractNumber: string;
+  sale: any;
+  generatedAt: Date;
 }
 
 export function generateContractNumber(): string {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  const time = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0')
-  const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
-  
-  return `CT${year}${month}${day}${time}${random}`
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const time =
+    String(now.getHours()).padStart(2, '0') +
+    String(now.getMinutes()).padStart(2, '0');
+  const random = Math.floor(Math.random() * 1000)
+    .toString()
+    .padStart(3, '0');
+
+  return `CT${year}${month}${day}${time}${random}`;
 }
 
 export function generateContractHTML(data: ContractData): string {
-  const { contractNumber, sale, generatedAt } = data
-  const { customer, lot } = sale
+  const { contractNumber, sale, generatedAt } = data;
+  const { customer, lot } = sale;
 
   const formatDate = (dateString: string | Date) => {
-    const date = typeof dateString === 'string' ? new Date(dateString) : dateString
+    const date =
+      typeof dateString === 'string' ? new Date(dateString) : dateString;
     return date.toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: 'long',
       year: 'numeric'
-    })
-  }
+    });
+  };
 
   const formatCPF = (cpf: string) => {
-    return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
-  }
+    return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  };
 
   const numberToWords = (num: number): string => {
-    const ones = ['', 'Um', 'Dois', 'Três', 'Quatro', 'Cinco', 'Seis', 'Sete', 'Oito', 'Nove', 'Dez', 'Onze', 'Doze', 'Treze', 'Catorze', 'Quinze', 'Dezesseis', 'Dezessete', 'Dezoito', 'Dezenove']
-    const tens = ['', '', 'Vinte', 'Trinta', 'Quarenta', 'Cinquenta', 'Sessenta', 'Setenta', 'Oitenta', 'Noventa']
-    const hundreds = ['', 'Cento', 'Duzentos', 'Trezentos', 'Quatrocentos', 'Quinhentos', 'Seiscentos', 'Setecentos', 'Oitocentos', 'Novecentos']
-    
-    if (num === 0) return 'Zero'
-    if (num === 100) return 'Cem'
-    
-    let words = ''
-    
+    const ones = [
+      '',
+      'Um',
+      'Dois',
+      'Três',
+      'Quatro',
+      'Cinco',
+      'Seis',
+      'Sete',
+      'Oito',
+      'Nove',
+      'Dez',
+      'Onze',
+      'Doze',
+      'Treze',
+      'Catorze',
+      'Quinze',
+      'Dezesseis',
+      'Dezessete',
+      'Dezoito',
+      'Dezenove'
+    ];
+    const tens = [
+      '',
+      '',
+      'Vinte',
+      'Trinta',
+      'Quarenta',
+      'Cinquenta',
+      'Sessenta',
+      'Setenta',
+      'Oitenta',
+      'Noventa'
+    ];
+    const hundreds = [
+      '',
+      'Cento',
+      'Duzentos',
+      'Trezentos',
+      'Quatrocentos',
+      'Quinhentos',
+      'Seiscentos',
+      'Setecentos',
+      'Oitocentos',
+      'Novecentos'
+    ];
+
+    if (num === 0) return 'Zero';
+    if (num === 100) return 'Cem';
+
+    let words = '';
+
     if (num >= 1000000) {
-      const millions = Math.floor(num / 1000000)
+      const millions = Math.floor(num / 1000000);
       if (millions === 1) {
-        words += 'Um Milhão'
+        words += 'Um Milhão';
       } else {
-        words += numberToWords(millions) + ' Milhões'
+        words += numberToWords(millions) + ' Milhões';
       }
-      num %= 1000000
-      if (num > 0) words += ' e '
+      num %= 1000000;
+      if (num > 0) words += ' e ';
     }
-    
+
     if (num >= 1000) {
-      const thousands = Math.floor(num / 1000)
+      const thousands = Math.floor(num / 1000);
       if (thousands === 1) {
-        words += 'Mil'
+        words += 'Mil';
       } else {
-        words += numberToWords(thousands) + ' Mil'
+        words += numberToWords(thousands) + ' Mil';
       }
-      num %= 1000
-      if (num > 0) words += ' e '
+      num %= 1000;
+      if (num > 0) words += ' e ';
     }
-    
+
     if (num >= 100) {
-      words += hundreds[Math.floor(num / 100)]
-      num %= 100
-      if (num > 0) words += ' e '
+      words += hundreds[Math.floor(num / 100)];
+      num %= 100;
+      if (num > 0) words += ' e ';
     }
-    
+
     if (num >= 20) {
-      words += tens[Math.floor(num / 10)]
-      num %= 10
-      if (num > 0) words += ' e '
+      words += tens[Math.floor(num / 10)];
+      num %= 10;
+      if (num > 0) words += ' e ';
     }
-    
+
     if (num > 0) {
-      words += ones[num]
+      words += ones[num];
     }
-    
-    return words
-  }
+
+    return words;
+  };
 
   const formatCurrency = (value: number): string => {
-    const formatted = value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    const words = numberToWords(Math.floor(value))
-    return `R$ ${formatted} (${words} Reais)`
-  }
+    const formatted = value.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+    const words = numberToWords(Math.floor(value));
+    return `R$ ${formatted} (${words} Reais)`;
+  };
 
   const formatDate30DaysFromNow = (): string => {
-    const date = new Date()
-    date.setDate(date.getDate() + 30)
+    const date = new Date();
+    date.setDate(date.getDate() + 30);
     return date.toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: 'long',
       year: 'numeric'
-    })
-  }
+    });
+  };
 
-  const remainingValue = sale.totalValue - sale.downPayment
+  const remainingValue = sale.totalValue - sale.downPayment;
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -139,7 +190,17 @@ export function generateContractHTML(data: ContractData): string {
           </p>
 
           <p class="mb-4">
-            <strong>PROMITENTE COMPRADOR:</strong> <strong>${customer.name.toUpperCase()}</strong>, brasileiro, ${customer.maritalStatus}, ${customer.profession}, natural de ${customer.birthplace}, portador da Cédula de Identidade RG nº ${customer.rg}, inscrito no CPF sob o nº ${formatCPF(customer.cpf)}, residente e domiciliado na ${customer.address}. Endereço eletrônico: ${customer.email}
+            <strong>PROMITENTE COMPRADOR:</strong> <strong>${customer.name.toUpperCase()}</strong>, brasileiro, ${
+    customer.maritalStatus
+  }, ${customer.profession}, natural de ${
+    customer.birthplace
+  }, portador da Cédula de Identidade RG nº ${
+    customer.rg
+  }, inscrito no CPF sob o nº ${formatCPF(
+    customer.cpf
+  )}, residente e domiciliado na ${customer.address}. Endereço eletrônico: ${
+    customer.email
+  }
           </p>
 
           <p class="mb-4">
@@ -164,28 +225,52 @@ export function generateContractHTML(data: ContractData): string {
         <div class="mb-6">
           <h3 class="font-bold mb-3">Cláusula terceira: DA PROMESSA</h3>
           <p class="mb-4 text-justify leading-7">
-            Por este Instrumento e na melhor forma de direito, o PROMITENTE VENDEDOR, promete vender ao PROMITENTE COMPRADOR, este a lhe comprar, como de fato é na verdade doravante prometido têm, o lote Nº ${lot.identifier} da quadra ${lot.block.identifier}, totalizando ${lot.totalArea.toFixed(2)} metros quadrados, acima descrito e caracterizado, de acordo com os termos, cláusulas, condições e demais estipulações deste contrato, que reciprocamente se comprometem, por si e sucessores, a cumprir e respeitar de forma integral.
+            Por este Instrumento e na melhor forma de direito, o PROMITENTE VENDEDOR, promete vender ao PROMITENTE COMPRADOR, este a lhe comprar, como de fato é na verdade doravante prometido têm, o lote Nº ${
+              lot.identifier
+            } da quadra ${
+    lot.block.identifier
+  }, totalizando ${lot.totalArea.toFixed(
+    2
+  )} metros quadrados, acima descrito e caracterizado, de acordo com os termos, cláusulas, condições e demais estipulações deste contrato, que reciprocamente se comprometem, por si e sucessores, a cumprir e respeitar de forma integral.
           </p>
         </div>
 
         <div class="mb-6">
           <h3 class="font-bold mb-3">Cláusula quarta: DOS LIMITES E CONFRONTAÇÕES</h3>
-          <p class="mb-2"><strong>FRENTE:</strong> ${lot.front.toFixed(2)} metros;</p>
-          <p class="mb-2"><strong>FUNDO:</strong> ${lot.back.toFixed(2)} metros;</p>
-          <p class="mb-2"><strong>LADO DIREITO:</strong> ${lot.rightSide.toFixed(2)} metros;</p>
-          <p class="mb-2"><strong>LADO ESQUERDO:</strong> ${lot.leftSide.toFixed(2)} metros.</p>
+          <p class="mb-2"><strong>FRENTE:</strong> ${lot.front.toFixed(
+            2
+          )} metros;</p>
+          <p class="mb-2"><strong>FUNDO:</strong> ${lot.back.toFixed(
+            2
+          )} metros;</p>
+          <p class="mb-2"><strong>LADO DIREITO:</strong> ${lot.rightSide.toFixed(
+            2
+          )} metros;</p>
+          <p class="mb-2"><strong>LADO ESQUERDO:</strong> ${lot.leftSide.toFixed(
+            2
+          )} metros.</p>
         </div>
 
         <div class="mb-6">
           <h3 class="font-bold mb-3">Clausula quinta: DO VALOR E DA FORMA DE PAGAMENTO</h3>
           <p class="mb-4 text-justify leading-7">
-            A presente transação é feita pelo preço certo e ajustado da promessa de compra e venda, ora pactuada entre as partes contratantes no valor total de ${formatCurrency(sale.totalValue)}, a ser pago na seguinte forma:
+            A presente transação é feita pelo preço certo e ajustado da promessa de compra e venda, ora pactuada entre as partes contratantes no valor total de ${formatCurrency(
+              sale.totalValue
+            )}, a ser pago na seguinte forma:
           </p>
           <p class="mb-4 text-justify leading-7">
-            <strong>I</strong> – Pagamento da entrada, no valor de ${formatCurrency(sale.downPayment)}, que se refere a um sinal de 10% do preço total, valor pago no ato da assinatura deste contrato. O pagamento será realizado por meio de transferência bancária ou pix em favor de Terra nova Incorporação e Construção Ltda, CNPJ: 59.506.986/0001-19, para o Banco nº 461 – Asaas I.P.S.A., Ag. nº 0001, Conta nº 5647225-1 ou chave pix: 59.506.986/0001-19, ou ainda, em boleto bancário, destinado ao promitente vendedor;
+            <strong>I</strong> – Pagamento da entrada, no valor de ${formatCurrency(
+              sale.downPayment
+            )}, que se refere a um sinal de 10% do preço total, valor pago no ato da assinatura deste contrato. O pagamento será realizado por meio de transferência bancária ou pix em favor de Terra nova Incorporação e Construção Ltda, CNPJ: 59.506.986/0001-19, para o Banco nº 461 – Asaas I.P.S.A., Ag. nº 0001, Conta nº 5647225-1 ou chave pix: 59.506.986/0001-19, ou ainda, em boleto bancário, destinado ao promitente vendedor;
           </p>
           <p class="mb-4 text-justify leading-7">
-            <strong>II</strong> – O valor remanescente de ${formatCurrency(remainingValue)} a ser pago em ${sale.installmentCount} (${numberToWords(sale.installmentCount)}) parcelas consecutivas ${formatCurrency(sale.installmentValue)}, será realizado por meio de boleto bancário do banco Asaas I.P.S.A. destinado ao promitente vendedor, iniciando a partir de ${formatDate30DaysFromNow()} e, a partir desta data, nos próximos meses subsequentes, sucessivamente, corrigido anualmente, pelo índice do INCC (Índice Nacional de Custo da Construção), enquanto perdurar a realização da obra do loteamento e, corrigido pelo IPCA, posterior a finalização da obra até o final do contrato que, devem ser adimplidas mensalmente e, sua respectiva quitação, se dará, após o pagamento da última parcela;
+            <strong>II</strong> – O valor remanescente de ${formatCurrency(
+              remainingValue
+            )} a ser pago em ${sale.installmentCount} (${numberToWords(
+    sale.installmentCount
+  )}) parcelas consecutivas ${formatCurrency(
+    sale.installmentValue
+  )}, será realizado por meio de boleto bancário do banco Asaas I.P.S.A. destinado ao promitente vendedor, iniciando a partir de ${formatDate30DaysFromNow()} e, a partir desta data, nos próximos meses subsequentes, sucessivamente, corrigido anualmente, pelo índice do INCC (Índice Nacional de Custo da Construção), enquanto perdurar a realização da obra do loteamento e, corrigido pelo IPCA, posterior a finalização da obra até o final do contrato que, devem ser adimplidas mensalmente e, sua respectiva quitação, se dará, após o pagamento da última parcela;
           </p>
           <p class="mb-4 text-justify leading-7">
             <strong>PARÁGRAFO PRIMEIRO:</strong> O PROMITENTE VENDEDOR declara para todos os fins e efeitos de direitos que o pagamento da comissão de corretagem referente à negociação deste instrumento será de sua inteira responsabilidade, não arcando os PROMITENTES COMPRADORES com nenhum valor, entretanto, tendo estes, ciência e expressa concordância de que esse pagamento deverá ser efetuado no ato do pagamento do sinal, incidindo a 5% (Cinco por cento) do valor total da venda à empresa corretora, a título de comissão pela intermediação, razão pela qual, em caso de desistência de sua parte, este aludido valor não lhe será devolvido.
@@ -346,102 +431,151 @@ export function generateContractHTML(data: ContractData): string {
 
         <div class="mt-12 text-center text-sm text-gray-600">
           <p>Contrato nº ${contractNumber}</p>
-          <p>Gerado automaticamente pelo sistema Lotiva em ${formatDate(generatedAt)}</p>
+          <p>Gerado automaticamente pelo sistema Lotiva em ${formatDate(
+            generatedAt
+          )}</p>
         </div>
       </div>
     </body>
     </html>
-  `
-  
-  return htmlContent
+  `;
+
+  return htmlContent;
 }
 
 export function generateContractPDFHTML(data: ContractData): string {
   // For PDF, we'll use the same HTML but with PDF-optimized styles
-  const { contractNumber, sale, generatedAt } = data
-  const { customer, lot } = sale
+  const { contractNumber, sale, generatedAt } = data;
+  const { customer, lot } = sale;
 
   const formatDate = (dateString: string | Date) => {
-    const date = typeof dateString === 'string' ? new Date(dateString) : dateString
+    const date =
+      typeof dateString === 'string' ? new Date(dateString) : dateString;
     return date.toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: 'long',
       year: 'numeric'
-    })
-  }
+    });
+  };
 
   const formatCPF = (cpf: string) => {
-    return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
-  }
+    return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  };
 
   const numberToWords = (num: number): string => {
-    const ones = ['', 'Um', 'Dois', 'Três', 'Quatro', 'Cinco', 'Seis', 'Sete', 'Oito', 'Nove', 'Dez', 'Onze', 'Doze', 'Treze', 'Catorze', 'Quinze', 'Dezesseis', 'Dezessete', 'Dezoito', 'Dezenove']
-    const tens = ['', '', 'Vinte', 'Trinta', 'Quarenta', 'Cinquenta', 'Sessenta', 'Setenta', 'Oitenta', 'Noventa']
-    const hundreds = ['', 'Cento', 'Duzentos', 'Trezentos', 'Quatrocentos', 'Quinhentos', 'Seiscentos', 'Setecentos', 'Oitocentos', 'Novecentos']
-    
-    if (num === 0) return 'Zero'
-    if (num === 100) return 'Cem'
-    
-    let words = ''
-    
+    const ones = [
+      '',
+      'Um',
+      'Dois',
+      'Três',
+      'Quatro',
+      'Cinco',
+      'Seis',
+      'Sete',
+      'Oito',
+      'Nove',
+      'Dez',
+      'Onze',
+      'Doze',
+      'Treze',
+      'Catorze',
+      'Quinze',
+      'Dezesseis',
+      'Dezessete',
+      'Dezoito',
+      'Dezenove'
+    ];
+    const tens = [
+      '',
+      '',
+      'Vinte',
+      'Trinta',
+      'Quarenta',
+      'Cinquenta',
+      'Sessenta',
+      'Setenta',
+      'Oitenta',
+      'Noventa'
+    ];
+    const hundreds = [
+      '',
+      'Cento',
+      'Duzentos',
+      'Trezentos',
+      'Quatrocentos',
+      'Quinhentos',
+      'Seiscentos',
+      'Setecentos',
+      'Oitocentos',
+      'Novecentos'
+    ];
+
+    if (num === 0) return 'Zero';
+    if (num === 100) return 'Cem';
+
+    let words = '';
+
     if (num >= 1000000) {
-      const millions = Math.floor(num / 1000000)
+      const millions = Math.floor(num / 1000000);
       if (millions === 1) {
-        words += 'Um Milhão'
+        words += 'Um Milhão';
       } else {
-        words += numberToWords(millions) + ' Milhões'
+        words += numberToWords(millions) + ' Milhões';
       }
-      num %= 1000000
-      if (num > 0) words += ' e '
+      num %= 1000000;
+      if (num > 0) words += ' e ';
     }
-    
+
     if (num >= 1000) {
-      const thousands = Math.floor(num / 1000)
+      const thousands = Math.floor(num / 1000);
       if (thousands === 1) {
-        words += 'Mil'
+        words += 'Mil';
       } else {
-        words += numberToWords(thousands) + ' Mil'
+        words += numberToWords(thousands) + ' Mil';
       }
-      num %= 1000
-      if (num > 0) words += ' e '
+      num %= 1000;
+      if (num > 0) words += ' e ';
     }
-    
+
     if (num >= 100) {
-      words += hundreds[Math.floor(num / 100)]
-      num %= 100
-      if (num > 0) words += ' e '
+      words += hundreds[Math.floor(num / 100)];
+      num %= 100;
+      if (num > 0) words += ' e ';
     }
-    
+
     if (num >= 20) {
-      words += tens[Math.floor(num / 10)]
-      num %= 10
-      if (num > 0) words += ' e '
+      words += tens[Math.floor(num / 10)];
+      num %= 10;
+      if (num > 0) words += ' e ';
     }
-    
+
     if (num > 0) {
-      words += ones[num]
+      words += ones[num];
     }
-    
-    return words
-  }
+
+    return words;
+  };
 
   const formatCurrency = (value: number): string => {
-    const formatted = value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    const words = numberToWords(Math.floor(value))
-    return `R$ ${formatted} (${words} Reais)`
-  }
+    const formatted = value.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+    const words = numberToWords(Math.floor(value));
+    return `R$ ${formatted} (${words} Reais)`;
+  };
 
   const formatDate30DaysFromNow = (): string => {
-    const date = new Date()
-    date.setDate(date.getDate() + 30)
+    const date = new Date();
+    date.setDate(date.getDate() + 30);
     return date.toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: 'long',
       year: 'numeric'
-    })
-  }
+    });
+  };
 
-  const remainingValue = sale.totalValue - sale.downPayment
+  const remainingValue = sale.totalValue - sale.downPayment;
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -466,7 +600,7 @@ export function generateContractPDFHTML(data: ContractData): string {
           max-width: 210mm;
           margin: 0 auto;
           background: white;
-          padding: 20mm;
+          padding: 30mm 20mm 20mm 30mm; /* ABNT margins: top 3cm, right 2cm, bottom 2cm, left 3cm */
         }
         
         .header {
@@ -519,7 +653,7 @@ export function generateContractPDFHTML(data: ContractData): string {
         
         @page {
           size: A4;
-          margin: 20mm;
+          margin: 30mm 20mm 20mm 30mm; /* ABNT margins: top 3cm, right 2cm, bottom 2cm, left 3cm */
         }
       </style>
     </head>
@@ -539,7 +673,17 @@ export function generateContractPDFHTML(data: ContractData): string {
           </p>
 
           <p class="paragraph">
-            <strong>PROMITENTE COMPRADOR:</strong> <strong>${customer.name.toUpperCase()}</strong>, brasileiro, ${customer.maritalStatus}, ${customer.profession}, natural de ${customer.birthplace}, portador da Cédula de Identidade RG nº ${customer.rg}, inscrito no CPF sob o nº ${formatCPF(customer.cpf)}, residente e domiciliado na ${customer.address}. Endereço eletrônico: ${customer.email}
+            <strong>PROMITENTE COMPRADOR:</strong> <strong>${customer.name.toUpperCase()}</strong>, brasileiro, ${
+    customer.maritalStatus
+  }, ${customer.profession}, natural de ${
+    customer.birthplace
+  }, portador da Cédula de Identidade RG nº ${
+    customer.rg
+  }, inscrito no CPF sob o nº ${formatCPF(
+    customer.cpf
+  )}, residente e domiciliado na ${customer.address}. Endereço eletrônico: ${
+    customer.email
+  }
           </p>
 
           <p class="paragraph">
@@ -564,7 +708,13 @@ export function generateContractPDFHTML(data: ContractData): string {
         <div class="section">
           <h3 class="section-title">Cláusula terceira: DA PROMESSA</h3>
           <p class="paragraph">
-            Por este Instrumento e na melhor forma de direito, o PROMITENTE VENDEDOR, promete vender ao PROMITENTE COMPRADOR, este a lhe comprar, como de fato é na verdade doravante prometido têm, o lote Nº ${lot.identifier} da quadra ${lot.block.identifier}, totalizando ${lot.totalArea.toFixed(2)} metros quadrados, acima descrito e caracterizado, de acordo com os termos, cláusulas, condições e demais estipulações deste contrato, que reciprocamente se comprometem, por si e sucessores, a cumprir e respeitar de forma integral.
+            Por este Instrumento e na melhor forma de direito, o PROMITENTE VENDEDOR, promete vender ao PROMITENTE COMPRADOR, este a lhe comprar, como de fato é na verdade doravante prometido têm, o lote Nº ${
+              lot.identifier
+            } da quadra ${
+    lot.block.identifier
+  }, totalizando ${lot.totalArea.toFixed(
+    2
+  )} metros quadrados, acima descrito e caracterizado, de acordo com os termos, cláusulas, condições e demais estipulações deste contrato, que reciprocamente se comprometem, por si e sucessores, a cumprir e respeitar de forma integral.
           </p>
         </div>
 
@@ -572,20 +722,34 @@ export function generateContractPDFHTML(data: ContractData): string {
           <h3 class="section-title">Cláusula quarta: DOS LIMITES E CONFRONTAÇÕES</h3>
           <p><strong>FRENTE:</strong> ${lot.front.toFixed(2)} metros;</p>
           <p><strong>FUNDO:</strong> ${lot.back.toFixed(2)} metros;</p>
-          <p><strong>LADO DIREITO:</strong> ${lot.rightSide.toFixed(2)} metros;</p>
-          <p><strong>LADO ESQUERDO:</strong> ${lot.leftSide.toFixed(2)} metros.</p>
+          <p><strong>LADO DIREITO:</strong> ${lot.rightSide.toFixed(
+            2
+          )} metros;</p>
+          <p><strong>LADO ESQUERDO:</strong> ${lot.leftSide.toFixed(
+            2
+          )} metros.</p>
         </div>
 
         <div class="section">
           <h3 class="section-title">Clausula quinta: DO VALOR E DA FORMA DE PAGAMENTO</h3>
           <p class="paragraph">
-            A presente transação é feita pelo preço certo e ajustado da promessa de compra e venda, ora pactuada entre as partes contratantes no valor total de ${formatCurrency(sale.totalValue)}, a ser pago na seguinte forma:
+            A presente transação é feita pelo preço certo e ajustado da promessa de compra e venda, ora pactuada entre as partes contratantes no valor total de ${formatCurrency(
+              sale.totalValue
+            )}, a ser pago na seguinte forma:
           </p>
           <p class="paragraph">
-            <strong>I</strong> – Pagamento da entrada, no valor de ${formatCurrency(sale.downPayment)}, que se refere a um sinal de 10% do preço total, valor pago no ato da assinatura deste contrato. O pagamento será realizado por meio de transferência bancária ou pix em favor de Terra nova Incorporação e Construção Ltda, CNPJ: 59.506.986/0001-19, para o Banco nº 461 – Asaas I.P.S.A., Ag. nº 0001, Conta nº 5647225-1 ou chave pix: 59.506.986/0001-19, ou ainda, em boleto bancário, destinado ao promitente vendedor;
+            <strong>I</strong> – Pagamento da entrada, no valor de ${formatCurrency(
+              sale.downPayment
+            )}, que se refere a um sinal de 10% do preço total, valor pago no ato da assinatura deste contrato. O pagamento será realizado por meio de transferência bancária ou pix em favor de Terra nova Incorporação e Construção Ltda, CNPJ: 59.506.986/0001-19, para o Banco nº 461 – Asaas I.P.S.A., Ag. nº 0001, Conta nº 5647225-1 ou chave pix: 59.506.986/0001-19, ou ainda, em boleto bancário, destinado ao promitente vendedor;
           </p>
           <p class="paragraph">
-            <strong>II</strong> – O valor remanescente de ${formatCurrency(remainingValue)} a ser pago em ${sale.installmentCount} (${numberToWords(sale.installmentCount)}) parcelas consecutivas ${formatCurrency(sale.installmentValue)}, será realizado por meio de boleto bancário do banco Asaas I.P.S.A. destinado ao promitente vendedor, iniciando a partir de ${formatDate30DaysFromNow()} e, a partir desta data, nos próximos meses subsequentes, sucessivamente, corrigido anualmente, pelo índice do INCC (Índice Nacional de Custo da Construção), enquanto perdurar a realização da obra do loteamento e, corrigido pelo IPCA, posterior a finalização da obra até o final do contrato que, devem ser adimplidas mensalmente e, sua respectiva quitação, se dará, após o pagamento da última parcela;
+            <strong>II</strong> – O valor remanescente de ${formatCurrency(
+              remainingValue
+            )} a ser pago em ${sale.installmentCount} (${numberToWords(
+    sale.installmentCount
+  )}) parcelas consecutivas ${formatCurrency(
+    sale.installmentValue
+  )}, será realizado por meio de boleto bancário do banco Asaas I.P.S.A. destinado ao promitente vendedor, iniciando a partir de ${formatDate30DaysFromNow()} e, a partir desta data, nos próximos meses subsequentes, sucessivamente, corrigido anualmente, pelo índice do INCC (Índice Nacional de Custo da Construção), enquanto perdurar a realização da obra do loteamento e, corrigido pelo IPCA, posterior a finalização da obra até o final do contrato que, devem ser adimplidas mensalmente e, sua respectiva quitação, se dará, após o pagamento da última parcela;
           </p>
           <p class="paragraph">
             <strong>PARÁGRAFO PRIMEIRO:</strong> O PROMITENTE VENDEDOR declara para todos os fins e efeitos de direitos que o pagamento da comissão de corretagem referente à negociação deste instrumento será de sua inteira responsabilidade, não arcando os PROMITENTES COMPRADORES com nenhum valor, entretanto, tendo estes, ciência e expressa concordância de que esse pagamento deverá ser efetuado no ato do pagamento do sinal, incidindo a 5% (Cinco por cento) do valor total da venda à empresa corretora, a título de comissão pela intermediação, razão pela qual, em caso de desistência de sua parte, este aludido valor não lhe será devolvido.
@@ -645,12 +809,14 @@ export function generateContractPDFHTML(data: ContractData): string {
 
         <div class="footer">
           <p>Contrato nº ${contractNumber}</p>
-          <p>Gerado automaticamente pelo sistema Lotiva em ${formatDate(generatedAt)}</p>
+          <p>Gerado automaticamente pelo sistema Lotiva em ${formatDate(
+            generatedAt
+          )}</p>
         </div>
       </div>
     </body>
     </html>
-  `
-  
-  return htmlContent
+  `;
+
+  return htmlContent;
 }

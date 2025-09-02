@@ -1,8 +1,8 @@
-import puppeteer from 'puppeteer'
+import puppeteer from 'puppeteer';
 
 export async function generatePDFFromHTML(html: string): Promise<Buffer> {
-  let browser
-  
+  let browser;
+
   try {
     browser = await puppeteer.launch({
       headless: true,
@@ -16,39 +16,39 @@ export async function generatePDFFromHTML(html: string): Promise<Buffer> {
         '--single-process',
         '--disable-gpu'
       ]
-    })
-    
-    const page = await browser.newPage()
-    
+    });
+
+    const page = await browser.newPage();
+
     await page.setContent(html, {
       waitUntil: 'networkidle0'
-    })
-    
+    });
+
     const pdf = await page.pdf({
       format: 'A4',
       margin: {
-        top: '20mm',
-        right: '20mm',
-        bottom: '20mm',
-        left: '20mm'
+        top: '30mm', // 3cm - ABNT standard
+        right: '20mm', // 2cm - ABNT standard
+        bottom: '20mm', // 2cm - ABNT standard
+        left: '30mm' // 3cm - ABNT standard
       },
       printBackground: true,
       preferCSSPageSize: true
-    })
-    
-    return pdf
+    });
+
+    return pdf;
   } catch (error) {
-    console.error('Error generating PDF:', error)
-    throw new Error('Failed to generate PDF')
+    console.error('Error generating PDF:', error);
+    throw new Error('Failed to generate PDF');
   } finally {
     if (browser) {
-      await browser.close()
+      await browser.close();
     }
   }
 }
 
 export async function generateContractPDF(contractData: any): Promise<Buffer> {
-  const { generateContractPDFHTML } = await import('./contractGenerator')
-  const html = generateContractPDFHTML(contractData)
-  return generatePDFFromHTML(html)
+  const { generateContractPDFHTML } = await import('./contractGenerator');
+  const html = generateContractPDFHTML(contractData);
+  return generatePDFFromHTML(html);
 }
