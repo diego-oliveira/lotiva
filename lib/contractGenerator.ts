@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface ContractData {
   contractNumber: string;
   sale: any;
