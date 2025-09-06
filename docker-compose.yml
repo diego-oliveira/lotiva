@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: lotiva_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: lotiva
+      POSTGRES_USER: lotiva_user
+      POSTGRES_PASSWORD: lotiva_password
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - lotiva_network
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: lotiva_pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@lotiva.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - '8080:80'
+    depends_on:
+      - postgres
+    networks:
+      - lotiva_network
+
+volumes:
+  postgres_data:
+
+networks:
+  lotiva_network:
+    driver: bridge
