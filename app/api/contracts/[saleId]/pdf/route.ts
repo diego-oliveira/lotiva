@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
-import { generateContractPDF } from '@/lib/pdfGenerator';
+import { generateContractPDFProduction } from '@/lib/pdfGeneratorProduction';
 
 type Params = { params: Promise<{ saleId: string }> };
 
@@ -39,7 +39,7 @@ export async function GET(_: Request, { params }: Params) {
     };
 
     console.log('Generating PDF for contract:', contract.contractNumber);
-    const pdfBuffer = await generateContractPDF(contractData);
+    const pdfBuffer = await generateContractPDFProduction(contractData);
     console.log('PDF generated successfully, size:', pdfBuffer.length);
 
     return new NextResponse(pdfBuffer as any, {
