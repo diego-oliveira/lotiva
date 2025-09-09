@@ -1,12 +1,12 @@
-import { prisma } from '@/lib/prisma'
-import { NextResponse } from 'next/server'
-import { generateContractPDF } from '@/lib/pdfGenerator'
+import { prisma } from '@/lib/prisma';
+import { NextResponse } from 'next/server';
+import { generateContractPDF } from '@/lib/pdfGenerator';
 
-type Params = { params: Promise<{ saleId: string }> }
+type Params = { params: Promise<{ saleId: string }> };
 
 export async function GET(_: Request, { params }: Params) {
   try {
-    const { saleId } = await params
+    const { saleId } = await params;
 
     const contract = await prisma.contract.findUnique({
       where: { saleId },
@@ -22,10 +22,13 @@ export async function GET(_: Request, { params }: Params) {
           }
         }
       }
-    })
+    });
 
     if (!contract) {
-      return NextResponse.json({ error: 'Contract not found' }, { status: 404 })
+      return NextResponse.json(
+        { error: 'Contract not found' },
+        { status: 404 }
+      );
     }
 
     // Generate PDF
@@ -33,23 +36,28 @@ export async function GET(_: Request, { params }: Params) {
       contractNumber: contract.contractNumber,
       sale: contract.sale,
       generatedAt: contract.createdAt
-    }
+    };
 
-    const pdfBuffer = await generateContractPDF(contractData)
+    console.log('Generating PDF for contract:', contract.contractNumber);
+    const pdfBuffer = await generateContractPDF(contractData);
+    console.log('PDF generated successfully, size:', pdfBuffer.length);
 
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(pdfBuffer as any, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="Contrato_${contract.contractNumber}.pdf"`,
-        'Cache-Control': 'no-cache'
+        'Cache-Control': 'no-cache',
+        'Content-Length': pdfBuffer.length.toString()
       }
-    })
-
+    });
   } catch (error) {
-    console.error('Error generating PDF:', error)
+    console.error('Error generating PDF:', error);
     return NextResponse.json(
-      { error: 'Failed to generate PDF' },
+      {
+        error: 'Failed to generate PDF',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
-    )
+    );
   }
 }
