@@ -8,7 +8,7 @@ export async function GET(_: Request, { params }: Params) {
 
   const reservation = await prisma.reservation.findUnique({
     where: { id: id },
-    include: { customer: true, lot: true },
+    include: { user: true, lot: true },
   })
 
   if (!reservation) {
@@ -26,7 +26,7 @@ export async function PUT(req: Request, { params }: Params) {
     const updated = await prisma.reservation.update({
       where: { id: id },
       data: {
-        customerId: data.customerId,
+        userId: data.userId,
         lotId: data.lotId,
         proposal: data.proposal,
         status: data.status,

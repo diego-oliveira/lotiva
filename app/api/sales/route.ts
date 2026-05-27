@@ -6,7 +6,7 @@ import { generateContractNumber, generateContractHTML } from '@/lib/contractGene
 export async function GET() {
   const sales = await prisma.sale.findMany({
     include: { 
-      customer: true, 
+      user: true, 
       lot: {
         include: {
           block: true
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       // Create the sale
       const sale = await prisma.sale.create({
         data: {
-          customerId: data.customerId,
+          userId: data.userId,
           lotId: data.lotId,
           reservationId: data.reservationId || null,
           installmentCount: data.installmentCount,
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
           totalValue: data.totalValue,
         },
         include: {
-          customer: true,
+          user: true,
           lot: {
             include: {
               block: true

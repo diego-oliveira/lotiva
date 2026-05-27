@@ -17,7 +17,7 @@ interface Lot {
   block: Block
 }
 
-interface Customer {
+interface User {
   id: string
   name: string
   email: string
@@ -32,7 +32,7 @@ interface Reservation {
 
 interface Sale {
   id: string
-  customerId: string
+  userId: string
   lotId: string
   reservationId?: string
   installmentCount: number
@@ -42,7 +42,7 @@ interface Sale {
   totalValue: number
   createdAt: string
   updatedAt: string
-  customer: Customer
+  user: User
   lot: Lot
   reservation?: Reservation
 }
@@ -136,9 +136,9 @@ export default function SalesPage() {
     
     const searchLower = searchTerm.toLowerCase()
     return (
-      sale.customer.name.toLowerCase().includes(searchLower) ||
-      sale.customer.email.toLowerCase().includes(searchLower) ||
-      sale.customer.cpf.replace(/\D/g, '').includes(searchTerm.replace(/\D/g, '')) ||
+      sale.user.name.toLowerCase().includes(searchLower) ||
+      sale.user.email.toLowerCase().includes(searchLower) ||
+      sale.user.cpf.replace(/\D/g, '').includes(searchTerm.replace(/\D/g, '')) ||
       `${sale.lot.block.identifier}${sale.lot.identifier}`.toLowerCase().includes(searchLower)
     )
   })
@@ -332,16 +332,16 @@ export default function SalesPage() {
                             <div className="h-10 w-10 flex-shrink-0">
                               <div className="h-10 w-10 rounded-full bg-indigo-500 flex items-center justify-center">
                                 <span className="text-sm font-medium text-white">
-                                  {getInitials(sale.customer.name)}
+                                  {getInitials(sale.user.name)}
                                 </span>
                               </div>
                             </div>
                             <div className="ml-4">
                               <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                {sale.customer.name}
+                                {sale.user.name}
                               </div>
                               <div className="text-sm text-gray-500 dark:text-gray-400">
-                                {sale.customer.email}
+                                {sale.user.email}
                               </div>
                             </div>
                           </div>

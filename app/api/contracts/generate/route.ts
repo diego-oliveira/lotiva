@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     const sale = await prisma.sale.findUnique({
       where: { id: saleId },
       include: {
-        customer: true,
+        user: true,
         lot: {
           include: {
             block: true

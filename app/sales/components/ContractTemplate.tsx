@@ -17,7 +17,7 @@ interface Lot {
   block: Block
 }
 
-interface Customer {
+interface User {
   id: string
   name: string
   email: string
@@ -38,7 +38,7 @@ interface Sale {
   annualAdjustment: boolean
   totalValue: number
   createdAt: string
-  customer: Customer
+  user: User
   lot: Lot
 }
 
@@ -55,7 +55,7 @@ interface ContractTemplateProps {
 
 export default function ContractTemplate({ data, isPdf = false }: ContractTemplateProps) {
   const { contractNumber, sale, generatedAt } = data
-  const { customer, lot } = sale
+  const { user, lot } = sale
 
   const formatDate = (dateString: string | Date) => {
     const date = typeof dateString === 'string' ? new Date(dateString) : dateString
@@ -173,7 +173,7 @@ export default function ContractTemplate({ data, isPdf = false }: ContractTempla
         </p>
 
         <p className={contractStyles.paragraph}>
-          <strong>PROMITENTE COMPRADOR:</strong> <strong>{customer.name.toUpperCase()}</strong>, brasileiro, {customer.maritalStatus}, {customer.profession}, natural de {customer.birthplace}, portador da Cédula de Identidade RG nº {customer.rg}, inscrito no CPF sob o nº {formatCPF(customer.cpf)}, residente e domiciliado na {customer.address}. Endereço eletrônico: {customer.email}
+          <strong>PROMITENTE COMPRADOR:</strong> <strong>{user.name.toUpperCase()}</strong>, brasileiro, {user.maritalStatus}, {user.profession}, natural de {user.birthplace}, portador da Cédula de Identidade RG nº {user.rg}, inscrito no CPF sob o nº {formatCPF(user.cpf)}, residente e domiciliado na {user.address}. Endereço eletrônico: {user.email}
         </p>
 
         <p className={contractStyles.paragraph}>
@@ -288,8 +288,8 @@ export default function ContractTemplate({ data, isPdf = false }: ContractTempla
 
           <div className="text-center">
             <div className="border-b border-gray-800 mb-2 pb-8 w-80 mx-auto"></div>
-            <p className="font-bold">{customer.name}</p>
-            <p className="text-sm">CPF: {formatCPF(customer.cpf)}</p>
+            <p className="font-bold">{user.name}</p>
+            <p className="text-sm">CPF: {formatCPF(user.cpf)}</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-12">

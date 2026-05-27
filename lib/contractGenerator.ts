@@ -21,7 +21,7 @@ export function generateContractNumber(): string {
 
 export function generateContractHTML(data: ContractData): string {
   const { contractNumber, sale, generatedAt } = data;
-  const { customer, lot } = sale;
+  const { user, lot } = sale;
 
   const formatDate = (dateString: string | Date) => {
     const date =
@@ -188,16 +188,16 @@ export function generateContractHTML(data: ContractData): string {
           </p>
 
           <p class="mb-4">
-            <strong>PROMITENTE COMPRADOR:</strong> <strong>${customer.name.toUpperCase()}</strong>, brasileiro, ${
-    customer.maritalStatus
-  }, ${customer.profession}, natural de ${
-    customer.birthplace
+            <strong>PROMITENTE COMPRADOR:</strong> <strong>${user.name.toUpperCase()}</strong>, brasileiro, ${
+    user.maritalStatus
+  }, ${user.profession}, natural de ${
+    user.birthplace
   }, portador da Cédula de Identidade RG nº ${
-    customer.rg
+    user.rg
   }, inscrito no CPF sob o nº ${formatCPF(
-    customer.cpf
-  )}, residente e domiciliado na ${customer.address}. Endereço eletrônico: ${
-    customer.email
+    user.cpf
+  )}, residente e domiciliado na ${user.address}. Endereço eletrônico: ${
+    user.email
   }
           </p>
 
@@ -409,8 +409,8 @@ export function generateContractHTML(data: ContractData): string {
 
             <div class="text-center">
               <div class="border-b border-gray-800 mb-2 pb-8 w-80 mx-auto"></div>
-              <p class="font-bold">${customer.name}</p>
-              <p class="text-sm">CPF: ${formatCPF(customer.cpf)}</p>
+              <p class="font-bold">${user.name}</p>
+              <p class="text-sm">CPF: ${formatCPF(user.cpf)}</p>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-12">
@@ -444,7 +444,7 @@ export function generateContractHTML(data: ContractData): string {
 export function generateContractPDFHTML(data: ContractData): string {
   // For PDF, we'll use the same HTML but with PDF-optimized styles
   const { contractNumber, sale, generatedAt } = data;
-  const { customer, lot } = sale;
+  const { user, lot } = sale;
 
   const formatDate = (dateString: string | Date) => {
     const date =
@@ -677,16 +677,16 @@ export function generateContractPDFHTML(data: ContractData): string {
           </p>
 
           <p class="paragraph">
-            <strong>PROMITENTE COMPRADOR:</strong> <strong>${customer.name.toUpperCase()}</strong>, brasileiro, ${
-    customer.maritalStatus
-  }, ${customer.profession}, natural de ${
-    customer.birthplace
+            <strong>PROMITENTE COMPRADOR:</strong> <strong>${user.name.toUpperCase()}</strong>, brasileiro, ${
+    user.maritalStatus
+  }, ${user.profession}, natural de ${
+    user.birthplace
   }, portador da Cédula de Identidade RG nº ${
-    customer.rg
+    user.rg
   }, inscrito no CPF sob o nº ${formatCPF(
-    customer.cpf
-  )}, residente e domiciliado na ${customer.address}. Endereço eletrônico: ${
-    customer.email
+    user.cpf
+  )}, residente e domiciliado na ${user.address}. Endereço eletrônico: ${
+    user.email
   }
           </p>
 
@@ -795,8 +795,8 @@ export function generateContractPDFHTML(data: ContractData): string {
 
           <div style="text-align: center; margin-bottom: 30px;">
             <div class="signature-line"></div>
-            <p><strong>${customer.name}</strong></p>
-            <p>CPF: ${formatCPF(customer.cpf)}</p>
+            <p><strong>${user.name}</strong></p>
+            <p>CPF: ${formatCPF(user.cpf)}</p>
           </div>
 
           <div style="display: flex; gap: 50px; justify-content: center; margin-top: 30px;">

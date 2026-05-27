@@ -12,7 +12,7 @@ export async function GET(_: Request, { params }: Params) {
       include: {
         sale: {
           include: {
-            customer: true,
+            user: true,
             lot: {
               include: {
                 block: true

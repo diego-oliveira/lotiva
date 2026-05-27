@@ -15,7 +15,7 @@ export async function POST(req: Request, { params }: Params) {
       include: {
         sale: {
           include: {
-            customer: true,
+            user: true,
             lot: {
               include: {
                 block: true
@@ -44,8 +44,8 @@ export async function POST(req: Request, { params }: Params) {
 
     // Send email
     const emailSent = await emailService.sendContractEmail(
-      contract.sale.customer.email,
-      contract.sale.customer.name,
+      contract.sale.user.email,
+      contract.sale.user.name,
       contract.contractNumber,
       pdfBuffer,
       customMessage
@@ -69,7 +69,7 @@ export async function POST(req: Request, { params }: Params) {
 
     return NextResponse.json({
       message: 'Contract sent successfully',
-      sentTo: contract.sale.customer.email
+      sentTo: contract.sale.user.email
     });
   } catch (error) {
     console.error('Error sending contract email:', error);

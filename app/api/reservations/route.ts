@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 export async function GET() {
   const reservations = await prisma.reservation.findMany({
-    include: { customer: true, lot: true },
+    include: { user: true, lot: true },
     orderBy: { createdAt: "desc" },
   });
 
@@ -17,7 +17,7 @@ export async function POST(req: Request) {
   try {
     const reservation = await prisma.reservation.create({
       data: {
-        customerId: data.customerId,
+        userId: data.userId,
         lotId: data.lotId,
         proposal: data.proposal,
         status: data.status,

@@ -16,7 +16,7 @@ interface Lot {
   block: Block;
 }
 
-interface Customer {
+interface User {
   id: string;
   name: string;
   email: string;
@@ -24,7 +24,7 @@ interface Customer {
 }
 
 interface SaleFormData {
-  customerId: string;
+  userId: string;
   lotId: string;
   reservationId?: string;
   installmentCount: number;
@@ -56,14 +56,14 @@ export default function SalesForm({
 }: SalesFormProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [lots, setLots] = useState<Lot[]>([]);
-  const [customerSearch, setCustomerSearch] = useState('');
+  const [userSearch, setUserSearch] = useState('');
   const [lotSearch, setLotSearch] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const [formData, setFormData] = useState<SaleFormData>({
-    customerId: '',
+    userId: '',
     lotId: '',
     reservationId: '',
     installmentCount: 1,
@@ -75,11 +75,11 @@ export default function SalesForm({
 
   useEffect(() => {
     if (isOpen) {
-      fetchCustomers();
+      fetchUsers();
       fetchAvailableLots();
       if (sale) {
         setFormData({
-          customerId: sale.customerId,
+          userId: sale.userId,
           lotId: sale.lotId,
           reservationId: sale.reservationId || '',
           installmentCount: sale.installmentCount,
@@ -90,7 +90,7 @@ export default function SalesForm({
         });
       } else {
         setFormData({
-          customerId: '',
+          userId: '',
           lotId: '',
           reservationId: '',
           installmentCount: 1,
@@ -105,15 +105,15 @@ export default function SalesForm({
     }
   }, [isOpen, sale]);
 
-  const fetchCustomers = async () => {
+  const fetchUsers = async () => {
     try {
       const response = await fetch('/api/clients');
       if (response.ok) {
         const data = await response.json();
-        setCustomers(data);
+        setUsers(data);
       }
     } catch (error) {
-      console.error('Error fetching customers:', error);
+      console.error('Error fetching users:', error);
     }
   };
 
@@ -133,18 +133,18 @@ export default function SalesForm({
     }
   };
 
-  const selectedCustomer = customers.find((c) => c.id === formData.customerId);
+  const selectedUser = users.find((user) => user.id === formData.userId);
   const selectedLot = lots.find((l) => l.id === formData.lotId);
 
-  const filteredCustomers = customers.filter((customer) => {
-    if (!customerSearch) return true;
-    const searchLower = customerSearch.toLowerCase();
+  const filteredUsers = users.filter((user) => {
+    if (!userSearch) return true;
+    const searchLower = userSearch.toLowerCase();
     return (
-      customer.name.toLowerCase().includes(searchLower) ||
-      customer.email.toLowerCase().includes(searchLower) ||
-      customer.cpf
+      user.name.toLowerCase().includes(searchLower) ||
+      user.email.toLowerCase().includes(searchLower) ||
+      user.cpf
         .replace(/\D/g, '')
-        .includes(customerSearch.replace(/\D/g, ''))
+        .includes(userSearch.replace(/\D/g, ''))
     );
   });
 
@@ -196,7 +196,7 @@ export default function SalesForm({
 
     switch (step) {
       case 1:
-        if (!formData.customerId) newErrors.customerId = 'Selecione um cliente';
+        if (!formData.userId) newErrors.userId = 'Selecione um cliente';
         break;
       case 2:
         if (!formData.lotId) newErrors.lotId = 'Selecione um lote';
@@ -374,38 +374,38 @@ export default function SalesForm({
                 <input
                   type='text'
                   placeholder='Digite nome, email ou CPF...'
-                  value={customerSearch}
-                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
                   className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white'
                 />
               </div>
 
               <div className='max-h-64 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-md'>
-                {filteredCustomers.map((customer) => (
+                {filteredUsers.map((user) => (
                   <div
-                    key={customer.id}
-                    onClick={() => handleInputChange('customerId', customer.id)}
+                    key={user.id}
+                    onClick={() => handleInputChange('userId', user.id)}
                     className={`p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-600 last:border-b-0 ${
-                      formData.customerId === customer.id
+                      formData.userId === user.id
                         ? 'bg-indigo-50 dark:bg-indigo-900'
                         : ''
                     }`}
                   >
                     <div className='font-medium text-gray-900 dark:text-white'>
-                      {customer.name}
+                      {user.name}
                     </div>
                     <div className='text-sm text-gray-500 dark:text-gray-400'>
-                      {customer.email}
+                      {user.email}
                     </div>
                     <div className='text-sm text-gray-500 dark:text-gray-400'>
-                      CPF: {customer.cpf}
+                      CPF: {user.cpf}
                     </div>
                   </div>
                 ))}
               </div>
-              {errors.customerId && (
+              {errors.userId && (
                 <p className='text-sm text-red-600 dark:text-red-400'>
-                  {errors.customerId}
+                  {errors.userId}
                 </p>
               )}
             </div>
@@ -622,11 +622,11 @@ export default function SalesForm({
                   <h5 className='font-medium text-gray-900 dark:text-white mb-2'>
                     Cliente
                   </h5>
-                  {selectedCustomer && (
+                  {selectedUser && (
                     <div className='text-sm text-gray-600 dark:text-gray-400'>
-                      <p>{selectedCustomer.name}</p>
-                      <p>{selectedCustomer.email}</p>
-                      <p>CPF: {selectedCustomer.cpf}</p>
+                      <p>{selectedUser.name}</p>
+                      <p>{selectedUser.email}</p>
+                      <p>CPF: {selectedUser.cpf}</p>
                     </div>
                   )}
                 </div>

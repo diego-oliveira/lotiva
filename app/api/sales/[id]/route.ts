@@ -9,7 +9,7 @@ export async function GET(_: Request, { params }: Params) {
   const sale = await prisma.sale.findUnique({
     where: { id },
     include: {
-      customer: true,
+      user: true,
       lot: {
         include: {
           block: true
@@ -34,7 +34,7 @@ export async function PUT(req: Request, { params }: Params) {
     const updated = await prisma.sale.update({
       where: { id },
       data: {
-        customerId: data.customerId,
+        userId: data.userId,
         lotId: data.lotId,
         reservationId: data.reservationId || null,
         installmentCount: data.installmentCount,
@@ -45,7 +45,7 @@ export async function PUT(req: Request, { params }: Params) {
         updatedAt: new Date(),
       },
       include: {
-        customer: true,
+        user: true,
         lot: {
           include: {
             block: true
