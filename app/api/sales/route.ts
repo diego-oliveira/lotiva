@@ -1,9 +1,13 @@
 // app/api/sales/route.ts
 import { prisma } from '@/lib/prisma'
+import { requireAuthenticatedUser } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 import { generateContractNumber, generateContractHTML } from '@/lib/contractGenerator'
 
 export async function GET() {
+  const auth = await requireAuthenticatedUser()
+  if (auth.response) return auth.response
+
   const sales = await prisma.sale.findMany({
     include: { 
       user: true, 
@@ -22,9 +26,26 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireAuthenticatedUser()
+  if (auth.response) return auth.response
+
   const data = await req.json()
 
   try {
+    // Validate user has all fields required for contract generation
+    const user = await prisma.user.findUnique({ where: { id: data.userId } })
+    if (!user) {
+      return NextResponse.json({ error: 'Usuario nao encontrado.' }, { status: 400 })
+    }
+    const missing = (['cpf', 'rg', 'address', 'birthDate', 'profession', 'birthplace', 'maritalStatus'] as const)
+      .filter((f) => !user[f])
+    if (missing.length > 0) {
+      return NextResponse.json(
+        { error: 'O usuario nao tem todos os dados legais preenchidos. Complete o cadastro antes de criar uma venda.', missingFields: missing },
+        { status: 400 },
+      )
+    }
+
     // Start a transaction to ensure data consistency
     const result = await prisma.$transaction(async (prisma) => {
       // Create the sale

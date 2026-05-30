@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import CompanyForm from './components/CompanyForm'
+import InlineAlert from '@/app/components/InlineAlert'
 
 interface Company {
   id: string
@@ -20,10 +21,17 @@ export default function CompaniesPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingCompany, setEditingCompany] = useState<Company | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   useEffect(() => {
     fetchCompanies()
   }, [])
+
+  useEffect(() => {
+    if (!successMessage) return
+    const timeout = setTimeout(() => setSuccessMessage(null), 4000)
+    return () => clearTimeout(timeout)
+  }, [successMessage])
 
   const fetchCompanies = async () => {
     try {
@@ -50,10 +58,19 @@ export default function CompaniesPage() {
     name.split(' ').map((part) => part[0]).join('').toUpperCase().slice(0, 2)
 
   if (loading) return <div className='animate-pulse'><div className='h-8 w-56 rounded-xl bg-surface-secondary'></div></div>
-  if (error) return <div className='rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300'>{error}</div>
+  if (error) return <div className='rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700'>{error}</div>
 
   return (
     <div className='space-y-6'>
+      {successMessage && (
+        <InlineAlert
+          variant='success'
+          title='Operacao realizada com sucesso'
+          message={successMessage}
+          onClose={() => setSuccessMessage(null)}
+        />
+      )}
+
       <div className='flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'>
         <div>
           <h1 className='page-title'>Empresas</h1>
@@ -61,7 +78,6 @@ export default function CompaniesPage() {
         </div>
         <div className='flex flex-wrap gap-3'>
           <button onClick={() => { setEditingCompany(null); setShowForm(true) }} className='rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-strong'>Nova Empresa</button>
-          <button onClick={fetchCompanies} className='rounded-2xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>Atualizar</button>
         </div>
       </div>
 
@@ -118,7 +134,21 @@ export default function CompaniesPage() {
           </div>
         </aside>
       </section>
-      <CompanyForm company={editingCompany} isOpen={showForm} onClose={() => { setShowForm(false); setEditingCompany(null) }} onSave={async () => { await fetchCompanies(); setShowForm(false); setEditingCompany(null) }} />
+      <CompanyForm
+        company={editingCompany}
+        isOpen={showForm}
+        onClose={() => { setShowForm(false); setEditingCompany(null) }}
+        onSave={async (mode) => {
+          await fetchCompanies()
+          setShowForm(false)
+          setEditingCompany(null)
+          setSuccessMessage(
+            mode === 'create'
+              ? 'A empresa foi criada com sucesso.'
+              : 'A empresa foi atualizada com sucesso.',
+          )
+        }}
+      />
     </div>
   )
 }

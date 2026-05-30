@@ -1,9 +1,13 @@
 import { prisma } from '@/lib/prisma'
+import { requireAuthenticatedUser } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 type Params = { params: Promise<{ id: string }> }
 
 export async function GET(_req: NextRequest, { params }: Params) {
+  const auth = await requireAuthenticatedUser()
+  if (auth.response) return auth.response
+
   const { id } = await params
 
   const company = await prisma.company.findUnique({
@@ -25,6 +29,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 export async function PUT(req: NextRequest, { params }: Params) {
+  const auth = await requireAuthenticatedUser()
+  if (auth.response) return auth.response
+
   const { id } = await params
   const data = await req.json()
 

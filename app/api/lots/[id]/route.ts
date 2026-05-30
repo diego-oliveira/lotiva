@@ -1,10 +1,14 @@
 import { prisma } from '@/lib/prisma'
+import { requireAuthenticatedUser } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 
 type Params = { params: Promise<{ id: string }> }
 
 
 export async function GET(_: Request, { params }: Params) {
+  const auth = await requireAuthenticatedUser()
+  if (auth.response) return auth.response
+
   const { id } = await params
 
   const lot = await prisma.lot.findUnique({
@@ -20,6 +24,9 @@ export async function GET(_: Request, { params }: Params) {
 }
 
 export async function PUT(req: Request, { params }: Params) {
+  const auth = await requireAuthenticatedUser()
+  if (auth.response) return auth.response
+
   const { id } = await params
   const data = await req.json()
 
@@ -43,6 +50,9 @@ export async function PUT(req: Request, { params }: Params) {
 }
 
 export async function DELETE(_: Request, { params }: Params) {
+  const auth = await requireAuthenticatedUser()
+  if (auth.response) return auth.response
+
   const { id } = await params
 
   await prisma.lot.delete({

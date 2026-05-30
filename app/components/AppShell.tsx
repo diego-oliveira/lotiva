@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { signOut } from 'next-auth/react'
 import { usePathname } from 'next/navigation'
 import { useMemo, useState } from 'react'
 
@@ -96,11 +97,16 @@ function NavIcon({ icon }: { icon: NavItem['icon'] }) {
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const isAuthPage = pathname.startsWith('/signin') || pathname.startsWith('/auth')
 
   const currentItem = useMemo(
     () => navItems.find((item) => (item.href === '/' ? pathname === '/' : pathname.startsWith(item.href))),
     [pathname],
   )
+
+  if (isAuthPage) {
+    return <>{children}</>
+  }
 
   return (
     <div className='min-h-screen bg-background text-foreground'>
@@ -166,6 +172,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 )
               })}
             </nav>
+            <button
+              type='button'
+              onClick={() => signOut({ callbackUrl: '/signin' })}
+              className='mt-6 flex w-full items-center justify-center rounded-xl border border-white/10 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white md:hidden'
+            >
+              Sign out
+            </button>
           </div>
         </aside>
 
@@ -200,6 +213,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   <svg className='h-5 w-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
                     <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0a3 3 0 11-6 0m6 0H9' />
                   </svg>
+                </button>
+                <button
+                  type='button'
+                  onClick={() => signOut({ callbackUrl: '/signin' })}
+                  className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-muted transition hover:bg-surface-secondary hover:text-foreground'
+                >
+                  Sign out
                 </button>
                 <div className='flex items-center gap-3 rounded-2xl border border-border bg-surface px-3 py-2 shadow-sm'>
                   <div className='flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-sm font-semibold text-white'>

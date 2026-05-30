@@ -1,0 +1,8 @@
+-- Make contract-specific fields optional on User
+ALTER TABLE "User" ALTER COLUMN "cpf" DROP NOT NULL;
+ALTER TABLE "User" ALTER COLUMN "address" DROP NOT NULL;
+ALTER TABLE "User" ALTER COLUMN "birthDate" DROP NOT NULL;
+ALTER TABLE "User" ALTER COLUMN "rg" DROP NOT NULL;
+ALTER TABLE "User" ALTER COLUMN "profession" DROP NOT NULL;
+ALTER TABLE "User" ALTER COLUMN "birthplace" DROP NOT NULL;
+ALTER TABLE "User" ALTER COLUMN "maritalStatus" DROP NOT NULL;

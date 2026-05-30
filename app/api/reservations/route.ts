@@ -1,9 +1,13 @@
 // app/api/reservations/route.ts
 import { prisma } from "@/lib/prisma";
+import { requireAuthenticatedUser } from '@/lib/auth'
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const reservations = await prisma.reservation.findMany({
+    const auth = await requireAuthenticatedUser()
+    if (auth.response) return auth.response
+
+    const reservations = await prisma.reservation.findMany({
     include: { user: true, lot: true },
     orderBy: { createdAt: "desc" },
   });
@@ -12,7 +16,10 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const data = await req.json();
+    const auth = await requireAuthenticatedUser()
+    if (auth.response) return auth.response
+
+    const data = await req.json();
 
   try {
     const reservation = await prisma.reservation.create({

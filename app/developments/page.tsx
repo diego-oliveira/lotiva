@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import DevelopmentForm from './components/DevelopmentForm'
+import InlineAlert from '@/app/components/InlineAlert'
 
 interface Company {
   id: string
@@ -28,6 +29,7 @@ export default function DevelopmentsPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingDevelopment, setEditingDevelopment] = useState<Development | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   const fetchDevelopments = async () => {
     const response = await fetch('/api/developments')
@@ -59,6 +61,12 @@ export default function DevelopmentsPage() {
     void refresh()
   }, [])
 
+  useEffect(() => {
+    if (!successMessage) return
+    const timeout = setTimeout(() => setSuccessMessage(null), 4000)
+    return () => clearTimeout(timeout)
+  }, [successMessage])
+
   const filteredDevelopments = developments.filter((development) => {
     if (!searchTerm) return true
     const searchLower = searchTerm.toLowerCase()
@@ -69,10 +77,19 @@ export default function DevelopmentsPage() {
   const getInitials = (name: string) => name.split(' ').map((part) => part[0]).join('').toUpperCase().slice(0, 2)
 
   if (loading) return <div className='animate-pulse'><div className='h-8 w-64 rounded-xl bg-surface-secondary'></div></div>
-  if (error) return <div className='rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300'>{error}</div>
+  if (error) return <div className='rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700'>{error}</div>
 
   return (
     <div className='space-y-6'>
+      {successMessage && (
+        <InlineAlert
+          variant='success'
+          title='Operacao realizada com sucesso'
+          message={successMessage}
+          onClose={() => setSuccessMessage(null)}
+        />
+      )}
+
       <div className='flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'>
         <div>
           <h1 className='page-title'>Empreendimentos</h1>
@@ -80,7 +97,6 @@ export default function DevelopmentsPage() {
         </div>
         <div className='flex flex-wrap gap-3'>
           <button onClick={() => { setEditingDevelopment(null); setShowForm(true) }} disabled={companies.length === 0} className='rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-strong disabled:opacity-50'>Novo Empreendimento</button>
-          <button onClick={() => void refresh()} className='rounded-2xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>Atualizar</button>
         </div>
       </div>
 
@@ -94,7 +110,7 @@ export default function DevelopmentsPage() {
             <input type='text' placeholder='Buscar por empreendimento ou empresa...' value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className='block w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary md:max-w-xs' />
           </div>
 
-          {companies.length === 0 && <div className='mx-6 mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200'>Cadastre uma empresa antes de criar um empreendimento.</div>}
+          {companies.length === 0 && <div className='mx-6 mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800'>Cadastre uma empresa antes de criar um empreendimento.</div>}
 
           <div className='overflow-x-auto'>
             <table className='min-w-full divide-y divide-border'>
@@ -141,7 +157,22 @@ export default function DevelopmentsPage() {
           </div>
         </aside>
       </section>
-      <DevelopmentForm development={editingDevelopment} companies={companies} isOpen={showForm} onClose={() => { setShowForm(false); setEditingDevelopment(null) }} onSave={async () => { await refresh(); setShowForm(false); setEditingDevelopment(null) }} />
+      <DevelopmentForm
+        development={editingDevelopment}
+        companies={companies}
+        isOpen={showForm}
+        onClose={() => { setShowForm(false); setEditingDevelopment(null) }}
+        onSave={async (mode) => {
+          await refresh()
+          setShowForm(false)
+          setEditingDevelopment(null)
+          setSuccessMessage(
+            mode === 'create'
+              ? 'O empreendimento foi criado com sucesso.'
+              : 'O empreendimento foi atualizado com sucesso.',
+          )
+        }}
+      />
     </div>
   )
 }

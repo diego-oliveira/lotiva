@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { requireAuthenticatedUser } from '@/lib/auth'
 import { NextResponse } from 'next/server';
 import { generateContractPDFProduction } from '@/lib/pdfGeneratorProduction';
 import { emailService } from '@/lib/emailService';
@@ -6,6 +7,9 @@ import { emailService } from '@/lib/emailService';
 type Params = { params: Promise<{ saleId: string }> };
 
 export async function POST(req: Request, { params }: Params) {
+  const auth = await requireAuthenticatedUser()
+  if (auth.response) return auth.response
+
   try {
     const { saleId } = await params;
     const { customMessage } = await req.json();

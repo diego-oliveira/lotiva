@@ -4,19 +4,34 @@ import { useEffect, useState } from 'react'
 import ClientForm from './components/ClientForm'
 import DeleteConfirmModal from './components/DeleteConfirmModal'
 
+interface Membership {
+  id: string
+  development: { id: string; name: string }
+  roles: { role: { id: string; name: string } }[]
+}
+
 interface Client {
   id: string
   name: string
-  cpf: string
   email: string
-  address: string
-  birthDate: string
-  rg: string
-  profession: string
-  birthplace: string
-  maritalStatus: string
+  cpf?: string
+  rg?: string
+  address?: string
+  birthDate?: string
+  profession?: string
+  birthplace?: string
+  maritalStatus?: string
+  memberships: Membership[]
   createdAt: string
   updatedAt: string
+}
+
+function profileComplete(c: Client) {
+  return !!(c.cpf && c.rg && c.address && c.birthDate && c.profession && c.birthplace && c.maritalStatus)
+}
+
+function getInitials(name: string) {
+  return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
 }
 
 export default function ClientsPage() {
@@ -30,19 +45,14 @@ export default function ClientsPage() {
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
 
-  useEffect(() => {
-    fetchClients()
-  }, [])
+  useEffect(() => { fetchClients() }, [])
 
   const fetchClients = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/clients')
-      if (!response.ok) {
-        throw new Error('Failed to fetch clients')
-      }
-      const data = await response.json()
-      setClients(data)
+      const res = await fetch('/api/clients')
+      if (!res.ok) throw new Error('Failed to fetch clients')
+      setClients(await res.json())
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
@@ -51,34 +61,12 @@ export default function ClientsPage() {
     }
   }
 
-  const handleAddClient = () => {
-    setEditingClient(null)
-    setShowForm(true)
-  }
-
-  const handleEditClient = (client: Client) => {
-    setEditingClient(client)
-    setShowForm(true)
-  }
-
-  const handleDeleteClient = (client: Client) => {
-    setDeletingClient(client)
-    setShowDeleteModal(true)
-  }
-
   const confirmDelete = async () => {
     if (!deletingClient) return
-
     setDeleteLoading(true)
     try {
-      const response = await fetch(`/api/clients/${deletingClient.id}`, {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to delete client')
-      }
-
+      const res = await fetch(`/api/clients/${deletingClient.id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete client')
       await fetchClients()
       setShowDeleteModal(false)
       setDeletingClient(null)
@@ -89,324 +77,187 @@ export default function ClientsPage() {
     }
   }
 
-  const handleFormSave = async () => {
-    await fetchClients()
-    setShowForm(false)
-    setEditingClient(null)
-  }
-
-  const handleFormClose = () => {
-    setShowForm(false)
-    setEditingClient(null)
-  }
-
-  const handleDeleteModalClose = () => {
-    setShowDeleteModal(false)
-    setDeletingClient(null)
-  }
-
-  const filteredClients = clients.filter(client => {
+  const filteredClients = clients.filter((c) => {
     if (!searchTerm) return true
-    
-    const searchLower = searchTerm.toLowerCase()
-    const nameMatch = client.name.toLowerCase().includes(searchLower)
-    const emailMatch = client.email.toLowerCase().includes(searchLower)
-    
-    // Only check CPF if search term contains digits
-    const searchDigits = searchTerm.replace(/\D/g, '')
-    const cpfMatch = searchDigits.length > 0 && client.cpf.replace(/\D/g, '').includes(searchDigits)
-    
-    return nameMatch || emailMatch || cpfMatch
+    const q = searchTerm.toLowerCase()
+    const digits = searchTerm.replace(/\D/g, '')
+    return (
+      c.name.toLowerCase().includes(q) ||
+      c.email.toLowerCase().includes(q) ||
+      (digits && c.cpf?.replace(/\D/g, '').includes(digits))
+    )
   })
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR')
-  }
-
-  const getInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map(n => n[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2)
-  }
-
-  const getMaritalStatusBadge = (status: string) => {
-    const styles = {
-      'Solteiro': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
-      'Casado': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
-      'Divorciado': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
-      'Viúvo': 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300',
-    }
-    
-    const styleClass = styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300'
-    
-    return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${styleClass}`}>
-        {status}
-      </span>
-    )
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/4 mb-6"></div>
-            <div className="bg-white dark:bg-gray-800 shadow rounded-lg">
-              <div className="px-4 py-5 sm:p-6">
-                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mb-4"></div>
-                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-4"></div>
-                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-800 rounded-md p-4">
-            <div className="flex">
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
-                  Erro ao carregar clientes
-                </h3>
-                <div className="mt-2 text-sm text-red-700 dark:text-red-300">
-                  <p>{error}</p>
-                </div>
-                <div className="mt-4">
-                  <button
-                    onClick={fetchClients}
-                    className="bg-red-100 dark:bg-red-800 hover:bg-red-200 dark:hover:bg-red-700 text-red-800 dark:text-red-200 px-3 py-2 rounded-md text-sm font-medium"
-                  >
-                    Tentar novamente
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  if (loading) return <div className='animate-pulse'><div className='h-8 w-56 rounded-xl bg-surface-secondary' /></div>
+  if (error) return <div className='rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700'>{error}</div>
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Clientes
-          </h1>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-            Lista de todos os clientes cadastrados no sistema
-          </p>
+    <div className='space-y-6'>
+      <div className='flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'>
+        <div>
+          <h1 className='page-title'>Usuarios</h1>
+          <p className='page-subtitle'>Gerencie pessoas, acessos a empreendimentos e dados cadastrais para contratos.</p>
         </div>
+        <button
+          onClick={() => { setEditingClient(null); setShowForm(true) }}
+          className='rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-strong'
+        >
+          Novo Usuario
+        </button>
+      </div>
 
-        <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-          <div className="px-4 py-5 sm:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 space-y-3 sm:space-y-0">
-              <h2 className="text-lg font-medium text-gray-900 dark:text-white">
-                {searchTerm ? (
-                  `${filteredClients.length} de ${clients.length} clientes`
-                ) : (
-                  `Total de clientes: ${clients.length}`
-                )}
-              </h2>
-              <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Buscar por nome, email ou CPF..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md leading-5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                  />
-                  {searchTerm && (
-                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
-                      <button
-                        onClick={() => setSearchTerm('')}
-                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                        title="Limpar busca"
-                      >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={handleAddClient}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 dark:focus:ring-offset-gray-800"
-                >
-                  <svg className="-ml-1 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                  </svg>
-                  Novo Cliente
-                </button>
-                <button
-                  onClick={fetchClients}
-                  className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800"
-                >
-                  <svg className="-ml-1 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Atualizar
-                </button>
-              </div>
-            </div>
-
-            {filteredClients.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="mx-auto h-12 w-12 text-gray-400">
-                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                </div>
-                <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
-                  {searchTerm ? 'Nenhum cliente encontrado' : 'Nenhum cliente cadastrado'}
-                </h3>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  {searchTerm ? (
-                    <>Nenhum cliente corresponde à busca "<span className="font-medium">{searchTerm}</span>". Tente outros termos.</>
-                  ) : (
-                    'Comece adicionando um novo cliente ao sistema.'
-                  )}
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                  <thead className="bg-gray-50 dark:bg-gray-700">
-                    <tr>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Cliente
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Documentos
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Profissão
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Estado Civil
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Data de Nascimento
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Cadastrado em
-                      </th>
-                      <th scope="col" className="relative px-6 py-3">
-                        <span className="sr-only">Ações</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {filteredClients.map((client) => (
-                      <tr key={client.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="h-10 w-10 flex-shrink-0">
-                              <div className="h-10 w-10 rounded-full bg-indigo-500 flex items-center justify-center">
-                                <span className="text-sm font-medium text-white">
-                                  {getInitials(client.name)}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="ml-4">
-                              <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                {client.name}
-                              </div>
-                              <div className="text-sm text-gray-500 dark:text-gray-400">
-                                {client.email}
-                              </div>
-                              <div className="text-xs text-gray-400 dark:text-gray-500">
-                                {client.address}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 dark:text-white">
-                            CPF: {client.cpf}
-                          </div>
-                          <div className="text-sm text-gray-500 dark:text-gray-400">
-                            RG: {client.rg}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 dark:text-white">
-                            {client.profession}
-                          </div>
-                          <div className="text-sm text-gray-500 dark:text-gray-400">
-                            {client.birthplace}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {getMaritalStatusBadge(client.maritalStatus)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                          {formatDate(client.birthDate)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                          {formatDate(client.createdAt)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <div className="flex items-center justify-end space-x-2">
-                            <button
-                              onClick={() => handleEditClient(client)}
-                              className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
-                              title="Editar cliente"
-                            >
-                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => handleDeleteClient(client)}
-                              className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
-                              title="Excluir cliente"
-                            >
-                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+      <div className='panel overflow-hidden'>
+        <div className='panel-header flex flex-col gap-4 px-6 py-5 md:flex-row md:items-center md:justify-between'>
+          <h2 className='text-lg font-semibold text-foreground'>
+            {searchTerm
+              ? `${filteredClients.length} de ${clients.length} usuarios`
+              : `Total de usuarios: ${clients.length}`}
+          </h2>
+          <div className='relative w-full md:max-w-xs'>
+            <input
+              type='text'
+              placeholder='Buscar por nome, email ou CPF...'
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className='block w-full rounded-2xl border border-border bg-background px-4 py-3 pr-10 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary'
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className='absolute inset-y-0 right-3 my-auto h-5 text-muted transition hover:text-foreground'
+              >
+                <svg className='h-5 w-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                  <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M6 18L18 6M6 6l12 12' />
+                </svg>
+              </button>
             )}
           </div>
         </div>
+
+        {filteredClients.length === 0 ? (
+          <div className='px-6 py-12 text-center'>
+            <div className='mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-secondary text-muted'>
+              <svg className='h-7 w-7' fill='none' viewBox='0 0 24 24' stroke='currentColor'>
+                <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={1.8} d='M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' />
+              </svg>
+            </div>
+            <h3 className='mt-4 text-base font-semibold text-foreground'>
+              {searchTerm ? 'Nenhum usuario encontrado' : 'Nenhum usuario cadastrado'}
+            </h3>
+            <p className='mt-2 text-sm text-muted'>
+              {searchTerm
+                ? <>Nenhum resultado para "<span className='font-medium'>{searchTerm}</span>".</>
+                : 'Comece adicionando um novo usuario ao sistema.'}
+            </p>
+          </div>
+        ) : (
+          <div className='overflow-x-auto'>
+            <table className='min-w-full divide-y divide-border'>
+              <thead className='bg-surface-secondary'>
+                <tr>
+                  <th className='table-head px-6 py-4 text-left'>Usuario</th>
+                  <th className='table-head px-6 py-4 text-left'>Empreendimentos</th>
+                  <th className='table-head px-6 py-4 text-left'>Perfil contrato</th>
+                  <th className='table-head px-6 py-4 text-left'>Cadastro</th>
+                  <th className='table-head px-6 py-4 text-right'>Acoes</th>
+                </tr>
+              </thead>
+              <tbody className='divide-y divide-border bg-surface'>
+                {filteredClients.map((client) => {
+                  const complete = profileComplete(client)
+                  return (
+                    <tr key={client.id} className='transition hover:bg-surface-secondary/70'>
+                      <td className='px-6 py-4 whitespace-nowrap'>
+                        <div className='flex items-center gap-4'>
+                          <div className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-semibold text-white'>
+                            {getInitials(client.name)}
+                          </div>
+                          <div>
+                            <div className='text-sm font-semibold text-foreground'>{client.name}</div>
+                            <div className='text-sm text-muted'>{client.email}</div>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className='px-6 py-4'>
+                        {client.memberships.length === 0 ? (
+                          <span className='text-sm text-muted'>Sem acesso</span>
+                        ) : (
+                          <div className='flex flex-wrap gap-1'>
+                            {client.memberships.map((m) => (
+                              <span
+                                key={m.id}
+                                className='inline-flex items-center rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary'
+                                title={m.roles.map((r) => r.role.name).join(', ')}
+                              >
+                                {m.development.name}
+                                {m.roles[0] && (
+                                  <span className='ml-1 text-primary/60'>· {m.roles[0].role.name}</span>
+                                )}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+
+                      <td className='px-6 py-4 whitespace-nowrap'>
+                        {complete ? (
+                          <span className='inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700'>
+                            <svg className='h-3 w-3' fill='currentColor' viewBox='0 0 20 20'>
+                              <path fillRule='evenodd' d='M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z' clipRule='evenodd' />
+                            </svg>
+                            Completo
+                          </span>
+                        ) : (
+                          <span className='inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700'>
+                            <svg className='h-3 w-3' fill='currentColor' viewBox='0 0 20 20'>
+                              <path fillRule='evenodd' d='M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z' clipRule='evenodd' />
+                            </svg>
+                            Incompleto
+                          </span>
+                        )}
+                      </td>
+
+                      <td className='px-6 py-4 whitespace-nowrap text-sm text-muted'>
+                        {new Date(client.createdAt).toLocaleDateString('pt-BR')}
+                      </td>
+
+                      <td className='px-6 py-4 whitespace-nowrap text-right text-sm font-semibold'>
+                        <div className='flex items-center justify-end gap-2'>
+                          <button
+                            onClick={() => { setEditingClient(client); setShowForm(true) }}
+                            className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => { setDeletingClient(client); setShowDeleteModal(true) }}
+                            className='rounded-xl px-3 py-2 text-red-600 transition hover:bg-red-50'
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <ClientForm
         client={editingClient}
         isOpen={showForm}
-        onClose={handleFormClose}
-        onSave={handleFormSave}
+        onClose={() => { setShowForm(false); setEditingClient(null) }}
+        onSave={() => { fetchClients(); setShowForm(false); setEditingClient(null) }}
       />
 
       <DeleteConfirmModal
         isOpen={showDeleteModal}
-        clientName={deletingClient?.name || ''}
-        onClose={handleDeleteModalClose}
+        clientName={deletingClient?.name ?? ''}
+        onClose={() => { setShowDeleteModal(false); setDeletingClient(null) }}
         onConfirm={confirmDelete}
         loading={deleteLoading}
       />

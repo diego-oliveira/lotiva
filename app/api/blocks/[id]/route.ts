@@ -1,7 +1,11 @@
 import { prisma } from '@/lib/prisma'
+import { requireAuthenticatedUser } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuthenticatedUser()
+  if (auth.response) return auth.response
+
   const { id } = await params
   const block = await prisma.block.findUnique({
     where: { id },
@@ -12,6 +16,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuthenticatedUser()
+  if (auth.response) return auth.response
+
   const { id } = await params
   const data = await req.json()
   const updated = await prisma.block.update({
@@ -25,6 +32,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuthenticatedUser()
+  if (auth.response) return auth.response
+
   const { id } = await params
   await prisma.block.delete({
     where: { id },

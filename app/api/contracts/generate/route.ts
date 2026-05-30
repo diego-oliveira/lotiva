@@ -1,8 +1,12 @@
 import { prisma } from '@/lib/prisma'
+import { requireAuthenticatedUser } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 import { generateContractNumber, generateContractHTML } from '@/lib/contractGenerator'
 
 export async function POST(req: Request) {
+  const auth = await requireAuthenticatedUser()
+  if (auth.response) return auth.response
+
   try {
     const { saleId } = await req.json()
 

@@ -1,9 +1,13 @@
 import { prisma } from '@/lib/prisma'
+import { requireAuthenticatedUser } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 
 type Params = { params: Promise<{ saleId: string }> }
 
 export async function GET(_: Request, { params }: Params) {
+  const auth = await requireAuthenticatedUser()
+  if (auth.response) return auth.response
+
   try {
     const { saleId } = await params
 
