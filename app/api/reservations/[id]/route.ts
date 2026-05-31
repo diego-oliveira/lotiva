@@ -17,7 +17,7 @@ export async function GET(_: Request, { params }: Params) {
       id,
       ...reservationAccessWhere(currentUserId),
     },
-    include: { user: true, lot: { include: { block: { include: { development: true } } } } },
+    include: { user: true, sale: true, lot: { include: { block: { include: { development: true } } } } },
   })
 
   if (!reservation) {
@@ -68,6 +68,8 @@ export async function PUT(req: Request, { params }: Params) {
         lotId: data.lotId,
         proposal: data.proposal,
         status: data.status,
+        expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
+        cancelledAt: data.status === 'cancelled' ? new Date() : null,
         updatedAt: new Date(),
       },
     })
@@ -95,13 +97,30 @@ export async function DELETE(_: Request, { params }: Params) {
       id,
       ...reservationAccessWhere(currentUserId),
     },
-    select: { id: true },
+    include: {
+      sale: true,
+      lot: true,
+    },
   })
   if (!reservation) return forbiddenResponse()
+  if (reservation.sale) {
+    return NextResponse.json({ error: 'Nao e possivel cancelar uma reserva convertida em venda.' }, { status: 400 })
+  }
 
-  await prisma.reservation.delete({
-    where: { id: id },
+  await prisma.$transaction(async (tx) => {
+    await tx.reservation.update({
+      where: { id },
+      data: {
+        status: 'cancelled',
+        cancelledAt: new Date(),
+      },
+    })
+
+    await tx.lot.update({
+      where: { id: reservation.lotId },
+      data: { status: 'available' },
+    })
   })
 
-  return NextResponse.json({ deleted: true })
+  return NextResponse.json({ cancelled: true })
 }

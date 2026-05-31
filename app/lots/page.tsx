@@ -27,6 +27,8 @@ interface LotReservation {
   id: string
   proposal: string
   status: string
+  expiresAt?: string | null
+  cancelledAt?: string | null
   createdAt: string
   updatedAt: string
   user: Person
@@ -119,12 +121,22 @@ function formatDate(value: string) {
   return new Date(value).toLocaleDateString('pt-BR')
 }
 
+function formatDateInput(value: Date) {
+  return value.toISOString().slice(0, 10)
+}
+
+function getDefaultExpirationDate(days = 7) {
+  const date = new Date()
+  date.setDate(date.getDate() + days)
+  return formatDateInput(date)
+}
+
 function compareNatural(a: string, b: string) {
   return a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' })
 }
 
 function getActiveReservation(lot: Lot) {
-  return lot.reservations.find((reservation) => !reservation.sale && reservation.status !== 'cancelled') ?? lot.reservations[0] ?? null
+  return lot.reservations.find((reservation) => !reservation.sale && reservation.status !== 'cancelled' && !reservation.cancelledAt) ?? lot.reservations[0] ?? null
 }
 
 function getLotContact(lot: Lot) {
@@ -134,10 +146,23 @@ function getLotContact(lot: Lot) {
   return null
 }
 
+function isReservationExpired(reservation: LotReservation | null) {
+  return Boolean(reservation?.expiresAt && new Date(reservation.expiresAt) < new Date())
+}
+
 export default function LotsPage() {
   const [lots, setLots] = useState<Lot[]>([])
+  const [clients, setClients] = useState<Person[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [reservationError, setReservationError] = useState<string | null>(null)
+  const [reservationSaving, setReservationSaving] = useState(false)
+  const [showReservationForm, setShowReservationForm] = useState(false)
+  const [reservationForm, setReservationForm] = useState({
+    userId: '',
+    proposal: '',
+    expiresAt: getDefaultExpirationDate(),
+  })
   const [viewMode, setViewMode] = useState<ViewMode>('map')
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null)
   const [developmentFilter, setDevelopmentFilter] = useState('')
@@ -164,6 +189,12 @@ export default function LotsPage() {
   useEffect(() => {
     void fetchLots()
   }, [])
+
+  async function fetchClients() {
+    const response = await fetch('/api/clients', { cache: 'no-store' })
+    if (!response.ok) throw new Error('Nao foi possivel carregar clientes')
+    setClients(await response.json())
+  }
 
   const developments = useMemo(() => {
     const map = new Map<string, Development>()
@@ -283,6 +314,88 @@ export default function LotsPage() {
 
   const selectLot = (lotId: string) => {
     setSelectedLotId((current) => (current === lotId ? null : lotId))
+    setShowReservationForm(false)
+    setReservationError(null)
+  }
+
+  const openReservationForm = async () => {
+    if (!selectedLot) return
+
+    try {
+      setReservationError(null)
+      if (clients.length === 0) await fetchClients()
+      const activeReservation = getActiveReservation(selectedLot)
+      setReservationForm({
+        userId: activeReservation?.user.id ?? '',
+        proposal: activeReservation?.proposal ?? '',
+        expiresAt: activeReservation?.expiresAt ? formatDateInput(new Date(activeReservation.expiresAt)) : getDefaultExpirationDate(),
+      })
+      setShowReservationForm(true)
+    } catch (err) {
+      setReservationError(err instanceof Error ? err.message : 'Erro ao carregar clientes')
+    }
+  }
+
+  const saveReservation = async () => {
+    if (!selectedLot) return
+    if (!reservationForm.userId) {
+      setReservationError('Selecione um cliente para reservar o lote.')
+      return
+    }
+
+    try {
+      setReservationSaving(true)
+      setReservationError(null)
+      const response = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lotId: selectedLot.id,
+          userId: reservationForm.userId,
+          proposal: reservationForm.proposal,
+          expiresAt: reservationForm.expiresAt,
+          status: 'active',
+        }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json()
+        throw new Error(payload.error || 'Erro ao reservar lote')
+      }
+
+      await fetchLots()
+      setShowReservationForm(false)
+    } catch (err) {
+      setReservationError(err instanceof Error ? err.message : 'Erro ao reservar lote')
+    } finally {
+      setReservationSaving(false)
+    }
+  }
+
+  const cancelReservation = async () => {
+    if (!selectedLot) return
+    const activeReservation = getActiveReservation(selectedLot)
+    if (!activeReservation) return
+
+    try {
+      setReservationSaving(true)
+      setReservationError(null)
+      const response = await fetch(`/api/reservations/${activeReservation.id}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        const payload = await response.json()
+        throw new Error(payload.error || 'Erro ao cancelar reserva')
+      }
+
+      await fetchLots()
+      setShowReservationForm(false)
+    } catch (err) {
+      setReservationError(err instanceof Error ? err.message : 'Erro ao cancelar reserva')
+    } finally {
+      setReservationSaving(false)
+    }
   }
 
   if (loading) {
@@ -595,9 +708,21 @@ export default function LotsPage() {
 
                 {getActiveReservation(selectedLot) && !selectedLot.sale && (
                   <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
-                    <h3 className='text-sm font-semibold text-foreground'>Reserva ativa</h3>
+                    <div className='flex items-start justify-between gap-3'>
+                      <div>
+                        <h3 className='text-sm font-semibold text-foreground'>Reserva ativa</h3>
+                        <p className='mt-1 text-xs font-semibold text-muted'>Criada em {formatDate(getActiveReservation(selectedLot)!.createdAt)}</p>
+                      </div>
+                      {isReservationExpired(getActiveReservation(selectedLot)) ? (
+                        <span className='pill bg-red-50 text-red-700'>Vencida</span>
+                      ) : (
+                        <span className='pill bg-amber-50 text-amber-700'>Ativa</span>
+                      )}
+                    </div>
                     <p className='mt-2 text-sm leading-6 text-muted'>{getActiveReservation(selectedLot)?.proposal || 'Sem proposta registrada.'}</p>
-                    <p className='mt-3 text-xs font-semibold text-muted'>Criada em {formatDate(getActiveReservation(selectedLot)!.createdAt)}</p>
+                    {getActiveReservation(selectedLot)?.expiresAt && (
+                      <p className='mt-3 text-sm font-semibold text-foreground'>Valida ate {formatDate(getActiveReservation(selectedLot)!.expiresAt!)}</p>
+                    )}
                   </div>
                 )}
 
@@ -625,13 +750,18 @@ export default function LotsPage() {
 
                 <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
                   <h3 className='text-sm font-semibold text-foreground'>Acoes</h3>
+                  {reservationError && (
+                    <div className='mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700'>
+                      {reservationError}
+                    </div>
+                  )}
                   <div className='mt-4 space-y-3'>
                     {selectedLot.status === 'available' && (
                       <>
                         <button className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
                           Simular venda
                         </button>
-                        <button className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
+                        <button onClick={openReservationForm} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
                           Reservar lote
                         </button>
                         <button className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
@@ -648,7 +778,7 @@ export default function LotsPage() {
                         <button className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
                           Simular nova condicao
                         </button>
-                        <button className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
+                        <button onClick={cancelReservation} disabled={reservationSaving} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background disabled:opacity-60'>
                           Liberar lote
                         </button>
                       </>
@@ -671,6 +801,65 @@ export default function LotsPage() {
                       Ver historico
                     </button>
                   </div>
+
+                  {showReservationForm && (
+                    <div className='mt-5 rounded-2xl border border-border bg-surface p-4'>
+                      <h4 className='text-sm font-semibold text-foreground'>Nova reserva</h4>
+                      <div className='mt-4 space-y-4'>
+                        <label className='block'>
+                          <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Cliente</span>
+                          <select
+                            value={reservationForm.userId}
+                            onChange={(event) => setReservationForm((current) => ({ ...current, userId: event.target.value }))}
+                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                          >
+                            <option value=''>Selecione...</option>
+                            {clients.map((client) => (
+                              <option key={client.id} value={client.id}>{client.name} · {client.email}</option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className='block'>
+                          <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Validade</span>
+                          <input
+                            type='date'
+                            value={reservationForm.expiresAt}
+                            onChange={(event) => setReservationForm((current) => ({ ...current, expiresAt: event.target.value }))}
+                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                          />
+                        </label>
+
+                        <label className='block'>
+                          <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Proposta/observacao</span>
+                          <textarea
+                            rows={3}
+                            value={reservationForm.proposal}
+                            onChange={(event) => setReservationForm((current) => ({ ...current, proposal: event.target.value }))}
+                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                            placeholder='Condição conversada com o cliente'
+                          />
+                        </label>
+
+                        <div className='flex gap-3'>
+                          <button
+                            onClick={saveReservation}
+                            disabled={reservationSaving}
+                            className='flex-1 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
+                          >
+                            {reservationSaving ? 'Reservando...' : 'Confirmar reserva'}
+                          </button>
+                          <button
+                            onClick={() => setShowReservationForm(false)}
+                            disabled={reservationSaving}
+                            className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background disabled:opacity-60'
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className='rounded-2xl border border-border bg-surface-secondary p-5'>

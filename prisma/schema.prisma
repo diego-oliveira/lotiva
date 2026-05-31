@@ -186,6 +186,8 @@ model Reservation {
   lotId      String
   proposal   String
   status     String
+  expiresAt  DateTime?
+  cancelledAt DateTime?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

@@ -1,17 +1,27 @@
-// app/api/reservations/route.ts
 import { prisma } from "@/lib/prisma";
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, lotAccessWhere, reservationAccessWhere, userAccessWhere } from '@/lib/access-control'
 import { NextResponse } from "next/server";
+
+function parseExpiration(value: unknown, fallbackDays: number) {
+  if (typeof value === 'string' && value) {
+    const parsed = new Date(value)
+    if (!Number.isNaN(parsed.getTime())) return parsed
+  }
+
+  const expiresAt = new Date()
+  expiresAt.setDate(expiresAt.getDate() + fallbackDays)
+  return expiresAt
+}
 
 export async function GET() {
     const auth = await requireAuthenticatedUser()
     if (auth.response) return auth.response
     const userId = auth.session.user.id
 
-    const reservations = await prisma.reservation.findMany({
+  const reservations = await prisma.reservation.findMany({
     where: reservationAccessWhere(userId),
-    include: { user: true, lot: { include: { block: { include: { development: true } } } } },
+    include: { user: true, sale: true, lot: { include: { block: { include: { development: true } } } } },
     orderBy: { createdAt: "desc" },
   });
 
@@ -32,7 +42,20 @@ export async function POST(req: Request) {
           id: data.lotId,
           ...lotAccessWhere(currentUserId),
         },
-        select: { id: true },
+        include: {
+          block: {
+            include: {
+              development: {
+                include: { settings: true },
+              },
+            },
+          },
+          sale: true,
+          reservations: {
+            include: { sale: true },
+            orderBy: { createdAt: 'desc' },
+          },
+        },
       }),
       prisma.user.findFirst({
         where: {
@@ -43,15 +66,47 @@ export async function POST(req: Request) {
       }),
     ])
     if (!lot || !user) return forbiddenResponse()
+    if (lot.sale || lot.status === 'sold') {
+      return NextResponse.json({ error: 'Este lote ja foi vendido.' }, { status: 400 })
+    }
 
-    const reservation = await prisma.reservation.create({
-      data: {
-        userId: data.userId,
-        lotId: data.lotId,
-        proposal: data.proposal,
-        status: data.status,
-      },
-    });
+    const fallbackDays = lot.block.development?.settings?.reservationValidityDays ?? 7
+    const expiresAt = parseExpiration(data.expiresAt, fallbackDays)
+    if (expiresAt <= new Date()) {
+      return NextResponse.json({ error: 'A validade da reserva deve ser futura.' }, { status: 400 })
+    }
+
+    const existingReservation = lot.reservations[0]
+
+    const reservation = await prisma.$transaction(async (tx) => {
+      const savedReservation = existingReservation
+        ? await tx.reservation.update({
+            where: { id: existingReservation.id },
+            data: {
+              userId: data.userId,
+              proposal: data.proposal || '',
+              status: data.status || 'active',
+              expiresAt,
+              cancelledAt: null,
+            },
+          })
+        : await tx.reservation.create({
+            data: {
+              userId: data.userId,
+              lotId: data.lotId,
+              proposal: data.proposal || '',
+              status: data.status || 'active',
+              expiresAt,
+            },
+          })
+
+      await tx.lot.update({
+        where: { id: data.lotId },
+        data: { status: 'reserved' },
+      })
+
+      return savedReservation
+    })
 
     return NextResponse.json(reservation, { status: 201 });
   } catch (error: any) {
