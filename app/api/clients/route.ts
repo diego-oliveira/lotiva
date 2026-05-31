@@ -1,23 +1,29 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
+import { forbiddenResponse, hasAccessToAllDevelopments, membershipWhere, userAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 
-const MEMBERSHIP_INCLUDE = {
+const membershipInclude = (userId: string) => ({
   memberships: {
+    where: {
+      development: membershipWhere(userId),
+    },
     include: {
       development: true,
       roles: { include: { role: true } },
     },
   },
-}
+})
 
 export async function GET() {
   try {
     const auth = await requireAuthenticatedUser()
     if (auth.response) return auth.response
+    const currentUserId = auth.session.user.id
 
     const clients = await prisma.user.findMany({
-      include: MEMBERSHIP_INCLUDE,
+      where: userAccessWhere(currentUserId),
+      include: membershipInclude(currentUserId),
       orderBy: { createdAt: 'desc' },
     })
 
@@ -32,6 +38,7 @@ export async function POST(req: Request) {
   try {
     const auth = await requireAuthenticatedUser()
     if (auth.response) return auth.response
+    const currentUserId = auth.session.user.id
 
     const data = await req.json()
 
@@ -43,6 +50,15 @@ export async function POST(req: Request) {
     }
 
     const memberships: { developmentId: string; roleId: string }[] = data.memberships ?? []
+    if (memberships.length === 0) {
+      return NextResponse.json({ error: 'Selecione pelo menos um empreendimento.' }, { status: 400 })
+    }
+
+    const canAssignMemberships = await hasAccessToAllDevelopments(
+      currentUserId,
+      memberships.map((membership) => membership.developmentId),
+    )
+    if (!canAssignMemberships) return forbiddenResponse()
 
     const newUser = await prisma.user.create({
       data: {
@@ -70,7 +86,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const user = await prisma.user.findUnique({ where: { id: newUser.id }, include: MEMBERSHIP_INCLUDE })
+    const user = await prisma.user.findUnique({ where: { id: newUser.id }, include: membershipInclude(currentUserId) })
     return NextResponse.json(user, { status: 201 })
   } catch (error: any) {
     if (error.code === 'P2002') {

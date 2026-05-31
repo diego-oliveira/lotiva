@@ -1,6 +1,6 @@
 import { PrismaAdapter } from '@auth/prisma-adapter'
 import type { Adapter } from 'next-auth/adapters'
-import { getServerSession, type NextAuthOptions } from 'next-auth'
+import { getServerSession, type NextAuthOptions, type Session } from 'next-auth'
 import EmailProvider from 'next-auth/providers/email'
 import { createTransport } from 'nodemailer'
 import type { SendVerificationRequestParams } from 'next-auth/providers/email'
@@ -16,6 +16,15 @@ const smtpUser = process.env.SMTP_USER
 const smtpPassword = process.env.SMTP_PASSWORD
 const smtpFrom = process.env.SMTP_FROM ?? smtpUser
 const prismaAdapter = PrismaAdapter(prisma as never) as Adapter
+const shouldPrintMagicLinks =
+  process.env.NODE_ENV !== 'production' && process.env.AUTH_PRINT_MAGIC_LINKS === 'true'
+
+type AuthenticatedSession = Session & {
+  user: NonNullable<Session['user']> & {
+    id: string
+    email: string
+  }
+}
 
 export async function isAdminEligibleEmail(email?: string | null) {
   if (!email) return false
@@ -47,6 +56,11 @@ async function sendMagicLinkEmail({
   const isEligible = await isAdminEligibleEmail(identifier)
 
   if (!isEligible) {
+    return
+  }
+
+  if (shouldPrintMagicLinks) {
+    console.log(`\nLotiva magic link for ${identifier}:\n${url}\n`)
     return
   }
 
@@ -144,7 +158,7 @@ export async function getCurrentSession() {
 export async function requireAuthenticatedUser() {
   const session = await getCurrentSession()
 
-  if (!session?.user?.email) {
+  if (!session?.user?.email || !session.user.id) {
     return {
       session: null,
       response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
@@ -160,5 +174,5 @@ export async function requireAuthenticatedUser() {
     }
   }
 
-  return { session, response: null }
+  return { session: session as AuthenticatedSession, response: null }
 }

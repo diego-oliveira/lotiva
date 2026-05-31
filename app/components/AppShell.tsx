@@ -9,7 +9,7 @@ type NavItem = {
   href: string
   label: string
   description: string
-  icon: 'dashboard' | 'company' | 'development' | 'user' | 'lot' | 'sale'
+  icon: 'dashboard' | 'setup' | 'company' | 'development' | 'user' | 'lot' | 'sale'
 }
 
 const navItems: NavItem[] = [
@@ -18,6 +18,12 @@ const navItems: NavItem[] = [
     label: 'Dashboard',
     description: 'Overview',
     icon: 'dashboard',
+  },
+  {
+    href: '/onboarding',
+    label: 'Onboarding',
+    description: 'Client setup',
+    icon: 'setup',
   },
   {
     href: '/companies',
@@ -55,6 +61,12 @@ function NavIcon({ icon }: { icon: NavItem['icon'] }) {
   const className = 'h-5 w-5'
 
   switch (icon) {
+    case 'setup':
+      return (
+        <svg className={className} fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M9 12.75l2 2 4-5.5M5 5.5h14M7 5.5v13h10v-13M8.5 9h1M8.5 15h1' />
+        </svg>
+      )
     case 'company':
       return (
         <svg className={className} fill='none' stroke='currentColor' viewBox='0 0 24 24'>

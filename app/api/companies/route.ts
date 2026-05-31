@@ -1,16 +1,26 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
+import { membershipWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
+  const userId = auth.session.user.id
 
   const companies = await prisma.company.findMany({
+    where: {
+      OR: [
+        { developments: { some: membershipWhere(userId) } },
+        { developments: { none: {} } },
+      ],
+    },
     include: {
       _count: {
         select: {
-          developments: true,
+          developments: {
+            where: membershipWhere(userId),
+          },
         },
       },
     },

@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
+import { blockAccessWhere, forbiddenResponse, lotAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 
 type Params = { params: Promise<{ id: string }> }
@@ -8,12 +9,16 @@ type Params = { params: Promise<{ id: string }> }
 export async function GET(_: Request, { params }: Params) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
+  const userId = auth.session.user.id
 
   const { id } = await params
 
-  const lot = await prisma.lot.findUnique({
-    where: { id: id },
-    include: { block: true },
+  const lot = await prisma.lot.findFirst({
+    where: {
+      id,
+      ...lotAccessWhere(userId),
+    },
+    include: { block: { include: { development: true } } },
   })
 
   if (!lot) {
@@ -26,9 +31,27 @@ export async function GET(_: Request, { params }: Params) {
 export async function PUT(req: Request, { params }: Params) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
+  const userId = auth.session.user.id
 
   const { id } = await params
   const data = await req.json()
+  const lot = await prisma.lot.findFirst({
+    where: {
+      id,
+      ...lotAccessWhere(userId),
+    },
+    select: { id: true },
+  })
+  if (!lot) return forbiddenResponse()
+
+  const block = await prisma.block.findFirst({
+    where: {
+      id: data.blockId,
+      ...blockAccessWhere(userId),
+    },
+    select: { id: true },
+  })
+  if (!block) return forbiddenResponse()
 
   const updated = await prisma.lot.update({
     where: { id: id },
@@ -52,8 +75,17 @@ export async function PUT(req: Request, { params }: Params) {
 export async function DELETE(_: Request, { params }: Params) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
+  const userId = auth.session.user.id
 
   const { id } = await params
+  const lot = await prisma.lot.findFirst({
+    where: {
+      id,
+      ...lotAccessWhere(userId),
+    },
+    select: { id: true },
+  })
+  if (!lot) return forbiddenResponse()
 
   await prisma.lot.delete({
     where: { id: id },

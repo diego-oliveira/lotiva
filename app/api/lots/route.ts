@@ -1,14 +1,17 @@
 // app/api/lots/route.ts
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
+import { forbiddenResponse, lotAccessWhere, blockAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
+  const userId = auth.session.user.id
 
   const lots = await prisma.lot.findMany({
-    include: { block: true },
+    where: lotAccessWhere(userId),
+    include: { block: { include: { development: true } } },
     orderBy: { createdAt: 'desc' },
   })
 
@@ -18,8 +21,17 @@ export async function GET() {
 export async function POST(req: Request) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
+  const userId = auth.session.user.id
 
   const data = await req.json()
+  const block = await prisma.block.findFirst({
+    where: {
+      id: data.blockId,
+      ...blockAccessWhere(userId),
+    },
+    select: { id: true },
+  })
+  if (!block) return forbiddenResponse()
 
   const newLot = await prisma.lot.create({
     data: {

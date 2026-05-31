@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
+import { forbiddenResponse, lotAccessWhere, reservationAccessWhere, userAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 
 type Params = { params: Promise<{ id: string }> }
@@ -7,12 +8,16 @@ type Params = { params: Promise<{ id: string }> }
 export async function GET(_: Request, { params }: Params) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
+  const currentUserId = auth.session.user.id
 
   const { id } = await params
 
-  const reservation = await prisma.reservation.findUnique({
-    where: { id: id },
-    include: { user: true, lot: true },
+  const reservation = await prisma.reservation.findFirst({
+    where: {
+      id,
+      ...reservationAccessWhere(currentUserId),
+    },
+    include: { user: true, lot: { include: { block: { include: { development: true } } } } },
   })
 
   if (!reservation) {
@@ -25,11 +30,37 @@ export async function GET(_: Request, { params }: Params) {
 export async function PUT(req: Request, { params }: Params) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
+  const currentUserId = auth.session.user.id
 
   const { id } = await params
   const data = await req.json()
 
   try {
+    const [reservation, lot, user] = await Promise.all([
+      prisma.reservation.findFirst({
+        where: {
+          id,
+          ...reservationAccessWhere(currentUserId),
+        },
+        select: { id: true },
+      }),
+      prisma.lot.findFirst({
+        where: {
+          id: data.lotId,
+          ...lotAccessWhere(currentUserId),
+        },
+        select: { id: true },
+      }),
+      prisma.user.findFirst({
+        where: {
+          id: data.userId,
+          ...userAccessWhere(currentUserId),
+        },
+        select: { id: true },
+      }),
+    ])
+    if (!reservation || !lot || !user) return forbiddenResponse()
+
     const updated = await prisma.reservation.update({
       where: { id: id },
       data: {
@@ -56,8 +87,17 @@ export async function PUT(req: Request, { params }: Params) {
 export async function DELETE(_: Request, { params }: Params) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
+  const currentUserId = auth.session.user.id
 
   const { id } = await params
+  const reservation = await prisma.reservation.findFirst({
+    where: {
+      id,
+      ...reservationAccessWhere(currentUserId),
+    },
+    select: { id: true },
+  })
+  if (!reservation) return forbiddenResponse()
 
   await prisma.reservation.delete({
     where: { id: id },

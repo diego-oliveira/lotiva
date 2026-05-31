@@ -1,11 +1,13 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
+import { saleAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 import { generateContractNumber, generateContractHTML } from '@/lib/contractGenerator'
 
 export async function POST(req: Request) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
+  const currentUserId = auth.session.user.id
 
   try {
     const { saleId } = await req.json()
@@ -15,8 +17,11 @@ export async function POST(req: Request) {
     }
 
     // Get the sale with all related data
-    const sale = await prisma.sale.findUnique({
-      where: { id: saleId },
+    const sale = await prisma.sale.findFirst({
+      where: {
+        id: saleId,
+        ...saleAccessWhere(currentUserId),
+      },
       include: {
         user: true,
         lot: {

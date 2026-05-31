@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { requireAuthenticatedUser } from '@/lib/auth'
+import { contractAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server';
 import { generateContractPDFProduction } from '@/lib/pdfGeneratorProduction';
 import { emailService } from '@/lib/emailService';
@@ -9,13 +10,17 @@ type Params = { params: Promise<{ saleId: string }> };
 export async function POST(req: Request, { params }: Params) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
+  const currentUserId = auth.session.user.id
 
   try {
     const { saleId } = await params;
     const { customMessage } = await req.json();
 
-    const contract = await prisma.contract.findUnique({
-      where: { saleId },
+    const contract = await prisma.contract.findFirst({
+      where: {
+        saleId,
+        ...contractAccessWhere(currentUserId),
+      },
       include: {
         sale: {
           include: {

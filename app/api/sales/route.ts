@@ -1,19 +1,22 @@
 // app/api/sales/route.ts
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
+import { forbiddenResponse, lotAccessWhere, reservationAccessWhere, saleAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 import { generateContractNumber, generateContractHTML } from '@/lib/contractGenerator'
 
 export async function GET() {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
+  const currentUserId = auth.session.user.id
 
   const sales = await prisma.sale.findMany({
+    where: saleAccessWhere(currentUserId),
     include: { 
       user: true, 
       lot: {
         include: {
-          block: true
+          block: { include: { development: true } }
         }
       },
       reservation: true,
@@ -28,10 +31,50 @@ export async function GET() {
 export async function POST(req: Request) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
+  const currentUserId = auth.session.user.id
 
   const data = await req.json()
 
   try {
+    const lot = await prisma.lot.findFirst({
+      where: {
+        id: data.lotId,
+        ...lotAccessWhere(currentUserId),
+      },
+      include: {
+        block: {
+          select: {
+            developmentId: true,
+          },
+        },
+      },
+    })
+    if (!lot?.block.developmentId) return forbiddenResponse()
+
+    const buyerMembership = await prisma.developmentUser.findUnique({
+      where: {
+        developmentId_userId: {
+          developmentId: lot.block.developmentId,
+          userId: data.userId,
+        },
+      },
+      select: { id: true },
+    })
+    if (!buyerMembership) return forbiddenResponse()
+
+    if (data.reservationId) {
+      const reservation = await prisma.reservation.findFirst({
+        where: {
+          id: data.reservationId,
+          lotId: data.lotId,
+          userId: data.userId,
+          ...reservationAccessWhere(currentUserId),
+        },
+        select: { id: true },
+      })
+      if (!reservation) return forbiddenResponse()
+    }
+
     // Validate user has all fields required for contract generation
     const user = await prisma.user.findUnique({ where: { id: data.userId } })
     if (!user) {

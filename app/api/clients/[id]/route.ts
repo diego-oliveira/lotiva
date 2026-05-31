@@ -1,25 +1,42 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
+import {
+  forbiddenResponse,
+  getAccessibleDevelopmentIds,
+  hasAccessToAllDevelopments,
+  membershipWhere,
+  userAccessWhere,
+} from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 
 type Params = { params: Promise<{ id: string }> }
 
-const MEMBERSHIP_INCLUDE = {
+const membershipInclude = (userId: string) => ({
   memberships: {
+    where: {
+      development: membershipWhere(userId),
+    },
     include: {
       development: true,
       roles: { include: { role: true } },
     },
   },
-}
+})
 
 export async function GET(_: Request, { params }: Params) {
   try {
     const auth = await requireAuthenticatedUser()
     if (auth.response) return auth.response
+    const currentUserId = auth.session.user.id
 
     const { id } = await params
-    const client = await prisma.user.findUnique({ where: { id }, include: MEMBERSHIP_INCLUDE })
+    const client = await prisma.user.findFirst({
+      where: {
+        id,
+        ...userAccessWhere(currentUserId),
+      },
+      include: membershipInclude(currentUserId),
+    })
     if (!client) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 })
     }
@@ -34,10 +51,25 @@ export async function PUT(req: Request, { params }: Params) {
   try {
     const auth = await requireAuthenticatedUser()
     if (auth.response) return auth.response
+    const currentUserId = auth.session.user.id
 
     const { id } = await params
     const data = await req.json()
     const memberships: { developmentId: string; roleId: string }[] = data.memberships ?? []
+    const canAccessClient = await prisma.user.findFirst({
+      where: {
+        id,
+        ...userAccessWhere(currentUserId),
+      },
+      select: { id: true },
+    })
+    if (!canAccessClient) return forbiddenResponse()
+
+    const canAssignMemberships = await hasAccessToAllDevelopments(
+      currentUserId,
+      memberships.map((membership) => membership.developmentId),
+    )
+    if (!canAssignMemberships) return forbiddenResponse()
 
     await prisma.user.update({
       where: { id },
@@ -54,12 +86,26 @@ export async function PUT(req: Request, { params }: Params) {
       },
     })
 
-    // Replace memberships sequentially
-    const existing = await prisma.developmentUser.findMany({ where: { userId: id } })
+    const accessibleDevelopmentIds = await getAccessibleDevelopmentIds(currentUserId)
+    const existing = await prisma.developmentUser.findMany({
+      where: {
+        userId: id,
+        developmentId: {
+          in: accessibleDevelopmentIds,
+        },
+      },
+    })
     for (const du of existing) {
       await prisma.developmentUserRole.deleteMany({ where: { developmentUserId: du.id } })
     }
-    await prisma.developmentUser.deleteMany({ where: { userId: id } })
+    await prisma.developmentUser.deleteMany({
+      where: {
+        userId: id,
+        developmentId: {
+          in: accessibleDevelopmentIds,
+        },
+      },
+    })
 
     for (const m of memberships) {
       if (!m.developmentId) continue
@@ -73,7 +119,7 @@ export async function PUT(req: Request, { params }: Params) {
       }
     }
 
-    const user = await prisma.user.findUnique({ where: { id }, include: MEMBERSHIP_INCLUDE })
+    const user = await prisma.user.findUnique({ where: { id }, include: membershipInclude(currentUserId) })
     return NextResponse.json(user)
   } catch (error: any) {
     if (error.code === 'P2002') {
@@ -95,8 +141,33 @@ export async function DELETE(_: Request, { params }: Params) {
   try {
     const auth = await requireAuthenticatedUser()
     if (auth.response) return auth.response
+    const currentUserId = auth.session.user.id
 
     const { id } = await params
+    if (id === currentUserId) {
+      return NextResponse.json({ error: 'Voce nao pode excluir seu proprio usuario.' }, { status: 400 })
+    }
+
+    const accessibleDevelopmentIds = await getAccessibleDevelopmentIds(currentUserId)
+    const client = await prisma.user.findFirst({
+      where: {
+        id,
+        ...userAccessWhere(currentUserId),
+      },
+      select: { id: true },
+    })
+    if (!client) return forbiddenResponse()
+
+    const inaccessibleMembershipCount = await prisma.developmentUser.count({
+      where: {
+        userId: id,
+        developmentId: {
+          notIn: accessibleDevelopmentIds,
+        },
+      },
+    })
+    if (inaccessibleMembershipCount > 0) return forbiddenResponse()
+
     const existing = await prisma.developmentUser.findMany({ where: { userId: id } })
     for (const du of existing) {
       await prisma.developmentUserRole.deleteMany({ where: { developmentUserId: du.id } })
