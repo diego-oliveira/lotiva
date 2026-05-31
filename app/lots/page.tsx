@@ -1,12 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+
+type ViewMode = 'map' | 'list'
+type SortField = 'identifier' | 'block' | 'totalArea' | 'price' | 'status'
+
+interface Development {
+  id: string
+  name: string
+}
 
 interface Block {
   id: string
   identifier: string
-  createdAt: string
-  updatedAt: string
+  development?: Development | null
 }
 
 interface Lot {
@@ -25,412 +32,525 @@ interface Lot {
   block: Block
 }
 
+const statusMeta: Record<string, { label: string; tile: string; badge: string; dot: string }> = {
+  available: {
+    label: 'Disponivel',
+    tile: 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100',
+    badge: 'bg-emerald-50 text-emerald-700',
+    dot: 'bg-emerald-500',
+  },
+  reserved: {
+    label: 'Reservado',
+    tile: 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100',
+    badge: 'bg-amber-50 text-amber-700',
+    dot: 'bg-amber-500',
+  },
+  on_hold: {
+    label: 'Bloqueado',
+    tile: 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200',
+    badge: 'bg-slate-100 text-slate-700',
+    dot: 'bg-slate-500',
+  },
+  sold: {
+    label: 'Vendido',
+    tile: 'border-red-200 bg-red-50 text-red-800 hover:bg-red-100',
+    badge: 'bg-red-50 text-red-700',
+    dot: 'bg-red-500',
+  },
+}
+
+function getStatusMeta(status: string) {
+  return statusMeta[status] ?? {
+    label: status || 'Sem status',
+    tile: 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100',
+    badge: 'bg-slate-100 text-slate-700',
+    dot: 'bg-slate-400',
+  }
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(value)
+}
+
+function formatArea(value: number) {
+  return `${value.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m2`
+}
+
+function formatMeasurement(value: number) {
+  return `${value.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m`
+}
+
+function compareNatural(a: string, b: string) {
+  return a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' })
+}
+
 export default function LotsPage() {
   const [lots, setLots] = useState<Lot[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filterByBlock, setFilterByBlock] = useState<string>('')
-  const [filterByStatus, setFilterByStatus] = useState<string>('')
-  const [sortBy, setSortBy] = useState<'identifier' | 'totalArea' | 'price' | 'createdAt'>('createdAt')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [viewMode, setViewMode] = useState<ViewMode>('map')
+  const [selectedLotId, setSelectedLotId] = useState<string | null>(null)
+  const [developmentFilter, setDevelopmentFilter] = useState('')
+  const [blockFilter, setBlockFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [sortBy, setSortBy] = useState<SortField>('block')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
-  useEffect(() => {
-    fetchLots()
-  }, [])
-
-  const fetchLots = async () => {
+  async function fetchLots() {
     try {
       setLoading(true)
-      const response = await fetch('/api/lots', {
-        cache: 'no-store'
-      })
-      if (!response.ok) {
-        throw new Error('Failed to fetch lots')
-      }
-      const data = await response.json()
-      console.log('API Response:', data)
-      setLots(data)
+      const response = await fetch('/api/lots', { cache: 'no-store' })
+      if (!response.ok) throw new Error('Nao foi possivel carregar os lotes')
+      setLots(await response.json())
       setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      setError(err instanceof Error ? err.message : 'Erro ao carregar lotes')
     } finally {
       setLoading(false)
     }
   }
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(value)
-  }
+  useEffect(() => {
+    void fetchLots()
+  }, [])
 
-  const formatArea = (value: number) => {
-    return `${value.toFixed(2)} m²`
-  }
+  const developments = useMemo(() => {
+    const map = new Map<string, Development>()
+    lots.forEach((lot) => {
+      if (lot.block.development) map.set(lot.block.development.id, lot.block.development)
+    })
+    return Array.from(map.values()).sort((a, b) => compareNatural(a.name, b.name))
+  }, [lots])
 
-  const formatMeasurement = (value: number) => {
-    return `${value.toFixed(2)}m`
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR')
-  }
-
-  const getStatusDisplayName = (status: string) => {
-    const statusMap: Record<string, string> = {
-      'available': 'Disponível',
-      'reserved': 'Reservado',
-      'on_hold': 'Reservado',
-      'sold': 'Vendido'
-    }
-    return statusMap[status] || status
-  }
-
-  const getStatusBadge = (status: string) => {
-    const styles = {
-      'available': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
-      'reserved': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
-      'on_hold': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
-      'sold': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
-    }
-    
-    const styleClass = styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300'
-    
-    return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${styleClass}`}>
-        {getStatusDisplayName(status)}
-      </span>
-    )
-  }
-
-  const getUniqueBlocks = () => {
-    const uniqueBlocks = lots.reduce((acc, lot) => {
-      if (!acc.find(block => block.id === lot.block.id)) {
-        acc.push(lot.block)
+  const blocks = useMemo(() => {
+    const map = new Map<string, Block>()
+    lots.forEach((lot) => {
+      if (!developmentFilter || lot.block.development?.id === developmentFilter) {
+        map.set(lot.block.id, lot.block)
       }
-      return acc
-    }, [] as Block[])
-    return uniqueBlocks.sort((a, b) => a.identifier.localeCompare(b.identifier))
-  }
+    })
+    return Array.from(map.values()).sort((a, b) => compareNatural(a.identifier, b.identifier))
+  }, [lots, developmentFilter])
 
-  const getUniqueStatuses = () => {
-    console.log('Lots data:', lots)
-    const allStatuses = lots.map(lot => lot.status)
-    console.log('All statuses:', allStatuses)
-    const filteredStatuses = allStatuses.filter(status => status !== null && status !== undefined && status !== '')
-    console.log('Filtered statuses:', filteredStatuses)
-    const uniqueStatuses = [...new Set(filteredStatuses)]
-    console.log('Unique statuses:', uniqueStatuses)
-    
-    // If no statuses found, provide default options
-    if (uniqueStatuses.length === 0) {
-      return ['available', 'reserved', 'on_hold', 'sold']
-    }
-    
-    return uniqueStatuses.sort()
-  }
+  const statuses = useMemo(() => {
+    const values = [...new Set(lots.map((lot) => lot.status).filter(Boolean))]
+    return values.sort((a, b) => compareNatural(getStatusMeta(a).label, getStatusMeta(b).label))
+  }, [lots])
 
-  const filteredAndSortedLots = lots
-    .filter(lot => !filterByBlock || lot.blockId === filterByBlock)
-    .filter(lot => !filterByStatus || lot.status === filterByStatus)
-    .sort((a, b) => {
-      let aValue: any = a[sortBy]
-      let bValue: any = b[sortBy]
-      
-      if (sortBy === 'identifier') {
-        aValue = a.identifier
-        bValue = b.identifier
-      } else if (sortBy === 'totalArea' || sortBy === 'price') {
-        aValue = a[sortBy]
-        bValue = b[sortBy]
-      } else if (sortBy === 'createdAt') {
-        aValue = new Date(a.createdAt).getTime()
-        bValue = new Date(b.createdAt).getTime()
-      }
+  const filteredLots = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase()
+    const digits = searchTerm.replace(/\D/g, '')
 
-      if (sortOrder === 'asc') {
-        return aValue > bValue ? 1 : -1
+    return lots
+      .filter((lot) => !developmentFilter || lot.block.development?.id === developmentFilter)
+      .filter((lot) => !blockFilter || lot.blockId === blockFilter)
+      .filter((lot) => !statusFilter || lot.status === statusFilter)
+      .filter((lot) => {
+        if (!query) return true
+        return (
+          lot.identifier.toLowerCase().includes(query) ||
+          lot.block.identifier.toLowerCase().includes(query) ||
+          lot.block.development?.name.toLowerCase().includes(query) ||
+          Boolean(digits && lot.identifier.replace(/\D/g, '').includes(digits))
+        )
+      })
+      .sort((a, b) => {
+        let result = 0
+
+        if (sortBy === 'identifier') result = compareNatural(a.identifier, b.identifier)
+        if (sortBy === 'block') {
+          result = compareNatural(a.block.identifier, b.block.identifier)
+          if (result === 0) result = compareNatural(a.identifier, b.identifier)
+        }
+        if (sortBy === 'totalArea') result = a.totalArea - b.totalArea
+        if (sortBy === 'price') result = a.price - b.price
+        if (sortBy === 'status') result = compareNatural(getStatusMeta(a.status).label, getStatusMeta(b.status).label)
+
+        return sortDirection === 'asc' ? result : -result
+      })
+  }, [lots, developmentFilter, blockFilter, statusFilter, searchTerm, sortBy, sortDirection])
+
+  const lotsByBlock = useMemo(() => {
+    const map = new Map<string, { block: Block; lots: Lot[] }>()
+
+    filteredLots.forEach((lot) => {
+      const current = map.get(lot.blockId)
+      if (current) {
+        current.lots.push(lot)
       } else {
-        return aValue < bValue ? 1 : -1
+        map.set(lot.blockId, { block: lot.block, lots: [lot] })
       }
     })
 
-  const handleSort = (field: typeof sortBy) => {
+    return Array.from(map.values())
+      .map((group) => ({
+        ...group,
+        lots: group.lots.sort((a, b) => compareNatural(a.identifier, b.identifier)),
+      }))
+      .sort((a, b) => compareNatural(a.block.identifier, b.block.identifier))
+  }, [filteredLots])
+
+  const selectedLot = useMemo(
+    () => filteredLots.find((lot) => lot.id === selectedLotId) ?? lots.find((lot) => lot.id === selectedLotId) ?? null,
+    [filteredLots, lots, selectedLotId],
+  )
+
+  const stats = useMemo(() => {
+    const totalValue = filteredLots.reduce((sum, lot) => sum + lot.price, 0)
+
+    return {
+      total: filteredLots.length,
+      available: filteredLots.filter((lot) => lot.status === 'available').length,
+      reserved: filteredLots.filter((lot) => lot.status === 'reserved' || lot.status === 'on_hold').length,
+      sold: filteredLots.filter((lot) => lot.status === 'sold').length,
+      totalValue,
+    }
+  }, [filteredLots])
+
+  const toggleSort = (field: SortField) => {
     if (sortBy === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'))
     } else {
       setSortBy(field)
-      setSortOrder('asc')
+      setSortDirection('asc')
     }
   }
 
-  const getSortIcon = (field: typeof sortBy) => {
-    if (sortBy !== field) {
-      return (
-        <svg className="w-4 h-4 ml-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-        </svg>
-      )
-    }
-    
-    if (sortOrder === 'asc') {
-      return (
-        <svg className="w-4 h-4 ml-1 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
-        </svg>
-      )
-    } else {
-      return (
-        <svg className="w-4 h-4 ml-1 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-        </svg>
-      )
-    }
+  const clearFilters = () => {
+    setDevelopmentFilter('')
+    setBlockFilter('')
+    setStatusFilter('')
+    setSearchTerm('')
+    setSelectedLotId(null)
+  }
+
+  const handleDevelopmentChange = (developmentId: string) => {
+    setDevelopmentFilter(developmentId)
+    setBlockFilter('')
+    setSelectedLotId(null)
+  }
+
+  const selectLot = (lotId: string) => {
+    setSelectedLotId((current) => (current === lotId ? null : lotId))
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/4 mb-6"></div>
-            <div className="bg-white dark:bg-gray-800 shadow rounded-lg">
-              <div className="px-4 py-5 sm:p-6">
-                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mb-4"></div>
-                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-4"></div>
-                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
-              </div>
-            </div>
-          </div>
+      <div className='space-y-6'>
+        <div className='h-24 animate-pulse rounded-2xl bg-surface-secondary' />
+        <div className='grid gap-4 md:grid-cols-4'>
+          {[1, 2, 3, 4].map((item) => (
+            <div key={item} className='h-24 animate-pulse rounded-2xl bg-surface-secondary' />
+          ))}
         </div>
+        <div className='h-96 animate-pulse rounded-2xl bg-surface-secondary' />
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-800 rounded-md p-4">
-            <div className="flex">
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
-                  Erro ao carregar lotes
-                </h3>
-                <div className="mt-2 text-sm text-red-700 dark:text-red-300">
-                  <p>{error}</p>
-                </div>
-                <div className="mt-4">
-                  <button
-                    onClick={fetchLots}
-                    className="bg-red-100 dark:bg-red-800 hover:bg-red-200 dark:hover:bg-red-700 text-red-800 dark:text-red-200 px-3 py-2 rounded-md text-sm font-medium"
-                  >
-                    Tentar novamente
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div className='rounded-2xl border border-red-200 bg-red-50 p-5 text-red-700'>
+        <p className='font-semibold'>Erro ao carregar lotes</p>
+        <p className='mt-1 text-sm'>{error}</p>
+        <button onClick={fetchLots} className='mt-4 rounded-xl bg-red-100 px-4 py-2 text-sm font-semibold text-red-800 transition hover:bg-red-200'>
+          Tentar novamente
+        </button>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Lotes
-          </h1>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-            Lista de todos os lotes disponíveis no sistema
-          </p>
+    <div className='space-y-6'>
+      <div className='flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'>
+        <div>
+          <h1 className='page-title'>Lotes</h1>
+          <p className='page-subtitle'>Consulte disponibilidade no mapa operacional ou compare os lotes pela lista.</p>
+        </div>
+        <div className='flex flex-wrap gap-3'>
+          <button onClick={fetchLots} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+            Atualizar
+          </button>
+          <div className='inline-flex overflow-hidden rounded-xl border border-border bg-surface p-1'>
+            <button
+              onClick={() => setViewMode('map')}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${viewMode === 'map' ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary hover:text-foreground'}`}
+            >
+              Mapa
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${viewMode === 'list' ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary hover:text-foreground'}`}
+            >
+              Lista
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <section className='grid gap-4 md:grid-cols-4'>
+        <div className='metric-card px-5 py-4'>
+          <p className='metric-label'>Lotes filtrados</p>
+          <p className='metric-value'>{stats.total}</p>
+        </div>
+        <div className='metric-card px-5 py-4'>
+          <p className='metric-label'>Disponiveis</p>
+          <p className='metric-value text-emerald-700'>{stats.available}</p>
+        </div>
+        <div className='metric-card px-5 py-4'>
+          <p className='metric-label'>Reservados/bloqueados</p>
+          <p className='metric-value text-amber-700'>{stats.reserved}</p>
+        </div>
+        <div className='metric-card px-5 py-4'>
+          <p className='metric-label'>Valor em estoque</p>
+          <p className='metric-value'>{formatCurrency(stats.totalValue)}</p>
+        </div>
+      </section>
+
+      <section className='panel overflow-hidden'>
+        <div className='panel-header px-6 py-5'>
+          <div className='grid gap-4 lg:grid-cols-[minmax(220px,1.3fr)_minmax(160px,0.8fr)_minmax(160px,0.8fr)_minmax(160px,0.8fr)_auto] lg:items-end'>
+            <label className='block'>
+              <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Busca</span>
+              <input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder='Lote, quadra ou empreendimento...'
+                className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+              />
+            </label>
+            <label className='block'>
+              <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Empreendimento</span>
+              <select
+                value={developmentFilter}
+                onChange={(event) => handleDevelopmentChange(event.target.value)}
+                className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+              >
+                <option value=''>Todos</option>
+                {developments.map((development) => (
+                  <option key={development.id} value={development.id}>{development.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className='block'>
+              <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Quadra</span>
+              <select
+                value={blockFilter}
+                onChange={(event) => { setBlockFilter(event.target.value); setSelectedLotId(null) }}
+                className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+              >
+                <option value=''>Todas</option>
+                {blocks.map((block) => (
+                  <option key={block.id} value={block.id}>Quadra {block.identifier}</option>
+                ))}
+              </select>
+            </label>
+            <label className='block'>
+              <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Status</span>
+              <select
+                value={statusFilter}
+                onChange={(event) => { setStatusFilter(event.target.value); setSelectedLotId(null) }}
+                className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+              >
+                <option value=''>Todos</option>
+                {statuses.map((status) => (
+                  <option key={status} value={status}>{getStatusMeta(status).label}</option>
+                ))}
+              </select>
+            </label>
+            <button onClick={clearFilters} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+              Limpar
+            </button>
+          </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-          <div className="px-4 py-5 sm:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 space-y-3 sm:space-y-0">
-              <h2 className="text-lg font-medium text-gray-900 dark:text-white">
-                Total de lotes: {filteredAndSortedLots.length}
-                {(filterByBlock || filterByStatus) && ` (filtrado)`}
-              </h2>
-              
-              <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3">
-                <select
-                  value={filterByBlock}
-                  onChange={(e) => setFilterByBlock(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="">Todos os blocos</option>
-                  {getUniqueBlocks().map(block => (
-                    <option key={block.id} value={block.id}>
-                      Bloco {block.identifier}
-                    </option>
-                  ))}
-                </select>
-                
-                <select
-                  value={filterByStatus}
-                  onChange={(e) => setFilterByStatus(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option key="all-status" value="">Todos os status</option>
-                  {getUniqueStatuses().map((status, index) => (
-                    <option key={`status-${status}-${index}`} value={status}>
-                      {getStatusDisplayName(status)}
-                    </option>
-                  ))}
-                </select>
-                
-                <button
-                  onClick={fetchLots}
-                  className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800"
-                >
-                  <svg className="-ml-1 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Atualizar
-                </button>
-              </div>
-            </div>
-
-            {filteredAndSortedLots.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="mx-auto h-12 w-12 text-gray-400">
-                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        <div className='grid min-h-[620px] xl:grid-cols-[minmax(0,1fr)_360px]'>
+          <div className='min-w-0 border-b border-border xl:border-b-0 xl:border-r'>
+            {filteredLots.length === 0 ? (
+              <div className='flex min-h-[420px] flex-col items-center justify-center px-6 py-12 text-center'>
+                <div className='flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-secondary text-muted'>
+                  <svg className='h-7 w-7' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                    <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M4 6h16v12H4zM8 6v12M16 6v12M4 10h16M4 14h16' />
                   </svg>
                 </div>
-                <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
-                  Nenhum lote encontrado
-                </h3>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  {(filterByBlock || filterByStatus) ? 'Nenhum lote encontrado para os filtros selecionados.' : 'Comece adicionando um novo lote ao sistema.'}
-                </p>
+                <h2 className='mt-4 text-base font-semibold text-foreground'>Nenhum lote encontrado</h2>
+                <p className='mt-2 text-sm text-muted'>Ajuste os filtros para visualizar o mapa ou a lista de lotes.</p>
+              </div>
+            ) : viewMode === 'map' ? (
+              <div className='space-y-6 p-6'>
+                <div className='flex flex-wrap gap-3'>
+                  {Object.entries(statusMeta).map(([status, meta]) => (
+                    <div key={status} className='flex items-center gap-2 text-xs font-semibold text-muted'>
+                      <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
+                      {meta.label}
+                    </div>
+                  ))}
+                </div>
+
+                <div className='space-y-6'>
+                  {lotsByBlock.map(({ block, lots: blockLots }) => (
+                    <section key={block.id} className='rounded-2xl border border-border bg-surface-secondary p-4'>
+                      <div className='mb-4 flex flex-col gap-1 md:flex-row md:items-center md:justify-between'>
+                        <div>
+                          <h2 className='text-base font-semibold text-foreground'>Quadra {block.identifier}</h2>
+                          <p className='text-sm text-muted'>{block.development?.name ?? 'Sem empreendimento'} · {blockLots.length} lotes</p>
+                        </div>
+                        <span className='text-sm font-semibold text-muted'>{formatCurrency(blockLots.reduce((sum, lot) => sum + lot.price, 0))}</span>
+                      </div>
+                      <div className='grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-3'>
+                        {blockLots.map((lot) => {
+                          const meta = getStatusMeta(lot.status)
+                          const selected = selectedLotId === lot.id
+                          return (
+                            <button
+                              key={lot.id}
+                              type='button'
+                              onClick={() => selectLot(lot.id)}
+                              className={`min-h-[86px] rounded-xl border px-3 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-primary ${meta.tile} ${selected ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                            >
+                              <span className='block text-xs font-semibold opacity-75'>Lote</span>
+                              <span className='mt-1 block text-lg font-bold'>{lot.identifier}</span>
+                              <span className='mt-1 block truncate text-xs font-semibold'>{formatArea(lot.totalArea)}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </section>
+                  ))}
+                </div>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                  <thead className="bg-gray-50 dark:bg-gray-700">
+              <div className='overflow-x-auto'>
+                <table className='min-w-full divide-y divide-border'>
+                  <thead className='bg-surface-secondary'>
                     <tr>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
-                        onClick={() => handleSort('identifier')}
-                      >
-                        <div className="flex items-center">
-                          Lote
-                          {getSortIcon('identifier')}
-                        </div>
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Bloco
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Dimensões
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
-                        onClick={() => handleSort('totalArea')}
-                      >
-                        <div className="flex items-center">
-                          Área Total
-                          {getSortIcon('totalArea')}
-                        </div>
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
-                        onClick={() => handleSort('price')}
-                      >
-                        <div className="flex items-center">
-                          Preço
-                          {getSortIcon('price')}
-                        </div>
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
-                        onClick={() => handleSort('createdAt')}
-                      >
-                        <div className="flex items-center">
-                          Cadastrado em
-                          {getSortIcon('createdAt')}
-                        </div>
-                      </th>
+                      {[
+                        ['identifier', 'Lote'],
+                        ['block', 'Quadra'],
+                        ['totalArea', 'Area'],
+                        ['price', 'Valor'],
+                        ['status', 'Status'],
+                      ].map(([field, label]) => (
+                        <th key={field} className='table-head px-6 py-4 text-left'>
+                          <button onClick={() => toggleSort(field as SortField)} className='inline-flex items-center gap-1 transition hover:text-foreground'>
+                            {label}
+                            {sortBy === field && <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>}
+                          </button>
+                        </th>
+                      ))}
                     </tr>
                   </thead>
-                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {filteredAndSortedLots.map((lot) => (
-                      <tr key={lot.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="h-10 w-10 flex-shrink-0">
-                              <div className="h-10 w-10 rounded-lg bg-blue-500 flex items-center justify-center">
-                                <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                                </svg>
+                  <tbody className='divide-y divide-border bg-surface'>
+                    {filteredLots.map((lot) => {
+                      const meta = getStatusMeta(lot.status)
+                      const selected = selectedLotId === lot.id
+                      return (
+                        <tr
+                          key={lot.id}
+                          onClick={() => selectLot(lot.id)}
+                          className={`cursor-pointer transition hover:bg-surface-secondary/70 ${selected ? 'bg-primary/6' : ''}`}
+                        >
+                          <td className='px-6 py-4'>
+                            <div className='flex items-center gap-3'>
+                              <span className={`h-3 w-3 rounded-full ${meta.dot}`} />
+                              <div>
+                                <p className='text-sm font-semibold text-foreground'>Lote {lot.identifier}</p>
+                                <p className='text-xs text-muted'>{lot.block.development?.name ?? 'Sem empreendimento'}</p>
                               </div>
                             </div>
-                            <div className="ml-4">
-                              <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                Lote {lot.identifier}
-                              </div>
-                              <div className="text-sm text-gray-500 dark:text-gray-400">
-                                ID: {lot.id.slice(0, 8)}...
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
-                            Bloco {lot.block.identifier}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 dark:text-white">
-                            <div className="grid grid-cols-2 gap-1 text-xs">
-                              <span>Frente: {formatMeasurement(lot.front)}</span>
-                              <span>Fundo: {formatMeasurement(lot.back)}</span>
-                              <span>Esq.: {formatMeasurement(lot.leftSide)}</span>
-                              <span>Dir.: {formatMeasurement(lot.rightSide)}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
-                            {formatArea(lot.totalArea)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
-                            {formatCurrency(lot.price)}
-                          </div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">
-                            {formatCurrency(lot.price / lot.totalArea)}/m²
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {getStatusBadge(lot.status)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                          {formatDate(lot.createdAt)}
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className='px-6 py-4 text-sm font-medium text-foreground'>Quadra {lot.block.identifier}</td>
+                          <td className='px-6 py-4 text-sm text-muted'>
+                            <p className='font-semibold text-foreground'>{formatArea(lot.totalArea)}</p>
+                            <p className='text-xs'>Frente {formatMeasurement(lot.front)} · Fundo {formatMeasurement(lot.back)}</p>
+                          </td>
+                          <td className='px-6 py-4 text-sm text-muted'>
+                            <p className='font-semibold text-foreground'>{formatCurrency(lot.price)}</p>
+                            <p className='text-xs'>{formatCurrency(lot.price / lot.totalArea)}/m2</p>
+                          </td>
+                          <td className='px-6 py-4'>
+                            <span className={`pill ${meta.badge}`}>{meta.label}</span>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
             )}
           </div>
+
+          <aside className='bg-surface px-6 py-6'>
+            {selectedLot ? (
+              <div className='space-y-6'>
+                <div>
+                  <p className='text-xs font-semibold uppercase tracking-[0.18em] text-muted'>Lote selecionado</p>
+                  <h2 className='mt-2 text-2xl font-bold text-foreground'>Quadra {selectedLot.block.identifier}, Lote {selectedLot.identifier}</h2>
+                  <p className='mt-1 text-sm text-muted'>{selectedLot.block.development?.name ?? 'Sem empreendimento'}</p>
+                </div>
+
+                <span className={`pill ${getStatusMeta(selectedLot.status).badge}`}>{getStatusMeta(selectedLot.status).label}</span>
+
+                <div className='grid grid-cols-2 gap-3'>
+                  <div className='rounded-xl border border-border bg-surface-secondary p-4'>
+                    <p className='text-xs font-semibold uppercase text-muted'>Valor</p>
+                    <p className='mt-2 text-lg font-bold text-foreground'>{formatCurrency(selectedLot.price)}</p>
+                  </div>
+                  <div className='rounded-xl border border-border bg-surface-secondary p-4'>
+                    <p className='text-xs font-semibold uppercase text-muted'>Area</p>
+                    <p className='mt-2 text-lg font-bold text-foreground'>{formatArea(selectedLot.totalArea)}</p>
+                  </div>
+                </div>
+
+                <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                  <h3 className='text-sm font-semibold text-foreground'>Medidas</h3>
+                  <dl className='mt-4 grid grid-cols-2 gap-3 text-sm'>
+                    <div>
+                      <dt className='text-muted'>Frente</dt>
+                      <dd className='font-semibold text-foreground'>{formatMeasurement(selectedLot.front)}</dd>
+                    </div>
+                    <div>
+                      <dt className='text-muted'>Fundo</dt>
+                      <dd className='font-semibold text-foreground'>{formatMeasurement(selectedLot.back)}</dd>
+                    </div>
+                    <div>
+                      <dt className='text-muted'>Lateral esquerda</dt>
+                      <dd className='font-semibold text-foreground'>{formatMeasurement(selectedLot.leftSide)}</dd>
+                    </div>
+                    <div>
+                      <dt className='text-muted'>Lateral direita</dt>
+                      <dd className='font-semibold text-foreground'>{formatMeasurement(selectedLot.rightSide)}</dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <div className='space-y-3'>
+                  <button className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+                    Simular venda
+                  </button>
+                  <button className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+                    Reservar lote
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className='flex h-full min-h-[420px] flex-col items-center justify-center text-center'>
+                <div className='flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-secondary text-muted'>
+                  <svg className='h-7 w-7' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                    <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M4 6h16v12H4zM8 6v12M16 6v12M4 10h16M4 14h16' />
+                  </svg>
+                </div>
+                <h2 className='mt-4 text-base font-semibold text-foreground'>Selecione um lote</h2>
+                <p className='mt-2 text-sm leading-6 text-muted'>Clique em um lote no mapa ou em uma linha da lista para ver status, preco e medidas.</p>
+              </div>
+            )}
+          </aside>
         </div>
-      </div>
+      </section>
     </div>
   )
 }
