@@ -5,6 +5,7 @@ import {
   getAccessibleDevelopmentIds,
   hasAccessToAllDevelopments,
   membershipWhere,
+  proposalAccessWhere,
   reservationAccessWhere,
   saleAccessWhere,
   userAccessWhere,
@@ -69,6 +70,22 @@ export async function GET(_: Request, { params }: Params) {
             },
             reservation: true,
             contract: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+        proposals: {
+          where: proposalAccessWhere(currentUserId),
+          include: {
+            lot: {
+              include: {
+                block: {
+                  include: {
+                    development: true,
+                  },
+                },
+              },
+            },
+            reservation: true,
           },
           orderBy: { createdAt: 'desc' },
         },

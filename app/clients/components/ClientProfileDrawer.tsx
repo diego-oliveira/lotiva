@@ -43,6 +43,24 @@ type SaleSummary = {
   contract?: { id: string; contractNumber: string; emailSent: boolean } | null
 }
 
+type ProposalSummary = {
+  id: string
+  status: string
+  salePrice: number
+  downPayment: number
+  installmentCount: number
+  installmentValue: number
+  totalValue: number
+  interestRate: number
+  interestCalculation: string
+  correctionIndex: string
+  firstDueDate?: string | null
+  notes?: string | null
+  createdAt: string
+  lot: LotSummary
+  reservation?: { id: string; status: string } | null
+}
+
 type ClientProfile = {
   id: string
   name: string
@@ -56,6 +74,7 @@ type ClientProfile = {
   maritalStatus?: string | null
   memberships: Membership[]
   reservations: ReservationSummary[]
+  proposals: ProposalSummary[]
   sales: SaleSummary[]
   createdAt: string
   updatedAt: string
@@ -221,6 +240,45 @@ export default function ClientProfileDrawer({
                         </p>
                       </div>
                     ))}
+                  </div>
+                </section>
+
+                <section className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                  <div className='flex items-center justify-between gap-3'>
+                    <div>
+                      <h3 className='text-base font-semibold text-foreground'>Propostas</h3>
+                      <p className='mt-1 text-sm text-muted'>Condicoes comerciais simuladas e salvas para este cliente.</p>
+                    </div>
+                    <span className='pill bg-surface text-muted'>{client.proposals.length}</span>
+                  </div>
+                  <div className='mt-4 space-y-3'>
+                    {client.proposals.length === 0 ? (
+                      <div className='rounded-xl border border-dashed border-border bg-surface px-4 py-5 text-center text-sm text-muted'>
+                        Nenhuma proposta encontrada.
+                      </div>
+                    ) : (
+                      client.proposals.map((proposal) => (
+                        <div key={proposal.id} className='rounded-xl border border-border bg-surface px-4 py-3'>
+                          <div className='flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
+                            <div>
+                              <p className='text-sm font-semibold text-foreground'>{getLotLabel(proposal.lot)}</p>
+                              <p className='mt-1 text-xs text-muted'>
+                                Entrada {formatCurrency(proposal.downPayment)} · {proposal.installmentCount}x de {formatCurrency(proposal.installmentValue)}
+                              </p>
+                            </div>
+                            <p className='text-sm font-bold text-foreground'>{formatCurrency(proposal.totalValue)}</p>
+                          </div>
+                          <div className='mt-3 flex flex-wrap gap-2 text-xs text-muted'>
+                            <span className='rounded-full bg-surface-secondary px-2.5 py-1'>Proposta em {formatDate(proposal.createdAt)}</span>
+                            <span className='rounded-full bg-surface-secondary px-2.5 py-1'>{proposal.status}</span>
+                            <span className='rounded-full bg-surface-secondary px-2.5 py-1'>
+                              {proposal.correctionIndex === 'none' ? 'Sem correcao' : proposal.correctionIndex.toUpperCase()}
+                            </span>
+                          </div>
+                          {proposal.notes && <p className='mt-3 text-xs leading-5 text-muted'>{proposal.notes}</p>}
+                        </div>
+                      ))
+                    )}
                   </div>
                 </section>
 

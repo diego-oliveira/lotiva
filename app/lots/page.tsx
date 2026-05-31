@@ -61,6 +61,26 @@ interface LotSale {
   contract?: { id: string; contractNumber: string; emailSent: boolean } | null
 }
 
+interface LotProposal {
+  id: string
+  status: string
+  salePrice: number
+  downPayment: number
+  installmentCount: number
+  installmentValue: number
+  balance: number
+  totalValue: number
+  interestRate: number
+  interestCalculation: DevelopmentSettings['interestCalculation']
+  correctionIndex: DevelopmentSettings['correctionIndex']
+  correctionFrequency: DevelopmentSettings['correctionFrequency']
+  firstDueDate?: string | null
+  notes?: string | null
+  createdAt: string
+  updatedAt: string
+  user: Person
+}
+
 interface Lot {
   id: string
   identifier: string
@@ -76,6 +96,7 @@ interface Lot {
   updatedAt: string
   block: Block
   reservations: LotReservation[]
+  proposals: LotProposal[]
   sale?: LotSale | null
 }
 
@@ -196,6 +217,12 @@ export default function LotsPage() {
   })
   const [showSimulator, setShowSimulator] = useState(false)
   const [proposalNotice, setProposalNotice] = useState<string | null>(null)
+  const [proposalError, setProposalError] = useState<string | null>(null)
+  const [proposalSaving, setProposalSaving] = useState(false)
+  const [proposalForm, setProposalForm] = useState({
+    userId: '',
+    notes: '',
+  })
   const [simulatorForm, setSimulatorForm] = useState({
     salePrice: 0,
     downPayment: 0,
@@ -350,6 +377,8 @@ export default function LotsPage() {
     [simulatorForm, simulation.installmentValue],
   )
 
+  const proposalCanBeSaved = simulationIsValid && Boolean(proposalForm.userId) && !proposalSaving
+
   const stats = useMemo(() => {
     const totalValue = filteredLots.reduce((sum, lot) => sum + lot.price, 0)
 
@@ -390,29 +419,43 @@ export default function LotsPage() {
     setShowReservationForm(false)
     setShowSimulator(false)
     setReservationError(null)
+    setProposalError(null)
+    setProposalNotice(null)
   }
 
-  const openSimulator = () => {
+  const openSimulator = async () => {
     if (!selectedLot) return
 
-    const settings = selectedLot.block.development?.settings
-    const salePrice = selectedLot.price
-    const minDownPaymentPercentage = settings?.minDownPaymentPercentage ?? 10
-    const maxInstallments = settings?.maxInstallments ?? 120
+    try {
+      setProposalError(null)
+      if (clients.length === 0) await fetchClients()
 
-    setSimulatorForm({
-      salePrice,
-      downPayment: Math.round((salePrice * minDownPaymentPercentage) / 100),
-      installmentCount: maxInstallments,
-      interestRate: settings?.defaultInterestRate ?? 0,
-      interestCalculation: settings?.interestCalculation ?? 'none',
-      correctionIndex: settings?.correctionIndex ?? 'none',
-      correctionFrequency: settings?.correctionFrequency ?? 'monthly',
-      firstDueDate: getDefaultDueDate(),
-    })
-    setShowReservationForm(false)
-    setShowSimulator(true)
-    setProposalNotice(null)
+      const settings = selectedLot.block.development?.settings
+      const salePrice = selectedLot.price
+      const minDownPaymentPercentage = settings?.minDownPaymentPercentage ?? 10
+      const maxInstallments = settings?.maxInstallments ?? 120
+      const activeReservation = getActiveReservation(selectedLot)
+
+      setSimulatorForm({
+        salePrice,
+        downPayment: Math.round((salePrice * minDownPaymentPercentage) / 100),
+        installmentCount: maxInstallments,
+        interestRate: settings?.defaultInterestRate ?? 0,
+        interestCalculation: settings?.interestCalculation ?? 'none',
+        correctionIndex: settings?.correctionIndex ?? 'none',
+        correctionFrequency: settings?.correctionFrequency ?? 'monthly',
+        firstDueDate: getDefaultDueDate(),
+      })
+      setProposalForm({
+        userId: activeReservation?.user.id ?? '',
+        notes: activeReservation?.proposal ?? '',
+      })
+      setShowReservationForm(false)
+      setShowSimulator(true)
+      setProposalNotice(null)
+    } catch (err) {
+      setProposalError(err instanceof Error ? err.message : 'Erro ao carregar clientes')
+    }
   }
 
   const openReservationForm = async () => {
@@ -492,6 +535,58 @@ export default function LotsPage() {
       setReservationError(err instanceof Error ? err.message : 'Erro ao cancelar reserva')
     } finally {
       setReservationSaving(false)
+    }
+  }
+
+  const saveProposal = async () => {
+    if (!selectedLot) return
+    if (!proposalForm.userId) {
+      setProposalError('Selecione um cliente para salvar a proposta.')
+      return
+    }
+
+    const activeReservation = getActiveReservation(selectedLot)
+    const reservationId = activeReservation?.user.id === proposalForm.userId ? activeReservation.id : null
+
+    try {
+      setProposalSaving(true)
+      setProposalError(null)
+      setProposalNotice(null)
+
+      const response = await fetch('/api/proposals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lotId: selectedLot.id,
+          userId: proposalForm.userId,
+          reservationId,
+          status: 'draft',
+          salePrice: simulatorForm.salePrice,
+          downPayment: simulatorForm.downPayment,
+          installmentCount: simulatorForm.installmentCount,
+          installmentValue: simulation.installmentValue,
+          balance: simulation.balance,
+          totalValue: simulation.totalContracted,
+          interestRate: simulatorForm.interestRate,
+          interestCalculation: simulatorForm.interestCalculation,
+          correctionIndex: simulatorForm.correctionIndex,
+          correctionFrequency: simulatorForm.correctionFrequency,
+          firstDueDate: simulatorForm.firstDueDate,
+          notes: proposalForm.notes,
+        }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json()
+        throw new Error(payload.error || 'Erro ao salvar proposta')
+      }
+
+      await fetchLots()
+      setProposalNotice('Proposta salva e lote reservado para o cliente.')
+    } catch (err) {
+      setProposalError(err instanceof Error ? err.message : 'Erro ao salvar proposta')
+    } finally {
+      setProposalSaving(false)
     }
   }
 
@@ -823,6 +918,34 @@ export default function LotsPage() {
                   </div>
                 )}
 
+                {selectedLot.proposals.length > 0 && (
+                  <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                    <div className='flex items-start justify-between gap-3'>
+                      <div>
+                        <h3 className='text-sm font-semibold text-foreground'>Propostas</h3>
+                        <p className='mt-1 text-xs font-semibold text-muted'>{selectedLot.proposals.length} registrada(s)</p>
+                      </div>
+                      <span className='pill bg-surface text-muted'>{selectedLot.proposals[0].status}</span>
+                    </div>
+                    <div className='mt-4 space-y-3'>
+                      {selectedLot.proposals.slice(0, 3).map((proposal) => (
+                        <div key={proposal.id} className='rounded-xl border border-border bg-surface px-4 py-3'>
+                          <div className='flex items-start justify-between gap-3'>
+                            <div>
+                              <p className='text-sm font-semibold text-foreground'>{proposal.user.name}</p>
+                              <p className='mt-1 text-xs text-muted'>
+                                Entrada {formatCurrency(proposal.downPayment)} · {proposal.installmentCount}x de {formatCurrency(proposal.installmentValue)}
+                              </p>
+                            </div>
+                            <p className='text-sm font-bold text-foreground'>{formatCurrency(proposal.totalValue)}</p>
+                          </div>
+                          <p className='mt-2 text-xs text-muted'>Salva em {formatDate(proposal.createdAt)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
                   <h3 className='text-sm font-semibold text-foreground'>Medidas</h3>
                   <dl className='mt-4 grid grid-cols-2 gap-3 text-sm'>
@@ -1026,6 +1149,17 @@ export default function LotsPage() {
                     </svg>
                   </button>
                 </div>
+                {(proposalNotice || proposalError) && (
+                  <div
+                    className={`mt-5 rounded-xl border px-4 py-3 text-sm font-medium ${
+                      proposalNotice
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                        : 'border-red-200 bg-red-50 text-red-700'
+                    }`}
+                  >
+                    {proposalNotice || proposalError}
+                  </div>
+                )}
               </div>
 
               <div className='flex-1 overflow-y-auto px-6 py-6'>
@@ -1034,6 +1168,19 @@ export default function LotsPage() {
                     <section className='rounded-2xl border border-border bg-surface-secondary p-5'>
                       <h3 className='text-base font-semibold text-foreground'>Condicao comercial</h3>
                       <div className='mt-5 grid gap-4 md:grid-cols-2'>
+                        <label className='block md:col-span-2'>
+                          <span className='mb-2 block text-sm font-semibold text-foreground'>Cliente</span>
+                          <select
+                            value={proposalForm.userId}
+                            onChange={(event) => setProposalForm((current) => ({ ...current, userId: event.target.value }))}
+                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                          >
+                            <option value=''>Selecione...</option>
+                            {clients.map((client) => (
+                              <option key={client.id} value={client.id}>{client.name} · {client.email}</option>
+                            ))}
+                          </select>
+                        </label>
                         <label className='block md:col-span-2'>
                           <span className='mb-2 block text-sm font-semibold text-foreground'>Valor de venda</span>
                           <input
@@ -1065,6 +1212,16 @@ export default function LotsPage() {
                             value={simulatorForm.installmentCount}
                             onChange={(event) => setSimulatorForm((current) => ({ ...current, installmentCount: Math.max(Number(event.target.value) || 1, 1) }))}
                             className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                          />
+                        </label>
+                        <label className='block md:col-span-2'>
+                          <span className='mb-2 block text-sm font-semibold text-foreground'>Observacao</span>
+                          <textarea
+                            rows={3}
+                            value={proposalForm.notes}
+                            onChange={(event) => setProposalForm((current) => ({ ...current, notes: event.target.value }))}
+                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                            placeholder='Condição negociada, validade ou pontos relevantes'
                           />
                         </label>
                       </div>
@@ -1124,7 +1281,7 @@ export default function LotsPage() {
                     </section>
 
                     <div className='rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-800'>
-                      A correcao {simulatorForm.correctionIndex === 'none' ? 'nao sera aplicada nesta estimativa' : `${simulatorForm.correctionIndex.toUpperCase()} sera considerada como regra da proposta`}. A persistencia da proposta entra no proximo fluxo.
+                      A correcao {simulatorForm.correctionIndex === 'none' ? 'nao sera aplicada nesta estimativa' : `${simulatorForm.correctionIndex.toUpperCase()} sera considerada como regra da proposta`}.
                     </div>
                   </div>
 
@@ -1156,11 +1313,6 @@ export default function LotsPage() {
                         </div>
                       </div>
                     </div>
-                    {proposalNotice && (
-                      <div className='mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800'>
-                        {proposalNotice}
-                      </div>
-                    )}
                   </aside>
                 </div>
               </div>
@@ -1176,13 +1328,13 @@ export default function LotsPage() {
                   </button>
                   <button
                     type='button'
-                    disabled={!simulationIsValid}
-                    onClick={() => setProposalNotice('Simulacao pronta para salvar como proposta. A persistencia sera conectada na proxima etapa.')}
+                    disabled={!proposalCanBeSaved}
+                    onClick={saveProposal}
                     className={`rounded-xl px-4 py-3 text-sm font-semibold text-white transition ${
-                      simulationIsValid ? 'bg-primary hover:bg-primary-strong' : 'bg-primary opacity-60'
+                      proposalCanBeSaved ? 'bg-primary hover:bg-primary-strong' : 'bg-primary opacity-60'
                     }`}
                   >
-                    Salvar proposta
+                    {proposalSaving ? 'Salvando...' : 'Salvar proposta'}
                   </button>
                 </div>
               </div>

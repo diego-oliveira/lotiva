@@ -39,6 +39,12 @@ export function reservationAccessWhere(userId: string) {
   }
 }
 
+export function proposalAccessWhere(userId: string) {
+  return {
+    lot: lotAccessWhere(userId),
+  }
+}
+
 export function contractAccessWhere(userId: string) {
   return {
     sale: saleAccessWhere(userId),

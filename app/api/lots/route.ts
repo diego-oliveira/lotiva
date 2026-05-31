@@ -26,6 +26,12 @@ export async function GET() {
           contract: true,
         },
       },
+      proposals: {
+        include: {
+          user: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      },
     },
     orderBy: { createdAt: 'desc' },
   })

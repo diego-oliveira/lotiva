@@ -74,6 +74,7 @@ model User {
 
   reservations Reservation[]
   sales        Sale[]
+  proposals    Proposal[]
   memberships  DevelopmentUser[]
   accounts     Account[]
   sessions     Session[]
@@ -177,6 +178,7 @@ model Lot {
 
   block        Block    @relation(fields: [blockId], references: [id])
   reservations Reservation[]
+  proposals    Proposal[]
   sale         Sale?    // 👈 one-to-one back relation
 }
 
@@ -193,9 +195,36 @@ model Reservation {
 
   user       User   @relation(fields: [userId], references: [id])
   lot        Lot    @relation(fields: [lotId], references: [id])
+  proposals  Proposal[]
   sale       Sale?  // 👈 if only one sale can reference a reservation
 
   @@unique([lotId]) // 👈 prevents multiple reservations for the same lot
+}
+
+model Proposal {
+  id                  String    @id @default(uuid())
+  userId              String
+  lotId               String
+  reservationId       String?
+  status              String    @default("draft")
+  salePrice           Float
+  downPayment         Float
+  installmentCount    Int
+  installmentValue    Float
+  balance             Float
+  totalValue          Float
+  interestRate        Float     @default(0)
+  interestCalculation String    @default("none")
+  correctionIndex     String    @default("none")
+  correctionFrequency String    @default("monthly")
+  firstDueDate        DateTime?
+  notes               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id])
+  lot         Lot          @relation(fields: [lotId], references: [id])
+  reservation Reservation? @relation(fields: [reservationId], references: [id])
 }
 
 model Sale {
