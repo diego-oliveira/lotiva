@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import ClientForm from './components/ClientForm'
+import ClientProfileDrawer from './components/ClientProfileDrawer'
 import DeleteConfirmModal from './components/DeleteConfirmModal'
 
 interface Membership {
@@ -14,13 +15,13 @@ interface Client {
   id: string
   name: string
   email: string
-  cpf?: string
-  rg?: string
-  address?: string
-  birthDate?: string
-  profession?: string
-  birthplace?: string
-  maritalStatus?: string
+  cpf?: string | null
+  rg?: string | null
+  address?: string | null
+  birthDate?: string | null
+  profession?: string | null
+  birthplace?: string | null
+  maritalStatus?: string | null
   memberships: Membership[]
   createdAt: string
   updatedAt: string
@@ -39,7 +40,9 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [showProfile, setShowProfile] = useState(false)
   const [editingClient, setEditingClient] = useState<Client | null>(null)
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deletingClient, setDeletingClient] = useState<Client | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
@@ -225,6 +228,12 @@ export default function ClientsPage() {
                       <td className='px-6 py-4 whitespace-nowrap text-right text-sm font-semibold'>
                         <div className='flex items-center justify-end gap-2'>
                           <button
+                            onClick={() => { setSelectedClientId(client.id); setShowProfile(true) }}
+                            className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'
+                          >
+                            Ver ficha
+                          </button>
+                          <button
                             onClick={() => { setEditingClient(client); setShowForm(true) }}
                             className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'
                           >
@@ -252,6 +261,16 @@ export default function ClientsPage() {
         isOpen={showForm}
         onClose={() => { setShowForm(false); setEditingClient(null) }}
         onSave={() => { fetchClients(); setShowForm(false); setEditingClient(null) }}
+      />
+
+      <ClientProfileDrawer
+        clientId={selectedClientId}
+        isOpen={showProfile}
+        onClose={() => { setShowProfile(false); setSelectedClientId(null) }}
+        onEdit={(client) => {
+          setEditingClient(client)
+          setShowForm(true)
+        }}
       />
 
       <DeleteConfirmModal

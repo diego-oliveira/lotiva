@@ -5,6 +5,8 @@ import {
   getAccessibleDevelopmentIds,
   hasAccessToAllDevelopments,
   membershipWhere,
+  reservationAccessWhere,
+  saleAccessWhere,
   userAccessWhere,
 } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
@@ -35,7 +37,42 @@ export async function GET(_: Request, { params }: Params) {
         id,
         ...userAccessWhere(currentUserId),
       },
-      include: membershipInclude(currentUserId),
+      include: {
+        ...membershipInclude(currentUserId),
+        reservations: {
+          where: reservationAccessWhere(currentUserId),
+          include: {
+            lot: {
+              include: {
+                block: {
+                  include: {
+                    development: true,
+                  },
+                },
+              },
+            },
+            sale: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+        sales: {
+          where: saleAccessWhere(currentUserId),
+          include: {
+            lot: {
+              include: {
+                block: {
+                  include: {
+                    development: true,
+                  },
+                },
+              },
+            },
+            reservation: true,
+            contract: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
     })
     if (!client) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 })

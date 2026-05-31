@@ -22,13 +22,13 @@ interface Client {
   id?: string
   name: string
   email: string
-  cpf?: string
-  rg?: string
-  address?: string
-  birthDate?: string
-  profession?: string
-  birthplace?: string
-  maritalStatus?: string
+  cpf?: string | null
+  rg?: string | null
+  address?: string | null
+  birthDate?: string | null
+  profession?: string | null
+  birthplace?: string | null
+  maritalStatus?: string | null
   memberships?: {
     development: { id: string; name: string }
     roles: { role: { id: string; name: string } }[]
