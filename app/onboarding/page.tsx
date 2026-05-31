@@ -29,12 +29,38 @@ type OnboardingStatus = {
     pricedLots: number
     availableLots: number
   }
+  setup: {
+    company: {
+      id: string
+      name: string
+      logo: string
+    } | null
+    development: {
+      id: string
+      name: string
+      logo: string
+      companyId: string
+    } | null
+    inventory: {
+      blockCount: number | null
+      lotsPerBlock: number | null
+      lotArea: number | null
+      lotFront: number | null
+      lotBack: number | null
+      lotLeftSide: number | null
+      lotRightSide: number | null
+      lotPrice: number | null
+      initialStatus: SetupForm['initialStatus'] | null
+    }
+  }
   checklist: ChecklistItem[]
 }
 
 type SetupForm = {
+  companyId: string | null
   companyName: string
   companyLogo: string
+  developmentId: string | null
   developmentName: string
   developmentLogo: string
   blockCount: number
@@ -56,13 +82,17 @@ type CreatedSetup = {
   }
   createdBlocks: number
   createdLots: number
+  updatedExistingSetup: boolean
+  skippedInventoryCreation: boolean
 }
 
 const defaultLogo = 'https://placehold.co/320x160/png?text=Lotiva'
 
 const initialForm: SetupForm = {
+  companyId: null,
   companyName: '',
   companyLogo: defaultLogo,
+  developmentId: null,
   developmentName: '',
   developmentLogo: defaultLogo,
   blockCount: 4,
@@ -152,7 +182,26 @@ export default function OnboardingPage() {
   async function fetchStatus() {
     const response = await fetch('/api/onboarding/status', { cache: 'no-store' })
     if (!response.ok) throw new Error('Nao foi possivel carregar o status do onboarding')
-    setStatus(await response.json())
+    const payload = (await response.json()) as OnboardingStatus
+    setStatus(payload)
+    setFormData((current) => ({
+      ...current,
+      companyId: payload.setup.company?.id ?? current.companyId,
+      companyName: payload.setup.company?.name ?? current.companyName,
+      companyLogo: payload.setup.company?.logo ?? current.companyLogo,
+      developmentId: payload.setup.development?.id ?? current.developmentId,
+      developmentName: payload.setup.development?.name ?? current.developmentName,
+      developmentLogo: payload.setup.development?.logo ?? current.developmentLogo,
+      blockCount: payload.setup.inventory.blockCount || current.blockCount,
+      lotsPerBlock: payload.setup.inventory.lotsPerBlock || current.lotsPerBlock,
+      lotArea: payload.setup.inventory.lotArea || current.lotArea,
+      lotFront: payload.setup.inventory.lotFront || current.lotFront,
+      lotBack: payload.setup.inventory.lotBack || current.lotBack,
+      lotLeftSide: payload.setup.inventory.lotLeftSide || current.lotLeftSide,
+      lotRightSide: payload.setup.inventory.lotRightSide || current.lotRightSide,
+      lotPrice: payload.setup.inventory.lotPrice || current.lotPrice,
+      initialStatus: payload.setup.inventory.initialStatus ?? current.initialStatus,
+    }))
   }
 
   useEffect(() => {
@@ -291,7 +340,10 @@ export default function OnboardingPage() {
 
       {createdSetup && (
         <div className='rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800'>
-          {createdSetup.development.name} criado com {createdSetup.createdBlocks} quadras e {createdSetup.createdLots} lotes.
+          {createdSetup.updatedExistingSetup
+            ? `${createdSetup.development.name} atualizado com sucesso.`
+            : `${createdSetup.development.name} criado com ${createdSetup.createdBlocks} quadras e ${createdSetup.createdLots} lotes.`}
+          {createdSetup.skippedInventoryCreation && ' O inventario existente foi mantido.'}
         </div>
       )}
 
@@ -307,7 +359,7 @@ export default function OnboardingPage() {
             <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
               <div>
                 <p className='text-sm font-medium text-muted'>Cadastro guiado</p>
-                <h2 className='mt-2 text-xl font-bold text-foreground'>Criar base inicial para venda</h2>
+                <h2 className='mt-2 text-xl font-bold text-foreground'>{formData.developmentId ? 'Atualizar base inicial para venda' : 'Criar base inicial para venda'}</h2>
               </div>
               <span className='pill bg-primary/10 text-primary'>{totals.lots} lotes previstos</span>
             </div>
@@ -438,7 +490,7 @@ export default function OnboardingPage() {
               disabled={saving}
               className='rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
             >
-              {saving ? 'Criando onboarding...' : 'Criar empreendimento inicial'}
+              {saving ? 'Salvando onboarding...' : formData.developmentId ? 'Salvar configuracao inicial' : 'Criar empreendimento inicial'}
             </button>
           </div>
         </form>

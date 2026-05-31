@@ -30,6 +30,8 @@ export async function GET() {
     lotCount,
     pricedLotCount,
     availableLotCount,
+    primaryDevelopment,
+    fallbackCompany,
   ] = await Promise.all([
     prisma.company.count({
       where: {
@@ -55,7 +57,36 @@ export async function GET() {
       },
     }),
     prisma.lot.count({ where: { ...lotAccessWhere(userId), status: 'available' } }),
+    prisma.development.findFirst({
+      where: membershipWhere(userId),
+      include: {
+        company: true,
+        blocks: {
+          include: {
+            lots: {
+              orderBy: { createdAt: 'asc' },
+              take: 1,
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.company.findFirst({
+      where: {
+        OR: [
+          { developments: { some: membershipWhere(userId) } },
+          { developments: { none: {} } },
+        ],
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
   ])
+
+  const setupCompany = primaryDevelopment?.company ?? fallbackCompany
+  const firstLot = primaryDevelopment?.blocks.find((block) => block.lots.length > 0)?.lots[0] ?? null
+  const firstBlockLotCount = primaryDevelopment?.blocks[0]?.lots.length ?? null
 
   const checklist: ChecklistItem[] = [
     {
@@ -117,6 +148,34 @@ export async function GET() {
       lots: lotCount,
       pricedLots: pricedLotCount,
       availableLots: availableLotCount,
+    },
+    setup: {
+      company: setupCompany
+        ? {
+            id: setupCompany.id,
+            name: setupCompany.name,
+            logo: setupCompany.logo,
+          }
+        : null,
+      development: primaryDevelopment
+        ? {
+            id: primaryDevelopment.id,
+            name: primaryDevelopment.name,
+            logo: primaryDevelopment.logo,
+            companyId: primaryDevelopment.companyId,
+          }
+        : null,
+      inventory: {
+        blockCount: primaryDevelopment?.blocks.length ?? null,
+        lotsPerBlock: firstBlockLotCount,
+        lotArea: firstLot?.totalArea ?? null,
+        lotFront: firstLot?.front ?? null,
+        lotBack: firstLot?.back ?? null,
+        lotLeftSide: firstLot?.leftSide ?? null,
+        lotRightSide: firstLot?.rightSide ?? null,
+        lotPrice: firstLot?.price ?? null,
+        initialStatus: firstLot?.status ?? null,
+      },
     },
     checklist,
   })

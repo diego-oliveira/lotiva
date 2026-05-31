@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 
 type ViewMode = 'map' | 'list'
@@ -16,6 +17,35 @@ interface Block {
   development?: Development | null
 }
 
+interface Person {
+  id: string
+  name: string
+  email: string
+}
+
+interface LotReservation {
+  id: string
+  proposal: string
+  status: string
+  createdAt: string
+  updatedAt: string
+  user: Person
+  sale?: { id: string } | null
+}
+
+interface LotSale {
+  id: string
+  installmentCount: number
+  installmentValue: number
+  downPayment: number
+  annualAdjustment: boolean
+  totalValue: number
+  createdAt: string
+  updatedAt: string
+  user: Person
+  contract?: { id: string; contractNumber: string; emailSent: boolean } | null
+}
+
 interface Lot {
   id: string
   identifier: string
@@ -30,6 +60,8 @@ interface Lot {
   createdAt: string
   updatedAt: string
   block: Block
+  reservations: LotReservation[]
+  sale?: LotSale | null
 }
 
 const statusMeta: Record<string, { label: string; tile: string; badge: string; dot: string }> = {
@@ -83,8 +115,23 @@ function formatMeasurement(value: number) {
   return `${value.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m`
 }
 
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString('pt-BR')
+}
+
 function compareNatural(a: string, b: string) {
   return a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' })
+}
+
+function getActiveReservation(lot: Lot) {
+  return lot.reservations.find((reservation) => !reservation.sale && reservation.status !== 'cancelled') ?? lot.reservations[0] ?? null
+}
+
+function getLotContact(lot: Lot) {
+  if (lot.sale) return { label: 'Comprador', person: lot.sale.user }
+  const reservation = getActiveReservation(lot)
+  if (reservation) return { label: 'Cliente da reserva', person: reservation.user }
+  return null
 }
 
 export default function LotsPage() {
@@ -493,7 +540,12 @@ export default function LotsPage() {
                   <p className='mt-1 text-sm text-muted'>{selectedLot.block.development?.name ?? 'Sem empreendimento'}</p>
                 </div>
 
-                <span className={`pill ${getStatusMeta(selectedLot.status).badge}`}>{getStatusMeta(selectedLot.status).label}</span>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <span className={`pill ${getStatusMeta(selectedLot.status).badge}`}>{getStatusMeta(selectedLot.status).label}</span>
+                  {selectedLot.sale?.contract && (
+                    <span className='pill bg-emerald-50 text-emerald-700'>Contrato {selectedLot.sale.contract.contractNumber}</span>
+                  )}
+                </div>
 
                 <div className='grid grid-cols-2 gap-3'>
                   <div className='rounded-xl border border-border bg-surface-secondary p-4'>
@@ -505,6 +557,49 @@ export default function LotsPage() {
                     <p className='mt-2 text-lg font-bold text-foreground'>{formatArea(selectedLot.totalArea)}</p>
                   </div>
                 </div>
+
+                {getLotContact(selectedLot) && (
+                  <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                    <p className='text-xs font-semibold uppercase text-muted'>{getLotContact(selectedLot)?.label}</p>
+                    <p className='mt-2 text-base font-semibold text-foreground'>{getLotContact(selectedLot)?.person.name}</p>
+                    <p className='mt-1 text-sm text-muted'>{getLotContact(selectedLot)?.person.email}</p>
+                    <Link href={`/clients`} className='mt-4 inline-flex rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-background'>
+                      Ver clientes
+                    </Link>
+                  </div>
+                )}
+
+                {selectedLot.sale && (
+                  <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                    <h3 className='text-sm font-semibold text-foreground'>Resumo da venda</h3>
+                    <dl className='mt-4 grid grid-cols-2 gap-3 text-sm'>
+                      <div>
+                        <dt className='text-muted'>Total</dt>
+                        <dd className='font-semibold text-foreground'>{formatCurrency(selectedLot.sale.totalValue)}</dd>
+                      </div>
+                      <div>
+                        <dt className='text-muted'>Entrada</dt>
+                        <dd className='font-semibold text-foreground'>{formatCurrency(selectedLot.sale.downPayment)}</dd>
+                      </div>
+                      <div>
+                        <dt className='text-muted'>Parcelas</dt>
+                        <dd className='font-semibold text-foreground'>{selectedLot.sale.installmentCount}x</dd>
+                      </div>
+                      <div>
+                        <dt className='text-muted'>Valor/parcela</dt>
+                        <dd className='font-semibold text-foreground'>{formatCurrency(selectedLot.sale.installmentValue)}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                )}
+
+                {getActiveReservation(selectedLot) && !selectedLot.sale && (
+                  <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                    <h3 className='text-sm font-semibold text-foreground'>Reserva ativa</h3>
+                    <p className='mt-2 text-sm leading-6 text-muted'>{getActiveReservation(selectedLot)?.proposal || 'Sem proposta registrada.'}</p>
+                    <p className='mt-3 text-xs font-semibold text-muted'>Criada em {formatDate(getActiveReservation(selectedLot)!.createdAt)}</p>
+                  </div>
+                )}
 
                 <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
                   <h3 className='text-sm font-semibold text-foreground'>Medidas</h3>
@@ -528,13 +623,76 @@ export default function LotsPage() {
                   </dl>
                 </div>
 
-                <div className='space-y-3'>
-                  <button className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
-                    Simular venda
-                  </button>
-                  <button className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
-                    Reservar lote
-                  </button>
+                <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                  <h3 className='text-sm font-semibold text-foreground'>Acoes</h3>
+                  <div className='mt-4 space-y-3'>
+                    {selectedLot.status === 'available' && (
+                      <>
+                        <button className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+                          Simular venda
+                        </button>
+                        <button className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
+                          Reservar lote
+                        </button>
+                        <button className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
+                          Bloquear lote
+                        </button>
+                      </>
+                    )}
+
+                    {(selectedLot.status === 'reserved' || selectedLot.status === 'on_hold') && (
+                      <>
+                        <button className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+                          Converter em venda
+                        </button>
+                        <button className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
+                          Simular nova condicao
+                        </button>
+                        <button className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
+                          Liberar lote
+                        </button>
+                      </>
+                    )}
+
+                    {selectedLot.status === 'sold' && (
+                      <>
+                        <Link href='/sales' className='block w-full rounded-xl bg-primary px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-primary-strong'>
+                          Ver venda
+                        </Link>
+                        {selectedLot.sale?.contract && (
+                          <Link href={`/api/contracts/${selectedLot.sale.id}/pdf`} className='block w-full rounded-xl border border-border bg-surface px-4 py-3 text-center text-sm font-semibold text-foreground transition hover:bg-background'>
+                            Baixar contrato
+                          </Link>
+                        )}
+                      </>
+                    )}
+
+                    <button className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
+                      Ver historico
+                    </button>
+                  </div>
+                </div>
+
+                <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                  <h3 className='text-sm font-semibold text-foreground'>Atividade recente</h3>
+                  <div className='mt-4 space-y-3'>
+                    <div className='rounded-xl border border-border bg-surface px-4 py-3'>
+                      <p className='text-sm font-semibold text-foreground'>Lote cadastrado</p>
+                      <p className='mt-1 text-xs text-muted'>{formatDate(selectedLot.createdAt)}</p>
+                    </div>
+                    {getActiveReservation(selectedLot) && (
+                      <div className='rounded-xl border border-border bg-surface px-4 py-3'>
+                        <p className='text-sm font-semibold text-foreground'>Reserva registrada</p>
+                        <p className='mt-1 text-xs text-muted'>{formatDate(getActiveReservation(selectedLot)!.createdAt)}</p>
+                      </div>
+                    )}
+                    {selectedLot.sale && (
+                      <div className='rounded-xl border border-border bg-surface px-4 py-3'>
+                        <p className='text-sm font-semibold text-foreground'>Venda registrada</p>
+                        <p className='mt-1 text-xs text-muted'>{formatDate(selectedLot.sale.createdAt)}</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (

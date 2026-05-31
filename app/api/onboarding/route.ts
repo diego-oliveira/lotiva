@@ -3,8 +3,10 @@ import { requireAuthenticatedUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 type OnboardingPayload = {
+  companyId?: string | null
   companyName?: string
   companyLogo?: string
+  developmentId?: string | null
   developmentName?: string
   developmentLogo?: string
   blockCount?: number
@@ -56,6 +58,8 @@ export async function POST(req: Request) {
   const data = (await req.json()) as OnboardingPayload
   const errors: Record<string, string> = {}
 
+  const companyId = data.companyId?.trim() || null
+  const developmentId = data.developmentId?.trim() || null
   const companyName = data.companyName?.trim() ?? ''
   const companyLogo = data.companyLogo?.trim() ?? ''
   const developmentName = data.developmentName?.trim() ?? ''
@@ -93,65 +97,125 @@ export async function POST(req: Request) {
     return NextResponse.json({ errors }, { status: 400 })
   }
 
-  const result = await prisma.$transaction(async (tx) => {
-    const company = await tx.company.create({
-      data: {
-        name: companyName,
-        logo: companyLogo,
+  if (companyId) {
+    const company = await prisma.company.findFirst({
+      where: {
+        id: companyId,
+        OR: [
+          { developments: { some: { memberships: { some: { userId } } } } },
+          { developments: { none: {} } },
+        ],
       },
+      select: { id: true },
     })
+    if (!company) return NextResponse.json({ error: 'Empresa nao encontrada.' }, { status: 404 })
+  }
 
-    const development = await tx.development.create({
-      data: {
-        name: developmentName,
-        logo: developmentLogo,
-        companyId: company.id,
-        memberships: {
-          create: {
-            userId,
-            roles: {
+  if (developmentId) {
+    const development = await prisma.development.findFirst({
+      where: {
+        id: developmentId,
+        memberships: { some: { userId } },
+      },
+      select: { id: true },
+    })
+    if (!development) return NextResponse.json({ error: 'Empreendimento nao encontrado.' }, { status: 404 })
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const company = companyId
+      ? await tx.company.update({
+          where: { id: companyId },
+          data: {
+            name: companyName,
+            logo: companyLogo,
+          },
+        })
+      : await tx.company.create({
+          data: {
+            name: companyName,
+            logo: companyLogo,
+          },
+        })
+
+    const development = developmentId
+      ? await tx.development.update({
+          where: { id: developmentId },
+          data: {
+            name: developmentName,
+            logo: developmentLogo,
+            companyId: company.id,
+          },
+        })
+      : await tx.development.create({
+          data: {
+            name: developmentName,
+            logo: developmentLogo,
+            companyId: company.id,
+            memberships: {
               create: {
-                role: {
-                  connectOrCreate: {
-                    where: { name: 'OWNER' },
-                    create: { name: 'OWNER' },
+                userId,
+                roles: {
+                  create: {
+                    role: {
+                      connectOrCreate: {
+                        where: { name: 'OWNER' },
+                        create: { name: 'OWNER' },
+                      },
+                    },
                   },
                 },
               },
             },
           },
+        })
+
+    const existingLotCount = await tx.lot.count({
+      where: {
+        block: {
+          developmentId: development.id,
         },
       },
     })
 
-    for (let blockIndex = 0; blockIndex < blockCount!; blockIndex += 1) {
-      const block = await tx.block.create({
-        data: {
-          identifier: getBlockIdentifier(blockIndex, blockPrefix),
-          developmentId: development.id,
-        },
-      })
+    let createdBlocks = 0
+    let createdLots = 0
 
-      await tx.lot.createMany({
-        data: Array.from({ length: lotsPerBlock! }, (_, lotIndex) => ({
-          identifier: `${lotIndex + 1}`.padStart(2, '0'),
-          blockId: block.id,
-          front: lotFront!,
-          back: lotBack!,
-          leftSide: lotLeftSide!,
-          rightSide: lotRightSide!,
-          totalArea: lotArea!,
-          price: lotPrice!,
-          status: initialStatus,
-        })),
-      })
+    if (existingLotCount === 0) {
+      for (let blockIndex = 0; blockIndex < blockCount!; blockIndex += 1) {
+        const block = await tx.block.create({
+          data: {
+            identifier: getBlockIdentifier(blockIndex, blockPrefix),
+            developmentId: development.id,
+          },
+        })
+
+        await tx.lot.createMany({
+          data: Array.from({ length: lotsPerBlock! }, (_, lotIndex) => ({
+            identifier: `${lotIndex + 1}`.padStart(2, '0'),
+            blockId: block.id,
+            front: lotFront!,
+            back: lotBack!,
+            leftSide: lotLeftSide!,
+            rightSide: lotRightSide!,
+            totalArea: lotArea!,
+            price: lotPrice!,
+            status: initialStatus,
+          })),
+        })
+      }
+
+      createdBlocks = blockCount!
+      createdLots = blockCount! * lotsPerBlock!
     }
 
     return {
       company,
       development,
-      createdBlocks: blockCount,
-      createdLots: blockCount! * lotsPerBlock!,
+      createdBlocks,
+      createdLots,
+      updatedExistingSetup: Boolean(companyId || developmentId),
+      skippedInventoryCreation: existingLotCount > 0,
     }
   })
 
