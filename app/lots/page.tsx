@@ -9,6 +9,19 @@ type SortField = 'identifier' | 'block' | 'totalArea' | 'price' | 'status'
 interface Development {
   id: string
   name: string
+  settings?: DevelopmentSettings | null
+}
+
+interface DevelopmentSettings {
+  reservationValidityDays: number
+  defaultInterestRate: number
+  interestCalculation: 'none' | 'simple' | 'compound'
+  correctionIndex: 'none' | 'ipca' | 'incc' | 'igpm' | 'fixed'
+  correctionFrequency: 'monthly' | 'annual'
+  minDownPaymentPercentage: number
+  maxInstallments: number
+  paymentMethods: string
+  allowCustomTerms: boolean
 }
 
 interface Block {
@@ -125,6 +138,12 @@ function formatDateInput(value: Date) {
   return value.toISOString().slice(0, 10)
 }
 
+function getDefaultDueDate() {
+  const date = new Date()
+  date.setMonth(date.getMonth() + 1)
+  return formatDateInput(date)
+}
+
 function getDefaultExpirationDate(days = 7) {
   const date = new Date()
   date.setDate(date.getDate() + days)
@@ -150,6 +169,18 @@ function isReservationExpired(reservation: LotReservation | null) {
   return Boolean(reservation?.expiresAt && new Date(reservation.expiresAt) < new Date())
 }
 
+function calculateInstallment(balance: number, installmentCount: number, monthlyInterestRate: number, interestCalculation: string) {
+  if (installmentCount <= 0) return 0
+  if (balance <= 0) return 0
+
+  const monthlyRate = monthlyInterestRate / 100
+  if (monthlyRate <= 0 || interestCalculation === 'none') return balance / installmentCount
+  if (interestCalculation === 'simple') return (balance * (1 + monthlyRate * installmentCount)) / installmentCount
+
+  const factor = Math.pow(1 + monthlyRate, installmentCount)
+  return (balance * monthlyRate * factor) / (factor - 1)
+}
+
 export default function LotsPage() {
   const [lots, setLots] = useState<Lot[]>([])
   const [clients, setClients] = useState<Person[]>([])
@@ -162,6 +193,18 @@ export default function LotsPage() {
     userId: '',
     proposal: '',
     expiresAt: getDefaultExpirationDate(),
+  })
+  const [showSimulator, setShowSimulator] = useState(false)
+  const [proposalNotice, setProposalNotice] = useState<string | null>(null)
+  const [simulatorForm, setSimulatorForm] = useState({
+    salePrice: 0,
+    downPayment: 0,
+    installmentCount: 120,
+    interestRate: 0,
+    interestCalculation: 'none' as DevelopmentSettings['interestCalculation'],
+    correctionIndex: 'none' as DevelopmentSettings['correctionIndex'],
+    correctionFrequency: 'monthly' as DevelopmentSettings['correctionFrequency'],
+    firstDueDate: getDefaultDueDate(),
   })
   const [viewMode, setViewMode] = useState<ViewMode>('map')
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null)
@@ -277,6 +320,36 @@ export default function LotsPage() {
     [filteredLots, lots, selectedLotId],
   )
 
+  const simulation = useMemo(() => {
+    const balance = Math.max(simulatorForm.salePrice - simulatorForm.downPayment, 0)
+    const installmentValue = calculateInstallment(
+      balance,
+      simulatorForm.installmentCount,
+      simulatorForm.interestRate,
+      simulatorForm.interestCalculation,
+    )
+    const financedTotal = installmentValue * simulatorForm.installmentCount
+    const totalContracted = simulatorForm.downPayment + financedTotal
+
+    return {
+      balance,
+      installmentValue,
+      financedTotal,
+      totalContracted,
+      interestCost: Math.max(totalContracted - simulatorForm.salePrice, 0),
+    }
+  }, [simulatorForm])
+
+  const simulationIsValid = useMemo(
+    () =>
+      simulatorForm.salePrice > 0 &&
+      simulatorForm.downPayment >= 0 &&
+      simulatorForm.downPayment <= simulatorForm.salePrice &&
+      simulatorForm.installmentCount > 0 &&
+      simulation.installmentValue > 0,
+    [simulatorForm, simulation.installmentValue],
+  )
+
   const stats = useMemo(() => {
     const totalValue = filteredLots.reduce((sum, lot) => sum + lot.price, 0)
 
@@ -315,7 +388,31 @@ export default function LotsPage() {
   const selectLot = (lotId: string) => {
     setSelectedLotId((current) => (current === lotId ? null : lotId))
     setShowReservationForm(false)
+    setShowSimulator(false)
     setReservationError(null)
+  }
+
+  const openSimulator = () => {
+    if (!selectedLot) return
+
+    const settings = selectedLot.block.development?.settings
+    const salePrice = selectedLot.price
+    const minDownPaymentPercentage = settings?.minDownPaymentPercentage ?? 10
+    const maxInstallments = settings?.maxInstallments ?? 120
+
+    setSimulatorForm({
+      salePrice,
+      downPayment: Math.round((salePrice * minDownPaymentPercentage) / 100),
+      installmentCount: maxInstallments,
+      interestRate: settings?.defaultInterestRate ?? 0,
+      interestCalculation: settings?.interestCalculation ?? 'none',
+      correctionIndex: settings?.correctionIndex ?? 'none',
+      correctionFrequency: settings?.correctionFrequency ?? 'monthly',
+      firstDueDate: getDefaultDueDate(),
+    })
+    setShowReservationForm(false)
+    setShowSimulator(true)
+    setProposalNotice(null)
   }
 
   const openReservationForm = async () => {
@@ -758,7 +855,7 @@ export default function LotsPage() {
                   <div className='mt-4 space-y-3'>
                     {selectedLot.status === 'available' && (
                       <>
-                        <button className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+                        <button onClick={openSimulator} className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
                           Simular venda
                         </button>
                         <button onClick={openReservationForm} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
@@ -775,7 +872,7 @@ export default function LotsPage() {
                         <button className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
                           Converter em venda
                         </button>
-                        <button className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
+                        <button onClick={openSimulator} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
                           Simular nova condicao
                         </button>
                         <button onClick={cancelReservation} disabled={reservationSaving} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background disabled:opacity-60'>
@@ -860,6 +957,7 @@ export default function LotsPage() {
                       </div>
                     </div>
                   )}
+
                 </div>
 
                 <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
@@ -898,6 +996,200 @@ export default function LotsPage() {
           </aside>
         </div>
       </section>
+
+      {showSimulator && selectedLot && (
+        <>
+          <button
+            type='button'
+            aria-label='Fechar simulador financeiro'
+            className='fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-[1px] lg:left-[290px]'
+            onClick={() => setShowSimulator(false)}
+          />
+          <aside className='fixed inset-y-0 right-0 z-50 w-full max-w-5xl border-l border-border bg-surface shadow-2xl'>
+            <div className='flex h-full flex-col'>
+              <div className='border-b border-border px-6 py-5'>
+                <div className='flex items-start justify-between gap-4'>
+                  <div>
+                    <p className='text-xs font-semibold uppercase tracking-[0.2em] text-muted'>Simulador financeiro</p>
+                    <h2 className='mt-2 text-2xl font-bold text-foreground'>Quadra {selectedLot.block.identifier}, Lote {selectedLot.identifier}</h2>
+                    <p className='mt-2 text-sm leading-6 text-muted'>
+                      {selectedLot.block.development?.name ?? 'Sem empreendimento'} · {formatArea(selectedLot.totalArea)} · valor base {formatCurrency(selectedLot.price)}
+                    </p>
+                  </div>
+                  <button
+                    type='button'
+                    onClick={() => setShowSimulator(false)}
+                    className='rounded-xl border border-border bg-surface-secondary p-2 text-muted transition hover:bg-background hover:text-foreground'
+                  >
+                    <svg className='h-5 w-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M6 18L18 6M6 6l12 12' />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div className='flex-1 overflow-y-auto px-6 py-6'>
+                <div className='grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]'>
+                  <div className='space-y-6'>
+                    <section className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                      <h3 className='text-base font-semibold text-foreground'>Condicao comercial</h3>
+                      <div className='mt-5 grid gap-4 md:grid-cols-2'>
+                        <label className='block md:col-span-2'>
+                          <span className='mb-2 block text-sm font-semibold text-foreground'>Valor de venda</span>
+                          <input
+                            type='number'
+                            min={0}
+                            step='0.01'
+                            value={simulatorForm.salePrice}
+                            onChange={(event) => setSimulatorForm((current) => ({ ...current, salePrice: Number(event.target.value) || 0 }))}
+                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                          />
+                        </label>
+                        <label className='block'>
+                          <span className='mb-2 block text-sm font-semibold text-foreground'>Entrada</span>
+                          <input
+                            type='number'
+                            min={0}
+                            step='0.01'
+                            value={simulatorForm.downPayment}
+                            onChange={(event) => setSimulatorForm((current) => ({ ...current, downPayment: Math.min(Number(event.target.value) || 0, current.salePrice) }))}
+                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                          />
+                        </label>
+                        <label className='block'>
+                          <span className='mb-2 block text-sm font-semibold text-foreground'>Parcelas</span>
+                          <input
+                            type='number'
+                            min={1}
+                            max={selectedLot.block.development?.settings?.maxInstallments ?? 240}
+                            value={simulatorForm.installmentCount}
+                            onChange={(event) => setSimulatorForm((current) => ({ ...current, installmentCount: Math.max(Number(event.target.value) || 1, 1) }))}
+                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                          />
+                        </label>
+                      </div>
+                    </section>
+
+                    <section className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                      <h3 className='text-base font-semibold text-foreground'>Juros e correcao</h3>
+                      <div className='mt-5 grid gap-4 md:grid-cols-2'>
+                        <label className='block'>
+                          <span className='mb-2 block text-sm font-semibold text-foreground'>Juros ao mes</span>
+                          <input
+                            type='number'
+                            min={0}
+                            max={10}
+                            step='0.01'
+                            value={simulatorForm.interestRate}
+                            onChange={(event) => setSimulatorForm((current) => ({ ...current, interestRate: Number(event.target.value) || 0 }))}
+                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                          />
+                        </label>
+                        <label className='block'>
+                          <span className='mb-2 block text-sm font-semibold text-foreground'>Tipo de juros</span>
+                          <select
+                            value={simulatorForm.interestCalculation}
+                            onChange={(event) => setSimulatorForm((current) => ({ ...current, interestCalculation: event.target.value as DevelopmentSettings['interestCalculation'] }))}
+                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                          >
+                            <option value='none'>Sem juros</option>
+                            <option value='simple'>Juros simples</option>
+                            <option value='compound'>Juros compostos</option>
+                          </select>
+                        </label>
+                        <label className='block'>
+                          <span className='mb-2 block text-sm font-semibold text-foreground'>Correcao</span>
+                          <select
+                            value={simulatorForm.correctionIndex}
+                            onChange={(event) => setSimulatorForm((current) => ({ ...current, correctionIndex: event.target.value as DevelopmentSettings['correctionIndex'] }))}
+                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                          >
+                            <option value='none'>Sem correcao</option>
+                            <option value='ipca'>IPCA</option>
+                            <option value='incc'>INCC</option>
+                            <option value='igpm'>IGP-M</option>
+                            <option value='fixed'>Percentual fixo</option>
+                          </select>
+                        </label>
+                        <label className='block'>
+                          <span className='mb-2 block text-sm font-semibold text-foreground'>Primeiro vencimento</span>
+                          <input
+                            type='date'
+                            value={simulatorForm.firstDueDate}
+                            onChange={(event) => setSimulatorForm((current) => ({ ...current, firstDueDate: event.target.value }))}
+                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                          />
+                        </label>
+                      </div>
+                    </section>
+
+                    <div className='rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-800'>
+                      A correcao {simulatorForm.correctionIndex === 'none' ? 'nao sera aplicada nesta estimativa' : `${simulatorForm.correctionIndex.toUpperCase()} sera considerada como regra da proposta`}. A persistencia da proposta entra no proximo fluxo.
+                    </div>
+                  </div>
+
+                  <aside className='self-start lg:sticky lg:top-0'>
+                    <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                      <h3 className='text-base font-semibold text-foreground'>Resumo</h3>
+                      <div className='mt-5 space-y-4'>
+                        <div className='rounded-xl border border-border bg-surface px-4 py-4'>
+                          <p className='text-xs font-semibold uppercase text-muted'>Parcela estimada</p>
+                          <p className='mt-2 text-2xl font-bold text-foreground'>{formatCurrency(simulation.installmentValue)}</p>
+                        </div>
+                        <div className='grid gap-3 text-sm'>
+                          <div className='flex items-center justify-between gap-3'>
+                            <span className='text-muted'>Entrada</span>
+                            <span className='font-semibold text-foreground'>{formatCurrency(simulatorForm.downPayment)}</span>
+                          </div>
+                          <div className='flex items-center justify-between gap-3'>
+                            <span className='text-muted'>Saldo a parcelar</span>
+                            <span className='font-semibold text-foreground'>{formatCurrency(simulation.balance)}</span>
+                          </div>
+                          <div className='flex items-center justify-between gap-3'>
+                            <span className='text-muted'>Total contratado</span>
+                            <span className='font-semibold text-foreground'>{formatCurrency(simulation.totalContracted)}</span>
+                          </div>
+                          <div className='flex items-center justify-between gap-3'>
+                            <span className='text-muted'>Custo financeiro</span>
+                            <span className='font-semibold text-foreground'>{formatCurrency(simulation.interestCost)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    {proposalNotice && (
+                      <div className='mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800'>
+                        {proposalNotice}
+                      </div>
+                    )}
+                  </aside>
+                </div>
+              </div>
+
+              <div className='border-t border-border px-6 py-5'>
+                <div className='flex flex-col gap-3 md:flex-row md:justify-end'>
+                  <button
+                    type='button'
+                    onClick={() => setShowSimulator(false)}
+                    className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type='button'
+                    disabled={!simulationIsValid}
+                    onClick={() => setProposalNotice('Simulacao pronta para salvar como proposta. A persistencia sera conectada na proxima etapa.')}
+                    className={`rounded-xl px-4 py-3 text-sm font-semibold text-white transition ${
+                      simulationIsValid ? 'bg-primary hover:bg-primary-strong' : 'bg-primary opacity-60'
+                    }`}
+                  >
+                    Salvar proposta
+                  </button>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </>
+      )}
     </div>
   )
 }

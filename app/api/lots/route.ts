@@ -12,7 +12,7 @@ export async function GET() {
   const lots = await prisma.lot.findMany({
     where: lotAccessWhere(userId),
     include: {
-      block: { include: { development: true } },
+      block: { include: { development: { include: { settings: true } } } },
       reservations: {
         include: {
           user: true,
