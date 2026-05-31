@@ -19,6 +19,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     },
     include: {
       company: true,
+      settings: true,
       _count: {
         select: {
           blocks: true,

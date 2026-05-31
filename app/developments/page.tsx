@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import DevelopmentForm from './components/DevelopmentForm'
+import DevelopmentSettingsForm from './components/DevelopmentSettingsForm'
 import InlineAlert from '@/app/components/InlineAlert'
 
 interface Company {
@@ -16,6 +17,14 @@ interface Development {
   companyId: string
   createdAt: string
   company: Company
+  settings?: {
+    reservationValidityDays: number
+    defaultInterestRate: number
+    interestCalculation: string
+    correctionIndex: string
+    maxInstallments: number
+    paymentMethods: string
+  } | null
   _count?: {
     blocks: number
   }
@@ -27,7 +36,9 @@ export default function DevelopmentsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [showSettingsForm, setShowSettingsForm] = useState(false)
   const [editingDevelopment, setEditingDevelopment] = useState<Development | null>(null)
+  const [settingsDevelopment, setSettingsDevelopment] = useState<Development | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
@@ -75,6 +86,20 @@ export default function DevelopmentsPage() {
 
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('pt-BR')
   const getInitials = (name: string) => name.split(' ').map((part) => part[0]).join('').toUpperCase().slice(0, 2)
+  const formatPercent = (value?: number) => `${Number(value ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
+  const formatPaymentMethods = (methods?: string) => {
+    const labels: Record<string, string> = {
+      cash: 'A vista',
+      installments: 'Parcelamento',
+      financing: 'Financiamento',
+      bank_slip: 'Boleto',
+      pix: 'Pix',
+    }
+
+    const selected = methods?.split(',').filter(Boolean) ?? []
+    if (selected.length === 0) return 'Nao configurado'
+    return selected.map((method) => labels[method] ?? method).join(', ')
+  }
 
   if (loading) return <div className='animate-pulse'><div className='h-8 w-64 rounded-xl bg-surface-secondary'></div></div>
   if (error) return <div className='rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700'>{error}</div>
@@ -120,7 +145,7 @@ export default function DevelopmentsPage() {
                   <th className='table-head px-6 py-4 text-left'>Empresa</th>
                   <th className='table-head px-6 py-4 text-left'>Logo</th>
                   <th className='table-head px-6 py-4 text-left'>Blocos</th>
-                  <th className='table-head px-6 py-4 text-left'>Criado em</th>
+                  <th className='table-head px-6 py-4 text-left'>Regras comerciais</th>
                   <th className='table-head px-6 py-4 text-right'>Acoes</th>
                 </tr>
               </thead>
@@ -131,8 +156,19 @@ export default function DevelopmentsPage() {
                     <td className='px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground'>{development.company.name}</td>
                     <td className='px-6 py-4 whitespace-nowrap'><img src={development.logo} alt={`Logo de ${development.name}`} className='h-12 w-24 rounded-2xl border border-border bg-background p-2 object-contain' /></td>
                     <td className='px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground'><span className='rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700'>{development._count?.blocks ?? 0}</span></td>
-                    <td className='px-6 py-4 whitespace-nowrap text-sm text-muted'>{formatDate(development.createdAt)}</td>
-                    <td className='px-6 py-4 whitespace-nowrap text-right text-sm font-semibold'><button onClick={() => { setEditingDevelopment(development); setShowForm(true) }} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>Editar</button></td>
+                    <td className='px-6 py-4 text-sm text-muted'>
+                      <div className='min-w-[240px] space-y-1'>
+                        <p><span className='font-semibold text-foreground'>Reserva:</span> {development.settings?.reservationValidityDays ?? 7} dias</p>
+                        <p><span className='font-semibold text-foreground'>Juros:</span> {formatPercent(development.settings?.defaultInterestRate)} a.m. / {development.settings?.correctionIndex?.toUpperCase() ?? 'NONE'}</p>
+                        <p><span className='font-semibold text-foreground'>Pagamento:</span> {formatPaymentMethods(development.settings?.paymentMethods)}</p>
+                      </div>
+                    </td>
+                    <td className='px-6 py-4 whitespace-nowrap text-right text-sm font-semibold'>
+                      <div className='flex justify-end gap-2'>
+                        <button onClick={() => { setSettingsDevelopment(development); setShowSettingsForm(true) }} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>Configurar</button>
+                        <button onClick={() => { setEditingDevelopment(development); setShowForm(true) }} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>Editar</button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -142,17 +178,17 @@ export default function DevelopmentsPage() {
 
         <aside className='panel'>
           <div className='panel-header px-6 py-5'>
-            <h2 className='text-lg font-semibold text-foreground'>Business rules</h2>
-            <p className='mt-1 text-sm text-muted'>This page now represents the empreendimento layer.</p>
+            <h2 className='text-lg font-semibold text-foreground'>Regras comerciais</h2>
+            <p className='mt-1 text-sm text-muted'>Defina padroes que serao usados em reserva, simulacao e venda.</p>
           </div>
           <div className='space-y-4 px-6 py-6'>
             <div className='rounded-2xl border border-border bg-surface-secondary px-4 py-4'>
-              <p className='text-sm font-semibold text-foreground'>Example</p>
-              <p className='mt-2 text-sm leading-6 text-muted'>Loteamento Cajueiro I and Loteamento Cajueiro II can both belong to Oliveira Construcoes.</p>
+              <p className='text-sm font-semibold text-foreground'>Padroes por empreendimento</p>
+              <p className='mt-2 text-sm leading-6 text-muted'>Cada loteamento pode ter prazo de reserva, juros, correcao, entrada minima e formas de pagamento proprios.</p>
             </div>
             <div className='rounded-2xl border border-border bg-surface-secondary px-4 py-4'>
-              <p className='text-sm font-semibold text-foreground'>Follow-up</p>
-              <p className='mt-2 text-sm leading-6 text-muted'>The next UI refactor should make block creation require a selected development.</p>
+              <p className='text-sm font-semibold text-foreground'>Proximo uso</p>
+              <p className='mt-2 text-sm leading-6 text-muted'>O simulador financeiro deve carregar esses valores como padrao antes de montar propostas.</p>
             </div>
           </div>
         </aside>
@@ -171,6 +207,17 @@ export default function DevelopmentsPage() {
               ? 'O empreendimento foi criado com sucesso.'
               : 'O empreendimento foi atualizado com sucesso.',
           )
+        }}
+      />
+      <DevelopmentSettingsForm
+        development={settingsDevelopment}
+        isOpen={showSettingsForm}
+        onClose={() => { setShowSettingsForm(false); setSettingsDevelopment(null) }}
+        onSave={async () => {
+          await refresh()
+          setShowSettingsForm(false)
+          setSettingsDevelopment(null)
+          setSuccessMessage('As configuracoes comerciais foram atualizadas com sucesso.')
         }}
       />
     </div>

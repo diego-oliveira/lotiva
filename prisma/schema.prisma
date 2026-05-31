@@ -35,6 +35,25 @@ model Development {
   company      Company            @relation(fields: [companyId], references: [id])
   blocks       Block[]
   memberships  DevelopmentUser[]
+  settings     DevelopmentSettings?
+}
+
+model DevelopmentSettings {
+  id                       String   @id @default(uuid())
+  developmentId            String   @unique
+  reservationValidityDays  Int      @default(7)
+  defaultInterestRate      Float    @default(0)
+  interestCalculation      String   @default("none")
+  correctionIndex          String   @default("none")
+  correctionFrequency      String   @default("monthly")
+  minDownPaymentPercentage Float    @default(10)
+  maxInstallments          Int      @default(120)
+  paymentMethods           String   @default("cash,installments")
+  allowCustomTerms         Boolean  @default(true)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
 }
 
 model User {

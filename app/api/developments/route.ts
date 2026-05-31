@@ -12,6 +12,7 @@ export async function GET() {
     where: membershipWhere(userId),
     include: {
       company: true,
+      settings: true,
       _count: {
         select: {
           blocks: true,
@@ -41,10 +42,13 @@ export async function POST(req: Request) {
     data: {
       name: data.name,
       logo: data.logo,
-      companyId: data.companyId,
-      memberships: {
-        create: {
-          userId,
+        companyId: data.companyId,
+        settings: {
+          create: {},
+        },
+        memberships: {
+          create: {
+            userId,
           roles: {
             create: {
               role: {
