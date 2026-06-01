@@ -5,6 +5,60 @@ import { forbiddenResponse, lotAccessWhere, reservationAccessWhere, saleAccessWh
 import { NextResponse } from 'next/server'
 import { generateContractNumber, generateContractHTML } from '@/lib/contractGenerator'
 
+function addMonths(date: Date, months: number) {
+  const next = new Date(date)
+  next.setMonth(next.getMonth() + months)
+  return next
+}
+
+function parseDateOnly(value?: string | null) {
+  if (!value) return null
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return null
+  return new Date(year, month - 1, day, 12)
+}
+
+function buildReceivables(
+  saleId: string,
+  data: { downPayment: number; installmentCount: number; installmentValue: number; firstDueDate?: Date | null },
+) {
+  const createdAt = new Date()
+  const firstDueDate = data.firstDueDate ?? addMonths(createdAt, 1)
+  const receivables: Array<{
+    saleId: string
+    kind: string
+    sequence: number
+    dueDate: Date
+    amount: number
+    balance: number
+  }> = []
+
+  if (data.downPayment > 0) {
+    receivables.push({
+      saleId,
+      kind: 'down_payment',
+      sequence: 0,
+      dueDate: createdAt,
+      amount: data.downPayment,
+      balance: data.downPayment,
+    })
+  }
+
+  for (let sequence = 1; sequence <= data.installmentCount; sequence += 1) {
+    const amount = data.installmentValue
+    receivables.push({
+      saleId,
+      kind: 'installment',
+      sequence,
+      dueDate: addMonths(firstDueDate, sequence - 1),
+      amount,
+      balance: amount,
+    })
+  }
+
+  return receivables
+}
+
 export async function GET() {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
@@ -20,7 +74,13 @@ export async function GET() {
         }
       },
       reservation: true,
-      contract: true
+      contract: true,
+      receivables: {
+        orderBy: [
+          { dueDate: 'asc' },
+          { sequence: 'asc' },
+        ],
+      },
     },
     orderBy: { createdAt: 'desc' },
   })
@@ -103,6 +163,8 @@ export async function POST(req: Request) {
     }
 
     // Start a transaction to ensure data consistency
+    const firstDueDate = parseDateOnly(data.firstDueDate) ?? addMonths(new Date(), 1)
+
     const result = await prisma.$transaction(async (prisma) => {
       // Create the sale
       const sale = await prisma.sale.create({
@@ -113,6 +175,7 @@ export async function POST(req: Request) {
           installmentCount: data.installmentCount,
           installmentValue: data.installmentValue,
           downPayment: data.downPayment,
+          firstDueDate,
           annualAdjustment: data.annualAdjustment,
           totalValue: data.totalValue,
         },
@@ -126,6 +189,17 @@ export async function POST(req: Request) {
           reservation: true
         }
       })
+
+      const receivables = buildReceivables(sale.id, {
+        downPayment: sale.downPayment,
+        installmentCount: sale.installmentCount,
+        installmentValue: sale.installmentValue,
+        firstDueDate,
+      })
+
+      if (receivables.length > 0) {
+        await prisma.receivable.createMany({ data: receivables })
+      }
 
       // Update lot status to sold
       await prisma.lot.update({

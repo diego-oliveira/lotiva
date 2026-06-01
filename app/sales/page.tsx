@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import SalesForm from './components/SalesForm'
 import ContractViewer from './components/ContractViewer'
+import ReceivablesDrawer from './components/ReceivablesDrawer'
 
 interface Block {
   id: string
@@ -30,6 +31,18 @@ interface Reservation {
   status: string
 }
 
+interface Receivable {
+  id: string
+  kind: string
+  sequence: number
+  dueDate: string
+  amount: number
+  paidAmount: number
+  balance: number
+  status: string
+  paidAt?: string | null
+}
+
 interface Sale {
   id: string
   userId: string
@@ -38,6 +51,7 @@ interface Sale {
   installmentCount: number
   installmentValue: number
   downPayment: number
+  firstDueDate?: string | null
   annualAdjustment: boolean
   totalValue: number
   createdAt: string
@@ -45,6 +59,7 @@ interface Sale {
   user: User
   lot: Lot
   reservation?: Reservation
+  receivables?: Receivable[]
 }
 
 function formatCurrency(value: number) {
@@ -78,6 +93,7 @@ export default function SalesPage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [showContract, setShowContract] = useState(false)
   const [contractSaleId, setContractSaleId] = useState<string>('')
+  const [receivablesSale, setReceivablesSale] = useState<Sale | null>(null)
 
   useEffect(() => {
     fetchSales()
@@ -101,10 +117,13 @@ export default function SalesPage() {
       setNotice(null)
       const response = await fetch('/api/sales', { cache: 'no-store' })
       if (!response.ok) throw new Error('Failed to fetch sales')
-      setSales(await response.json())
+      const nextSales = (await response.json()) as Sale[]
+      setSales(nextSales)
       setError(null)
+      return nextSales
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
+      return null
     } finally {
       setLoading(false)
     }
@@ -147,6 +166,19 @@ export default function SalesPage() {
   const handleCloseContract = () => {
     setShowContract(false)
     setContractSaleId('')
+  }
+
+  const handleViewReceivables = (sale: Sale) => {
+    setReceivablesSale(sale)
+  }
+
+  const handleReceivablesUpdated = async () => {
+    const nextSales = await fetchSales()
+    if (!nextSales) return
+    setReceivablesSale((current) => {
+      if (!current) return null
+      return nextSales.find((sale) => sale.id === current.id) ?? current
+    })
   }
 
   const filteredSales = sales.filter((sale) => {
@@ -329,6 +361,9 @@ export default function SalesPage() {
                         <button onClick={() => handleViewContract(sale.id)} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>
                           Contrato
                         </button>
+                        <button onClick={() => handleViewReceivables(sale)} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>
+                          Parcelas
+                        </button>
                         <button onClick={() => handleEditSale(sale)} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>
                           Editar
                         </button>
@@ -354,6 +389,13 @@ export default function SalesPage() {
         saleId={contractSaleId}
         isOpen={showContract}
         onClose={handleCloseContract}
+      />
+
+      <ReceivablesDrawer
+        sale={receivablesSale}
+        isOpen={Boolean(receivablesSale)}
+        onClose={() => setReceivablesSale(null)}
+        onUpdated={handleReceivablesUpdated}
       />
     </div>
   )

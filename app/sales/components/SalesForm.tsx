@@ -25,6 +25,7 @@ interface ProposalSummary {
   installmentCount: number
   installmentValue: number
   totalValue: number
+  firstDueDate?: string | null
   user: {
     id: string
     name: string
@@ -67,6 +68,7 @@ interface SaleFormData {
   installmentCount: number
   installmentValue: number
   downPayment: number
+  firstDueDate: string
   annualAdjustment: boolean
   totalValue: number
 }
@@ -114,7 +116,31 @@ function formatArea(value: number) {
 
 function formatDate(value?: string | null) {
   if (!value) return 'Pendente'
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split('-').map(Number)
+    return new Date(year, month - 1, day).toLocaleDateString('pt-BR')
+  }
   return new Date(value).toLocaleDateString('pt-BR')
+}
+
+function toDateInputValue(value?: string | null) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return formatDateInput(date)
+}
+
+function formatDateInput(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function getDefaultFirstDueDate() {
+  const date = new Date()
+  date.setMonth(date.getMonth() + 1)
+  return formatDateInput(date)
 }
 
 function getInitials(name: string) {
@@ -163,6 +189,7 @@ export default function SalesForm({
     installmentCount: 1,
     installmentValue: 0,
     downPayment: 0,
+    firstDueDate: getDefaultFirstDueDate(),
     annualAdjustment: true,
     totalValue: 0,
   })
@@ -181,6 +208,7 @@ export default function SalesForm({
         installmentCount: sale.installmentCount,
         installmentValue: sale.installmentValue,
         downPayment: sale.downPayment,
+        firstDueDate: toDateInputValue(sale.firstDueDate) || getDefaultFirstDueDate(),
         annualAdjustment: sale.annualAdjustment,
         totalValue: sale.totalValue,
       })
@@ -192,6 +220,7 @@ export default function SalesForm({
         installmentCount: 1,
         installmentValue: 0,
         downPayment: 0,
+        firstDueDate: getDefaultFirstDueDate(),
         annualAdjustment: true,
         totalValue: 0,
       })
@@ -299,6 +328,7 @@ export default function SalesForm({
         downPayment: selectedProposal.downPayment,
         installmentCount: selectedProposal.installmentCount,
         installmentValue: selectedProposal.installmentValue,
+        firstDueDate: toDateInputValue(selectedProposal.firstDueDate) || prev.firstDueDate,
         totalValue: selectedProposal.totalValue,
       }))
       return
@@ -324,7 +354,7 @@ export default function SalesForm({
 
   const handleInputChange = (field: keyof SaleFormData, value: any) => {
     if (field === 'userId' || field === 'lotId') setPaymentTouched(false)
-    if (field === 'downPayment' || field === 'installmentCount' || field === 'installmentValue') setPaymentTouched(true)
+    if (field === 'downPayment' || field === 'installmentCount' || field === 'installmentValue' || field === 'firstDueDate') setPaymentTouched(true)
     setFormData((prev) => ({ ...prev, [field]: value }))
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: '' }))
   }
@@ -338,6 +368,7 @@ export default function SalesForm({
       if (formData.installmentCount < 1) newErrors.installmentCount = 'Minimo 1 parcela'
       if (formData.downPayment < 0) newErrors.downPayment = 'Entrada nao pode ser negativa'
       if (selectedLot && formData.downPayment > selectedLot.price) newErrors.downPayment = 'Entrada nao pode ser maior que o valor do lote'
+      if (!formData.firstDueDate) newErrors.firstDueDate = 'Informe o primeiro vencimento'
     }
     if (step === 4 && missingDocumentFields.length > 0) {
       newErrors.documents = `Complete os dados do cliente: ${missingDocumentFields.map((field) => field.label).join(', ')}`
@@ -641,6 +672,16 @@ export default function SalesForm({
                         />
                         {errors.installmentCount && <p className='mt-2 text-sm font-medium text-red-600'>{errors.installmentCount}</p>}
                       </label>
+                      <label className='block'>
+                        <span className='mb-2 block text-sm font-semibold text-foreground'>Primeiro vencimento</span>
+                        <input
+                          type='date'
+                          value={formData.firstDueDate}
+                          onChange={(event) => handleInputChange('firstDueDate', event.target.value)}
+                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                        />
+                        {errors.firstDueDate && <p className='mt-2 text-sm font-medium text-red-600'>{errors.firstDueDate}</p>}
+                      </label>
                     </div>
                     <label className='mt-5 flex items-center gap-3 text-sm font-semibold text-foreground'>
                       <input
@@ -673,6 +714,10 @@ export default function SalesForm({
                     <div className='flex justify-between gap-3'>
                       <span className='text-muted'>Saldo</span>
                       <span className='font-semibold text-foreground'>{formatCurrency((selectedLot?.price ?? 0) - formData.downPayment)}</span>
+                    </div>
+                    <div className='flex justify-between gap-3'>
+                      <span className='text-muted'>Primeiro vencimento</span>
+                      <span className='font-semibold text-foreground'>{formatDate(formData.firstDueDate)}</span>
                     </div>
                     <div className='flex justify-between gap-3'>
                       <span className='text-muted'>Total</span>
@@ -803,6 +848,7 @@ export default function SalesForm({
                     <div className='mt-3 text-sm leading-6 text-muted'>
                       <p>Entrada: <span className='font-semibold text-foreground'>{formatCurrency(formData.downPayment)}</span></p>
                       <p>{formData.installmentCount}x de <span className='font-semibold text-foreground'>{formatCurrency(formData.installmentValue)}</span></p>
+                      <p>Primeiro vencimento: <span className='font-semibold text-foreground'>{formatDate(formData.firstDueDate)}</span></p>
                       <p>Total: <span className='font-semibold text-foreground'>{formatCurrency(formData.totalValue)}</span></p>
                     </div>
                   </div>

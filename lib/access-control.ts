@@ -51,6 +51,12 @@ export function contractAccessWhere(userId: string) {
   }
 }
 
+export function receivableAccessWhere(userId: string) {
+  return {
+    sale: saleAccessWhere(userId),
+  }
+}
+
 export function companyAccessWhere(userId: string) {
   return {
     developments: {

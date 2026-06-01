@@ -235,6 +235,7 @@ model Sale {
   installmentCount  Int
   installmentValue  Float
   downPayment       Float
+  firstDueDate      DateTime?
   annualAdjustment  Boolean    @default(true)
   totalValue        Float
   createdAt         DateTime   @default(now())
@@ -244,6 +245,7 @@ model Sale {
   lot         Lot          @relation(fields: [lotId], references: [id])
   reservation Reservation? @relation(fields: [reservationId], references: [id])
   contract    Contract?
+  receivables Receivable[]
 }
 
 model Contract {
@@ -257,4 +259,26 @@ model Contract {
   updatedAt    DateTime  @updatedAt
 
   sale Sale @relation(fields: [saleId], references: [id])
+}
+
+model Receivable {
+  id         String    @id @default(uuid())
+  saleId     String
+  kind       String    @default("installment")
+  sequence   Int
+  dueDate    DateTime
+  amount     Float
+  paidAmount Float     @default(0)
+  balance    Float
+  status     String    @default("pending")
+  paidAt     DateTime?
+  notes      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@unique([saleId, kind, sequence])
+  @@index([dueDate])
+  @@index([status])
 }

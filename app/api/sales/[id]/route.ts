@@ -5,6 +5,13 @@ import { NextResponse } from 'next/server'
 
 type Params = { params: Promise<{ id: string }> }
 
+function parseDateOnly(value?: string | null) {
+  if (!value) return null
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return null
+  return new Date(year, month - 1, day, 12)
+}
+
 export async function GET(_: Request, { params }: Params) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
@@ -24,7 +31,13 @@ export async function GET(_: Request, { params }: Params) {
           block: { include: { development: true } }
         }
       },
-      reservation: true
+      reservation: true,
+      receivables: {
+        orderBy: [
+          { dueDate: 'asc' },
+          { sequence: 'asc' },
+        ],
+      },
     }
   })
 
@@ -101,6 +114,7 @@ export async function PUT(req: Request, { params }: Params) {
         installmentCount: data.installmentCount,
         installmentValue: data.installmentValue,
         downPayment: data.downPayment,
+        firstDueDate: parseDateOnly(data.firstDueDate),
         annualAdjustment: data.annualAdjustment,
         totalValue: data.totalValue,
         updatedAt: new Date(),
@@ -112,7 +126,13 @@ export async function PUT(req: Request, { params }: Params) {
             block: true
           }
         },
-        reservation: true
+        reservation: true,
+        receivables: {
+          orderBy: [
+            { dueDate: 'asc' },
+            { sequence: 'asc' },
+          ],
+        },
       }
     })
 
