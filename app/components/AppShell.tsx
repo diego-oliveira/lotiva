@@ -3,13 +3,22 @@
 import Link from 'next/link'
 import { signOut } from 'next-auth/react'
 import { usePathname } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 type NavItem = {
   href: string
   label: string
   description: string
   icon: 'dashboard' | 'setup' | 'company' | 'development' | 'user' | 'lot' | 'sale' | 'finance'
+  permission?: 'admin' | 'manageSettings' | 'manageUsers' | 'sales' | 'finance'
+}
+
+type PermissionMap = {
+  admin: boolean
+  manageSettings: boolean
+  manageUsers: boolean
+  sales: boolean
+  finance: boolean
 }
 
 const navItems: NavItem[] = [
@@ -24,42 +33,49 @@ const navItems: NavItem[] = [
     label: 'Onboarding',
     description: 'Client setup',
     icon: 'setup',
+    permission: 'manageSettings',
   },
   {
     href: '/companies',
     label: 'Empresas',
     description: 'Holding companies',
     icon: 'company',
+    permission: 'manageSettings',
   },
   {
     href: '/developments',
     label: 'Empreendimentos',
     description: 'Projects and subdivisions',
     icon: 'development',
+    permission: 'manageSettings',
   },
   {
     href: '/clients',
     label: 'Usuarios',
     description: 'People and records',
     icon: 'user',
+    permission: 'manageUsers',
   },
   {
     href: '/lots',
     label: 'Lotes',
     description: 'Inventory',
     icon: 'lot',
+    permission: 'sales',
   },
   {
     href: '/sales',
     label: 'Vendas',
     description: 'Transactions',
     icon: 'sale',
+    permission: 'sales',
   },
   {
     href: '/finance',
     label: 'Financeiro',
     description: 'Receivables',
     icon: 'finance',
+    permission: 'finance',
   },
 ]
 
@@ -121,11 +137,25 @@ function NavIcon({ icon }: { icon: NavItem['icon'] }) {
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [permissions, setPermissions] = useState<PermissionMap | null>(null)
   const isAuthPage = pathname.startsWith('/signin') || pathname.startsWith('/auth')
 
+  useEffect(() => {
+    if (isAuthPage) return
+    fetch('/api/me/permissions', { cache: 'no-store' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => setPermissions(payload?.permissions ?? null))
+      .catch(() => setPermissions(null))
+  }, [isAuthPage])
+
+  const visibleNavItems = useMemo(() => {
+    if (!permissions) return navItems
+    return navItems.filter((item) => !item.permission || permissions[item.permission])
+  }, [permissions])
+
   const currentItem = useMemo(
-    () => navItems.find((item) => (item.href === '/' ? pathname === '/' : pathname.startsWith(item.href))),
-    [pathname],
+    () => visibleNavItems.find((item) => (item.href === '/' ? pathname === '/' : pathname.startsWith(item.href))),
+    [pathname, visibleNavItems],
   )
 
   if (isAuthPage) {
@@ -170,7 +200,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
             <p className='mb-3 px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500'>Menu</p>
             <nav className='space-y-1.5'>
-              {navItems.map((item) => {
+              {visibleNavItems.map((item) => {
                 const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
                 return (
                   <Link

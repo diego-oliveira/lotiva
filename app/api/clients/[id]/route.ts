@@ -10,9 +10,17 @@ import {
   saleAccessWhere,
   userAccessWhere,
 } from '@/lib/access-control'
+import { hasAnyDevelopmentPermission } from '@/lib/permissions'
 import { NextResponse } from 'next/server'
 
 type Params = { params: Promise<{ id: string }> }
+
+async function canUseClientRecords(userId: string) {
+  return (
+    (await hasAnyDevelopmentPermission(userId, 'manageUsers')) ||
+    (await hasAnyDevelopmentPermission(userId, 'sales'))
+  )
+}
 
 const membershipInclude = (userId: string) => ({
   memberships: {
@@ -31,6 +39,7 @@ export async function GET(_: Request, { params }: Params) {
     const auth = await requireAuthenticatedUser()
     if (auth.response) return auth.response
     const currentUserId = auth.session.user.id
+    if (!(await canUseClientRecords(currentUserId))) return forbiddenResponse()
 
     const { id } = await params
     const client = await prisma.user.findFirst({
@@ -106,6 +115,7 @@ export async function PUT(req: Request, { params }: Params) {
     const auth = await requireAuthenticatedUser()
     if (auth.response) return auth.response
     const currentUserId = auth.session.user.id
+    if (!(await canUseClientRecords(currentUserId))) return forbiddenResponse()
 
     const { id } = await params
     const data = await req.json()
@@ -196,6 +206,7 @@ export async function DELETE(_: Request, { params }: Params) {
     const auth = await requireAuthenticatedUser()
     if (auth.response) return auth.response
     const currentUserId = auth.session.user.id
+    if (!(await hasAnyDevelopmentPermission(currentUserId, 'manageUsers'))) return forbiddenResponse()
 
     const { id } = await params
     if (id === currentUserId) {

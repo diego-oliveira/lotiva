@@ -4,6 +4,7 @@ import { getCurrentSession } from '@/lib/auth'
 import { membershipWhere } from '@/lib/access-control'
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@/app/generated/prisma'
+import { hasAnyDevelopmentPermission, hasDevelopmentPermission } from '@/lib/permissions'
 import ReceivableActions from './components/ReceivableActions'
 
 type FinancePageProps = {
@@ -57,6 +58,7 @@ function getStatusMeta(receivable: { status: string; dueDate: Date }) {
 export default async function FinancePage({ searchParams }: FinancePageProps) {
   const session = await getCurrentSession()
   if (!session?.user?.id) redirect('/signin')
+  if (!(await hasAnyDevelopmentPermission(session.user.id, 'finance'))) redirect('/')
 
   const params = await searchParams
   const status = params?.status || 'open'
@@ -72,6 +74,10 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
   })
   const selectedDevelopment =
     developments.find((development) => development.id === params?.developmentId) ?? developments[0] ?? null
+
+  if (selectedDevelopment && !(await hasDevelopmentPermission(session.user.id, selectedDevelopment.id, 'finance'))) {
+    redirect('/')
+  }
 
   if (!selectedDevelopment) {
     return (

@@ -3,6 +3,7 @@ import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, lotAccessWhere, proposalAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 import { createLotEvent } from '@/lib/lot-events'
+import { hasDevelopmentPermission } from '@/lib/permissions'
 
 function toNumber(value: unknown) {
   const parsed = Number(value)
@@ -75,6 +76,7 @@ export async function POST(req: Request) {
       },
     })
     if (!lot?.block.developmentId) return forbiddenResponse()
+    if (!(await hasDevelopmentPermission(currentUserId, lot.block.developmentId, 'sales'))) return forbiddenResponse()
     if (lot.sale || lot.status === 'sold') {
       return NextResponse.json({ error: 'Este lote ja foi vendido.' }, { status: 400 })
     }

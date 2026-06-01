@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, membershipWhere } from '@/lib/access-control'
+import { hasDevelopmentPermission } from '@/lib/permissions'
 import { NextRequest, NextResponse } from 'next/server'
 
 type Params = { params: Promise<{ id: string }> }
@@ -65,8 +66,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
   const { id } = await params
   const data = await req.json()
 
-  const hasAccess = await canAccessDevelopment(userId, id)
-  if (!hasAccess) return forbiddenResponse()
+  const canManageSettings = await hasDevelopmentPermission(userId, id, 'manageSettings')
+  if (!canManageSettings) return forbiddenResponse()
 
   const errors: Record<string, string> = {}
   const reservationValidityDays = asNumber(data.reservationValidityDays)

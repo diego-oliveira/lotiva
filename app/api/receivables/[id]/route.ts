@@ -3,6 +3,7 @@ import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, receivableAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 import { createLotEvent } from '@/lib/lot-events'
+import { hasDevelopmentPermission } from '@/lib/permissions'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -30,13 +31,22 @@ export async function PATCH(req: Request, { params }: Params) {
       sale: {
         include: {
           user: true,
-          lot: true,
+          lot: {
+            include: {
+              block: true,
+            },
+          },
         },
       },
     },
   })
 
   if (!receivable) return forbiddenResponse()
+
+  const developmentId = receivable.sale.lot.block.developmentId
+  if (!developmentId || !(await hasDevelopmentPermission(currentUserId, developmentId, 'finance'))) {
+    return forbiddenResponse()
+  }
 
   if (data.status === 'paid') {
     const paidAmount = Number(data.paidAmount ?? receivable.amount)

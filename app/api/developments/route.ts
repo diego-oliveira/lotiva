@@ -53,8 +53,8 @@ export async function POST(req: Request) {
             create: {
               role: {
                 connectOrCreate: {
-                  where: { name: 'OWNER' },
-                  create: { name: 'OWNER' },
+                  where: { name: 'Administrador' },
+                  create: { name: 'Administrador' },
                 },
               },
             },

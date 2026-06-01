@@ -3,6 +3,7 @@ import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, lotAccessWhere, reservationAccessWhere, userAccessWhere } from '@/lib/access-control'
 import { NextResponse } from "next/server";
 import { createLotEvent } from '@/lib/lot-events'
+import { hasDevelopmentPermission } from '@/lib/permissions'
 
 function parseExpiration(value: unknown, fallbackDays: number) {
   if (typeof value === 'string' && value) {
@@ -67,6 +68,8 @@ export async function POST(req: Request) {
       }),
     ])
     if (!lot || !user) return forbiddenResponse()
+    const developmentId = lot.block.developmentId
+    if (!developmentId || !(await hasDevelopmentPermission(currentUserId, developmentId, 'sales'))) return forbiddenResponse()
     if (lot.sale || lot.status === 'sold') {
       return NextResponse.json({ error: 'Este lote ja foi vendido.' }, { status: 400 })
     }

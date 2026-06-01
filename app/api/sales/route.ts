@@ -5,6 +5,7 @@ import { forbiddenResponse, lotAccessWhere, reservationAccessWhere, saleAccessWh
 import { NextResponse } from 'next/server'
 import { generateContractNumber, generateContractHTML } from '@/lib/contractGenerator'
 import { createLotEvent } from '@/lib/lot-events'
+import { hasDevelopmentPermission } from '@/lib/permissions'
 
 function addMonths(date: Date, months: number) {
   const next = new Date(date)
@@ -115,6 +116,7 @@ export async function POST(req: Request) {
       },
     })
     if (!lot?.block.developmentId) return forbiddenResponse()
+    if (!(await hasDevelopmentPermission(currentUserId, lot.block.developmentId, 'sales'))) return forbiddenResponse()
     if (lot.sale || lot.status === 'sold') {
       return NextResponse.json({ error: 'Este lote ja foi vendido.' }, { status: 400 })
     }

@@ -1,7 +1,15 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, hasAccessToAllDevelopments, membershipWhere, userAccessWhere } from '@/lib/access-control'
+import { hasAnyDevelopmentPermission } from '@/lib/permissions'
 import { NextResponse } from 'next/server'
+
+async function canUseClientRecords(userId: string) {
+  return (
+    (await hasAnyDevelopmentPermission(userId, 'manageUsers')) ||
+    (await hasAnyDevelopmentPermission(userId, 'sales'))
+  )
+}
 
 const membershipInclude = (userId: string) => ({
   memberships: {
@@ -20,6 +28,7 @@ export async function GET() {
     const auth = await requireAuthenticatedUser()
     if (auth.response) return auth.response
     const currentUserId = auth.session.user.id
+    if (!(await canUseClientRecords(currentUserId))) return forbiddenResponse()
 
     const clients = await prisma.user.findMany({
       where: userAccessWhere(currentUserId),
@@ -39,6 +48,7 @@ export async function POST(req: Request) {
     const auth = await requireAuthenticatedUser()
     if (auth.response) return auth.response
     const currentUserId = auth.session.user.id
+    if (!(await canUseClientRecords(currentUserId))) return forbiddenResponse()
 
     const data = await req.json()
 
