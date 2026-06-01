@@ -86,6 +86,8 @@ type CreatedSetup = {
   skippedInventoryCreation: boolean
 }
 
+type LogoFieldName = 'companyLogo' | 'developmentLogo'
+
 const defaultLogo = 'https://placehold.co/320x160/png?text=Lotiva'
 
 const initialForm: SetupForm = {
@@ -175,6 +177,7 @@ export default function OnboardingPage() {
   const [formData, setFormData] = useState<SetupForm>(initialForm)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState<LogoFieldName | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [createdSetup, setCreatedSetup] = useState<CreatedSetup | null>(null)
@@ -238,6 +241,33 @@ export default function OnboardingPage() {
     const { name, value } = event.target
     setFormData((current) => ({ ...current, [name]: value }))
     setFieldErrors((current) => ({ ...current, [name]: '' }))
+  }
+
+  const uploadLogo = async (field: LogoFieldName, file: File | undefined) => {
+    if (!file) return
+
+    try {
+      setUploadingLogo(field)
+      setFieldErrors((current) => ({ ...current, [field]: '' }))
+      const payload = new FormData()
+      payload.append('file', file)
+
+      const response = await fetch('/api/uploads', {
+        method: 'POST',
+        body: payload,
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Erro ao enviar imagem')
+
+      setFormData((current) => ({ ...current, [field]: data.url }))
+    } catch (err) {
+      setFieldErrors((current) => ({
+        ...current,
+        [field]: err instanceof Error ? err.message : 'Erro ao enviar imagem',
+      }))
+    } finally {
+      setUploadingLogo(null)
+    }
   }
 
   const updateNumberField = (name: keyof SetupForm, value: number) => {
@@ -383,17 +413,32 @@ export default function OnboardingPage() {
                   />
                   {fieldErrors.companyName && <p className='mt-2 text-sm text-red-600'>{fieldErrors.companyName}</p>}
                 </label>
-                <label className='block'>
-                  <span className='mb-2 block text-sm font-semibold text-foreground'>URL do logo</span>
+                <div className='block'>
+                  <label htmlFor='companyLogo' className='mb-2 block text-sm font-semibold text-foreground'>Logo</label>
                   <input
+                    id='companyLogo'
                     name='companyLogo'
                     value={formData.companyLogo}
                     onChange={updateTextField}
-                    placeholder='https://example.com/logo.png'
+                    placeholder='https://example.com/logo.png ou /uploads/logo.png'
                     className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
                   />
+                  <label htmlFor='companyLogoFile' className='mt-3 flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+                    {uploadingLogo === 'companyLogo' ? 'Enviando imagem...' : 'Enviar imagem'}
+                    <input
+                      id='companyLogoFile'
+                      type='file'
+                      accept='image/png,image/jpeg,image/webp'
+                      className='sr-only'
+                      disabled={uploadingLogo !== null}
+                      onChange={(event) => {
+                        void uploadLogo('companyLogo', event.target.files?.[0])
+                        event.target.value = ''
+                      }}
+                    />
+                  </label>
                   {fieldErrors.companyLogo && <p className='mt-2 text-sm text-red-600'>{fieldErrors.companyLogo}</p>}
-                </label>
+                </div>
               </div>
             </section>
 
@@ -414,17 +459,32 @@ export default function OnboardingPage() {
                   />
                   {fieldErrors.developmentName && <p className='mt-2 text-sm text-red-600'>{fieldErrors.developmentName}</p>}
                 </label>
-                <label className='block'>
-                  <span className='mb-2 block text-sm font-semibold text-foreground'>URL do logo</span>
+                <div className='block'>
+                  <label htmlFor='developmentLogo' className='mb-2 block text-sm font-semibold text-foreground'>Logo</label>
                   <input
+                    id='developmentLogo'
                     name='developmentLogo'
                     value={formData.developmentLogo}
                     onChange={updateTextField}
-                    placeholder='https://example.com/logo.png'
+                    placeholder='https://example.com/logo.png ou /uploads/logo.png'
                     className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
                   />
+                  <label htmlFor='developmentLogoFile' className='mt-3 flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+                    {uploadingLogo === 'developmentLogo' ? 'Enviando imagem...' : 'Enviar imagem'}
+                    <input
+                      id='developmentLogoFile'
+                      type='file'
+                      accept='image/png,image/jpeg,image/webp'
+                      className='sr-only'
+                      disabled={uploadingLogo !== null}
+                      onChange={(event) => {
+                        void uploadLogo('developmentLogo', event.target.files?.[0])
+                        event.target.value = ''
+                      }}
+                    />
+                  </label>
                   {fieldErrors.developmentLogo && <p className='mt-2 text-sm text-red-600'>{fieldErrors.developmentLogo}</p>}
-                </label>
+                </div>
               </div>
             </section>
 

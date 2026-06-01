@@ -150,8 +150,17 @@ export default function ClientsPage() {
             <p className='mt-2 text-sm text-muted'>
               {searchTerm
                 ? <>Nenhum resultado para "<span className='font-medium'>{searchTerm}</span>".</>
-                : 'Comece adicionando um novo usuario ao sistema.'}
+                : 'Cadastre clientes, vendedores e pessoas que participam do fluxo comercial.'}
             </p>
+            {searchTerm ? (
+              <button onClick={() => setSearchTerm('')} className='mt-6 rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+                Limpar busca
+              </button>
+            ) : (
+              <button onClick={() => { setEditingClient(null); setShowForm(true) }} className='mt-6 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+                Cadastrar primeiro usuario
+              </button>
+            )}
           </div>
         ) : (
           <div className='overflow-x-auto'>

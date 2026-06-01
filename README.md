@@ -254,6 +254,38 @@ npm run build
 npm start
 ```
 
+### VPS Upload Storage
+
+For VPS deployments, keep uploaded files outside the application release directory so deployments do not overwrite customer/company assets.
+
+Recommended production environment:
+
+```env
+UPLOAD_DIR="/var/www/lotiva/uploads"
+UPLOAD_PUBLIC_PATH="/uploads"
+```
+
+Create the directory and give the Node.js process permission to write to it:
+
+```bash
+sudo mkdir -p /var/www/lotiva/uploads
+sudo chown -R $USER:www-data /var/www/lotiva/uploads
+sudo chmod -R 775 /var/www/lotiva/uploads
+```
+
+Recommended Nginx location for serving uploaded files directly:
+
+```nginx
+location /uploads/ {
+  alias /var/www/lotiva/uploads/;
+  access_log off;
+  expires 1y;
+  add_header Cache-Control "public, immutable";
+}
+```
+
+The application also has a fallback route for `/uploads/:fileName`, but Nginx should serve these files in production for better performance.
+
 ## 📋 Usage Guide
 
 ### Managing Blocks and Lots

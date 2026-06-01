@@ -309,9 +309,13 @@ export default function SalesPage() {
               {searchTerm ? 'Nenhuma venda encontrada' : 'Nenhuma venda realizada'}
             </h3>
             <p className='mt-2 text-sm text-muted'>
-              {searchTerm ? <>Nenhuma venda corresponde a "<span className='font-medium'>{searchTerm}</span>".</> : 'Comece realizando uma nova venda.'}
+              {searchTerm ? <>Nenhuma venda corresponde a "<span className='font-medium'>{searchTerm}</span>".</> : 'Converta um lote disponivel ou reservado em venda para gerar contrato e parcelas.'}
             </p>
-            {!searchTerm && (
+            {searchTerm ? (
+              <button onClick={() => setSearchTerm('')} className='mt-6 rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+                Limpar busca
+              </button>
+            ) : (
               <button onClick={handleAddSale} className='mt-6 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
                 Primeira venda
               </button>

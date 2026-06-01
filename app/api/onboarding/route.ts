@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isValidUploadedImagePath } from '@/lib/uploadStorage'
 
 type OnboardingPayload = {
   companyId?: string | null
@@ -42,6 +43,10 @@ function validateUrl(value: string) {
   }
 }
 
+function validateLogoReference(value: string) {
+  return isValidUploadedImagePath(value) || validateUrl(value)
+}
+
 function getBlockIdentifier(index: number, prefix: string) {
   if (prefix === 'letter') {
     return String.fromCharCode(65 + index)
@@ -77,9 +82,9 @@ export async function POST(req: Request) {
   const lotPrice = asPositiveNumber(data.lotPrice)
 
   if (!companyName) errors.companyName = 'Informe o nome da empresa.'
-  if (!companyLogo || !validateUrl(companyLogo)) errors.companyLogo = 'Informe uma URL valida para o logo da empresa.'
+  if (!companyLogo || !validateLogoReference(companyLogo)) errors.companyLogo = 'Informe uma URL valida ou envie um logo para a empresa.'
   if (!developmentName) errors.developmentName = 'Informe o nome do empreendimento.'
-  if (!developmentLogo || !validateUrl(developmentLogo)) errors.developmentLogo = 'Informe uma URL valida para o logo do empreendimento.'
+  if (!developmentLogo || !validateLogoReference(developmentLogo)) errors.developmentLogo = 'Informe uma URL valida ou envie um logo para o empreendimento.'
   if (!blockCount || blockCount > 80) errors.blockCount = 'Informe entre 1 e 80 quadras.'
   if (!lotsPerBlock || lotsPerBlock > 200) errors.lotsPerBlock = 'Informe entre 1 e 200 lotes por quadra.'
   if (!lotArea) errors.lotArea = 'Informe a area padrao do lote.'

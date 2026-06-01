@@ -187,7 +187,7 @@ function compareNatural(a: string, b: string) {
 }
 
 function getActiveReservation(lot: Lot) {
-  return lot.reservations.find((reservation) => !reservation.sale && reservation.status !== 'cancelled' && !reservation.cancelledAt) ?? lot.reservations[0] ?? null
+  return lot.reservations.find((reservation) => !reservation.sale && reservation.status !== 'cancelled' && !reservation.cancelledAt) ?? null
 }
 
 function getLotContact(lot: Lot) {
@@ -199,6 +199,12 @@ function getLotContact(lot: Lot) {
 
 function isReservationExpired(reservation: LotReservation | null) {
   return Boolean(reservation?.expiresAt && new Date(reservation.expiresAt) < new Date())
+}
+
+function getEffectiveLotStatus(lot: Lot) {
+  if (lot.sale || lot.status === 'sold') return 'sold'
+  if (getActiveReservation(lot)) return 'reserved'
+  return lot.status
 }
 
 function calculateInstallment(balance: number, installmentCount: number, monthlyInterestRate: number, interestCalculation: string) {
@@ -333,7 +339,7 @@ export default function LotsPage() {
   }, [lots, developmentFilter])
 
   const statuses = useMemo(() => {
-    const values = [...new Set(lots.map((lot) => lot.status).filter(Boolean))]
+    const values = [...new Set(lots.map((lot) => getEffectiveLotStatus(lot)).filter(Boolean))]
     return values.sort((a, b) => compareNatural(getStatusMeta(a).label, getStatusMeta(b).label))
   }, [lots])
 
@@ -344,7 +350,7 @@ export default function LotsPage() {
     return lots
       .filter((lot) => !developmentFilter || lot.block.development?.id === developmentFilter)
       .filter((lot) => !blockFilter || lot.blockId === blockFilter)
-      .filter((lot) => !statusFilter || lot.status === statusFilter)
+      .filter((lot) => !statusFilter || getEffectiveLotStatus(lot) === statusFilter)
       .filter((lot) => {
         if (!query) return true
         return (
@@ -364,11 +370,13 @@ export default function LotsPage() {
         }
         if (sortBy === 'totalArea') result = a.totalArea - b.totalArea
         if (sortBy === 'price') result = a.price - b.price
-        if (sortBy === 'status') result = compareNatural(getStatusMeta(a.status).label, getStatusMeta(b.status).label)
+        if (sortBy === 'status') result = compareNatural(getStatusMeta(getEffectiveLotStatus(a)).label, getStatusMeta(getEffectiveLotStatus(b)).label)
 
         return sortDirection === 'asc' ? result : -result
       })
   }, [lots, developmentFilter, blockFilter, statusFilter, searchTerm, sortBy, sortDirection])
+
+  const hasActiveLotFilters = Boolean(developmentFilter || blockFilter || statusFilter || searchTerm)
 
   const lotsByBlock = useMemo(() => {
     const map = new Map<string, { block: Block; lots: Lot[] }>()
@@ -394,6 +402,7 @@ export default function LotsPage() {
     () => filteredLots.find((lot) => lot.id === selectedLotId) ?? lots.find((lot) => lot.id === selectedLotId) ?? null,
     [filteredLots, lots, selectedLotId],
   )
+  const selectedLotStatus = selectedLot ? getEffectiveLotStatus(selectedLot) : null
 
   const simulation = useMemo(() => {
     const balance = Math.max(simulatorForm.salePrice - simulatorForm.downPayment, 0)
@@ -449,9 +458,9 @@ export default function LotsPage() {
 
     return {
       total: filteredLots.length,
-      available: filteredLots.filter((lot) => lot.status === 'available').length,
-      reserved: filteredLots.filter((lot) => lot.status === 'reserved' || lot.status === 'on_hold').length,
-      sold: filteredLots.filter((lot) => lot.status === 'sold').length,
+      available: filteredLots.filter((lot) => getEffectiveLotStatus(lot) === 'available').length,
+      reserved: filteredLots.filter((lot) => ['reserved', 'on_hold'].includes(getEffectiveLotStatus(lot))).length,
+      sold: filteredLots.filter((lot) => getEffectiveLotStatus(lot) === 'sold').length,
       totalValue,
     }
   }, [filteredLots])
@@ -602,6 +611,41 @@ export default function LotsPage() {
       setShowReservationForm(false)
     } catch (err) {
       setReservationError(err instanceof Error ? err.message : 'Erro ao cancelar reserva')
+    } finally {
+      setReservationSaving(false)
+    }
+  }
+
+  const updateLotStatus = async (status: 'available' | 'on_hold') => {
+    if (!selectedLot) return
+
+    try {
+      setReservationSaving(true)
+      setReservationError(null)
+      const response = await fetch(`/api/lots/${selectedLot.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identifier: selectedLot.identifier,
+          blockId: selectedLot.blockId,
+          front: selectedLot.front,
+          back: selectedLot.back,
+          leftSide: selectedLot.leftSide,
+          rightSide: selectedLot.rightSide,
+          totalArea: selectedLot.totalArea,
+          price: selectedLot.price,
+          status,
+        }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json()
+        throw new Error(payload.error || 'Nao foi possivel atualizar o status do lote')
+      }
+
+      await fetchLots()
+    } catch (err) {
+      setReservationError(err instanceof Error ? err.message : 'Nao foi possivel atualizar o status do lote')
     } finally {
       setReservationSaving(false)
     }
@@ -846,7 +890,20 @@ export default function LotsPage() {
                   </svg>
                 </div>
                 <h2 className='mt-4 text-base font-semibold text-foreground'>Nenhum lote encontrado</h2>
-                <p className='mt-2 text-sm text-muted'>Ajuste os filtros para visualizar o mapa ou a lista de lotes.</p>
+                <p className='mt-2 max-w-md text-sm leading-6 text-muted'>
+                  {hasActiveLotFilters
+                    ? 'Ajuste ou limpe os filtros para visualizar o mapa e a lista de lotes.'
+                    : 'Crie quadras e lotes pelo onboarding para iniciar a operacao comercial.'}
+                </p>
+                {hasActiveLotFilters ? (
+                  <button onClick={clearFilters} className='mt-6 rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+                    Limpar filtros
+                  </button>
+                ) : (
+                  <Link href='/onboarding' className='mt-6 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+                    Abrir onboarding
+                  </Link>
+                )}
               </div>
             ) : viewMode === 'map' ? (
               <div className='space-y-6 p-6'>
@@ -871,7 +928,7 @@ export default function LotsPage() {
                       </div>
                       <div className='grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-3'>
                         {blockLots.map((lot) => {
-                          const meta = getStatusMeta(lot.status)
+                          const meta = getStatusMeta(getEffectiveLotStatus(lot))
                           const selected = selectedLotId === lot.id
                           return (
                             <button
@@ -914,7 +971,7 @@ export default function LotsPage() {
                   </thead>
                   <tbody className='divide-y divide-border bg-surface'>
                     {filteredLots.map((lot) => {
-                      const meta = getStatusMeta(lot.status)
+                      const meta = getStatusMeta(getEffectiveLotStatus(lot))
                       const selected = selectedLotId === lot.id
                       return (
                         <tr
@@ -962,7 +1019,7 @@ export default function LotsPage() {
                 </div>
 
                 <div className='flex flex-wrap items-center gap-2'>
-                  <span className={`pill ${getStatusMeta(selectedLot.status).badge}`}>{getStatusMeta(selectedLot.status).label}</span>
+                  <span className={`pill ${getStatusMeta(selectedLotStatus ?? selectedLot.status).badge}`}>{getStatusMeta(selectedLotStatus ?? selectedLot.status).label}</span>
                   {selectedLot.sale?.contract && (
                     <span className='pill bg-emerald-50 text-emerald-700'>Contrato {selectedLot.sale.contract.contractNumber}</span>
                   )}
@@ -1092,7 +1149,7 @@ export default function LotsPage() {
                     </div>
                   )}
                   <div className='mt-4 space-y-3'>
-                    {selectedLot.status === 'available' && (
+                    {selectedLotStatus === 'available' && (
                       <>
                         <button onClick={openSimulator} className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
                           Simular venda
@@ -1100,13 +1157,13 @@ export default function LotsPage() {
                         <button onClick={openReservationForm} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
                           Reservar lote
                         </button>
-                        <button className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
+                        <button onClick={() => updateLotStatus('on_hold')} disabled={reservationSaving} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background disabled:opacity-60'>
                           Bloquear lote
                         </button>
                       </>
                     )}
 
-                    {(selectedLot.status === 'reserved' || selectedLot.status === 'on_hold') && (
+                    {selectedLotStatus === 'reserved' && (
                       <>
                         <Link
                           href={`/sales?lotId=${selectedLot.id}${getActiveReservation(selectedLot) ? `&userId=${getActiveReservation(selectedLot)!.user.id}&reservationId=${getActiveReservation(selectedLot)!.id}` : ''}`}
@@ -1123,7 +1180,18 @@ export default function LotsPage() {
                       </>
                     )}
 
-                    {selectedLot.status === 'sold' && (
+                    {selectedLotStatus === 'on_hold' && (
+                      <>
+                        <button onClick={() => updateLotStatus('available')} disabled={reservationSaving} className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'>
+                          Liberar lote
+                        </button>
+                        <button onClick={openSimulator} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
+                          Simular venda
+                        </button>
+                      </>
+                    )}
+
+                    {selectedLotStatus === 'sold' && (
                       <>
                         <Link href='/sales' className='block w-full rounded-xl bg-primary px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-primary-strong'>
                           Ver venda

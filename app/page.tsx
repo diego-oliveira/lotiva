@@ -65,7 +65,7 @@ export default async function Home({ searchParams }: HomeProps) {
   const params = await searchParams
   const developments = await prisma.development.findMany({
     where: membershipWhere(session.user.id),
-    include: { company: true },
+    include: { company: true, settings: true },
     orderBy: { name: 'asc' },
   })
 
@@ -95,7 +95,10 @@ export default async function Home({ searchParams }: HomeProps) {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
-  const [lots, sales, receivables] = await Promise.all([
+  const alertLimitDate = new Date(today)
+  alertLimitDate.setDate(alertLimitDate.getDate() + 3)
+
+  const [lots, sales, receivables, expiringReservations] = await Promise.all([
     prisma.lot.findMany({
       where: { block: { developmentId: selectedDevelopment.id } },
       select: {
@@ -123,6 +126,24 @@ export default async function Home({ searchParams }: HomeProps) {
         },
       },
       orderBy: { dueDate: 'asc' },
+    }),
+    prisma.reservation.findMany({
+      where: {
+        lot: { block: { developmentId: selectedDevelopment.id } },
+        status: { not: 'cancelled' },
+        cancelledAt: null,
+        sale: null,
+        expiresAt: {
+          gte: today,
+          lte: alertLimitDate,
+        },
+      },
+      include: {
+        user: true,
+        lot: { include: { block: true } },
+      },
+      orderBy: { expiresAt: 'asc' },
+      take: 5,
     }),
   ])
 
@@ -175,6 +196,53 @@ export default async function Home({ searchParams }: HomeProps) {
   const overdueReceivables = receivables
     .filter((receivable) => receivable.status !== 'paid' && receivable.dueDate < today)
     .slice(0, 5)
+  const settingsIncomplete =
+    !selectedDevelopment.settings ||
+    !selectedDevelopment.settings.paymentMethods ||
+    selectedDevelopment.settings.maxInstallments <= 0 ||
+    selectedDevelopment.settings.minDownPaymentPercentage < 0
+  const actionAlerts = [
+    ...(settingsIncomplete
+      ? [{
+          title: 'Revise as configuracoes comerciais',
+          description: 'Defina formas de pagamento, entrada minima, juros e prazo maximo antes de escalar vendas.',
+          href: '/developments',
+          tone: 'amber' as const,
+        }]
+      : []),
+    ...(lotMetrics.total === 0
+      ? [{
+          title: 'Cadastre quadras e lotes',
+          description: 'O empreendimento ainda nao tem estoque para o time comercial consultar.',
+          href: '/onboarding',
+          tone: 'amber' as const,
+        }]
+      : []),
+    ...(lotMetrics.total > 0 && lotMetrics.available === 0
+      ? [{
+          title: 'Sem lotes disponiveis',
+          description: 'Libere ou cadastre novos lotes para manter o funil de venda ativo.',
+          href: '/lots',
+          tone: 'red' as const,
+        }]
+      : []),
+    ...(financialMetrics.overdueCount > 0
+      ? [{
+          title: `${financialMetrics.overdueCount} parcela(s) vencida(s)`,
+          description: `${formatCurrency(financialMetrics.overdueAmount)} em aberto exige acompanhamento financeiro.`,
+          href: '/finance?status=overdue',
+          tone: 'red' as const,
+        }]
+      : []),
+    ...(expiringReservations.length > 0
+      ? [{
+          title: `${expiringReservations.length} reserva(s) vencem em ate 3 dias`,
+          description: 'Priorize contato com os clientes antes de liberar os lotes.',
+          href: '/lots?status=reserved',
+          tone: 'amber' as const,
+        }]
+      : []),
+  ]
 
   return (
     <div className='space-y-6'>
@@ -227,6 +295,29 @@ export default async function Home({ searchParams }: HomeProps) {
           </div>
         </div>
       </section>
+
+      {actionAlerts.length > 0 && (
+        <section className='panel overflow-hidden'>
+          <div className='panel-header px-6 py-5'>
+            <h2 className='text-lg font-semibold text-foreground'>Pendencias e proximos passos</h2>
+            <p className='mt-1 text-sm text-muted'>Alertas objetivos para manter a operacao comercial e financeira em dia.</p>
+          </div>
+          <div className='grid gap-4 px-6 py-6 lg:grid-cols-2'>
+            {actionAlerts.map((alert) => (
+              <Link
+                key={alert.title}
+                href={alert.href}
+                className={`rounded-2xl border px-5 py-4 transition hover:bg-surface-secondary ${
+                  alert.tone === 'red' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-800'
+                }`}
+              >
+                <p className='text-sm font-semibold'>{alert.title}</p>
+                <p className='mt-1 text-sm leading-6 opacity-80'>{alert.description}</p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className='grid gap-4 md:grid-cols-2 xl:grid-cols-5'>
         <div className='metric-card px-5 py-4'>

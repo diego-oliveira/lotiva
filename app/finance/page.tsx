@@ -294,7 +294,17 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
         {receivables.length === 0 ? (
           <div className='px-6 py-12 text-center'>
             <h2 className='text-base font-semibold text-foreground'>Nenhum recebivel encontrado</h2>
-            <p className='mt-2 text-sm text-muted'>Ajuste os filtros ou crie uma venda com parcelas para alimentar o financeiro.</p>
+            <p className='mx-auto mt-2 max-w-xl text-sm leading-6 text-muted'>
+              Ajuste os filtros ou crie uma venda parcelada para gerar a agenda financeira automaticamente.
+            </p>
+            <div className='mt-6 flex flex-col justify-center gap-3 sm:flex-row'>
+              <Link href='/finance' className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+                Limpar filtros
+              </Link>
+              <Link href='/sales' className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+                Criar venda
+              </Link>
+            </div>
           </div>
         ) : (
           <div className='overflow-x-auto'>
