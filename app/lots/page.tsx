@@ -223,6 +223,14 @@ export default function LotsPage() {
     userId: '',
     notes: '',
   })
+  const [clientSearch, setClientSearch] = useState('')
+  const [clientDropdownOpen, setClientDropdownOpen] = useState(false)
+  const [showQuickClientForm, setShowQuickClientForm] = useState(false)
+  const [quickClient, setQuickClient] = useState({
+    name: '',
+    email: '',
+  })
+  const [quickClientSaving, setQuickClientSaving] = useState(false)
   const [simulatorForm, setSimulatorForm] = useState({
     salePrice: 0,
     downPayment: 0,
@@ -379,6 +387,23 @@ export default function LotsPage() {
 
   const proposalCanBeSaved = simulationIsValid && Boolean(proposalForm.userId) && !proposalSaving
 
+  const filteredClients = useMemo(() => {
+    const query = clientSearch.trim().toLowerCase()
+    const digits = clientSearch.replace(/\D/g, '')
+
+    if (!query && !digits) return []
+    return clients.filter((client) => (
+      client.name.toLowerCase().includes(query) ||
+      client.email.toLowerCase().includes(query) ||
+      Boolean(digits && client.email.replace(/\D/g, '').includes(digits))
+    ))
+  }, [clients, clientSearch])
+
+  const selectedProposalClient = useMemo(
+    () => clients.find((client) => client.id === proposalForm.userId) ?? null,
+    [clients, proposalForm.userId],
+  )
+
   const stats = useMemo(() => {
     const totalValue = filteredLots.reduce((sum, lot) => sum + lot.price, 0)
 
@@ -450,6 +475,10 @@ export default function LotsPage() {
         userId: activeReservation?.user.id ?? '',
         notes: activeReservation?.proposal ?? '',
       })
+      setClientSearch('')
+      setClientDropdownOpen(false)
+      setShowQuickClientForm(false)
+      setQuickClient({ name: '', email: '' })
       setShowReservationForm(false)
       setShowSimulator(true)
       setProposalNotice(null)
@@ -587,6 +616,53 @@ export default function LotsPage() {
       setProposalError(err instanceof Error ? err.message : 'Erro ao salvar proposta')
     } finally {
       setProposalSaving(false)
+    }
+  }
+
+  const createQuickClient = async () => {
+    if (!selectedLot?.block.development?.id) {
+      setProposalError('Selecione um lote vinculado a um empreendimento para criar cliente.')
+      return
+    }
+    if (!quickClient.name.trim()) {
+      setProposalError('Informe o nome do cliente.')
+      return
+    }
+    if (!quickClient.email.trim()) {
+      setProposalError('Informe o email do cliente.')
+      return
+    }
+
+    try {
+      setQuickClientSaving(true)
+      setProposalError(null)
+      const response = await fetch('/api/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: quickClient.name,
+          email: quickClient.email,
+          memberships: [{ developmentId: selectedLot.block.development.id, roleId: '' }],
+        }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json()
+        throw new Error(payload.error || 'Erro ao criar cliente')
+      }
+
+      const client = await response.json()
+      setClients((current) => [client, ...current.filter((item) => item.id !== client.id)])
+      setProposalForm((current) => ({ ...current, userId: client.id }))
+      setClientSearch(client.name)
+      setClientDropdownOpen(false)
+      setShowQuickClientForm(false)
+      setQuickClient({ name: '', email: '' })
+      setProposalNotice('Cliente criado e selecionado para a proposta.')
+    } catch (err) {
+      setProposalError(err instanceof Error ? err.message : 'Erro ao criar cliente')
+    } finally {
+      setQuickClientSaving(false)
     }
   }
 
@@ -1171,19 +1247,136 @@ export default function LotsPage() {
                     <section className='rounded-2xl border border-border bg-surface-secondary p-5'>
                       <h3 className='text-base font-semibold text-foreground'>Condicao comercial</h3>
                       <div className='mt-5 grid gap-4 md:grid-cols-2'>
-                        <label className='block md:col-span-2'>
-                          <span className='mb-2 block text-sm font-semibold text-foreground'>Cliente</span>
-                          <select
-                            value={proposalForm.userId}
-                            onChange={(event) => setProposalForm((current) => ({ ...current, userId: event.target.value }))}
-                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
-                          >
-                            <option value=''>Selecione...</option>
-                            {clients.map((client) => (
-                              <option key={client.id} value={client.id}>{client.name} · {client.email}</option>
-                            ))}
-                          </select>
-                        </label>
+                        <div className='md:col-span-2'>
+                          <div className='relative'>
+                            <label className='block'>
+                              <span className='mb-2 block text-sm font-semibold text-foreground'>Cliente</span>
+                              <input
+                                type='text'
+                                value={clientSearch}
+                                onFocus={() => {
+                                  if (clientSearch.trim()) setClientDropdownOpen(true)
+                                }}
+                                onChange={(event) => {
+                                  setClientSearch(event.target.value)
+                                  setClientDropdownOpen(Boolean(event.target.value.trim()))
+                                  setShowQuickClientForm(false)
+                                }}
+                                placeholder='Buscar por nome ou email...'
+                                className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                              />
+                            </label>
+
+                            {selectedProposalClient && (
+                              <div className='mt-3 flex items-start justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/6 px-4 py-3'>
+                                <div>
+                                  <p className='text-xs font-semibold uppercase text-primary'>Cliente selecionado</p>
+                                  <p className='mt-1 text-sm font-semibold text-foreground'>{selectedProposalClient.name}</p>
+                                  <p className='text-xs text-muted'>{selectedProposalClient.email}</p>
+                                </div>
+                                <button
+                                  type='button'
+                                  onClick={() => {
+                                    setProposalForm((current) => ({ ...current, userId: '' }))
+                                    setClientSearch('')
+                                    setClientDropdownOpen(false)
+                                  }}
+                                  className='rounded-xl border border-border bg-surface px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-background'
+                                >
+                                  Trocar
+                                </button>
+                              </div>
+                            )}
+
+                            {clientDropdownOpen && (
+                              <div className='absolute left-0 right-0 z-20 mt-2 overflow-hidden rounded-2xl border border-border bg-surface shadow-xl'>
+                                {filteredClients.length > 0 && (
+                                  <div className='max-h-56 overflow-y-auto'>
+                                    {filteredClients.map((client) => (
+                                      <button
+                                        key={client.id}
+                                        type='button'
+                                        onClick={() => {
+                                          setProposalForm((current) => ({ ...current, userId: client.id }))
+                                          setClientSearch(client.name)
+                                          setClientDropdownOpen(false)
+                                          setShowQuickClientForm(false)
+                                        }}
+                                        className={`flex w-full items-start justify-between gap-3 border-b border-border px-4 py-3 text-left transition last:border-b-0 hover:bg-surface-secondary ${
+                                          proposalForm.userId === client.id ? 'bg-primary/6' : ''
+                                        }`}
+                                      >
+                                        <span>
+                                          <span className='block text-sm font-semibold text-foreground'>{client.name}</span>
+                                          <span className='block text-xs text-muted'>{client.email}</span>
+                                        </span>
+                                        {proposalForm.userId === client.id && <span className='pill bg-primary/10 text-primary'>Selecionado</span>}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                                <button
+                                  type='button'
+                                  onClick={() => {
+                                    const typed = clientSearch.trim()
+                                    setQuickClient((current) => ({
+                                      name: typed.includes('@') ? current.name : typed,
+                                      email: typed.includes('@') ? typed : current.email,
+                                    }))
+                                    setShowQuickClientForm(true)
+                                    setClientDropdownOpen(false)
+                                  }}
+                                  className='flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-semibold text-primary transition hover:bg-primary/8'
+                                >
+                                  {filteredClients.length === 0 ? `Adicionar "${clientSearch.trim()}" como novo usuario` : 'Adicionar novo usuario'}
+                                  <span aria-hidden='true'>+</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {showQuickClientForm && (
+                            <div className='mt-4 rounded-2xl border border-border bg-surface p-4'>
+                            <div className='flex items-start justify-between gap-3'>
+                              <div>
+                                <h4 className='text-sm font-semibold text-foreground'>Adicionar novo usuario</h4>
+                                <p className='mt-1 text-xs text-muted'>Informe apenas os dados minimos para seguir com a proposta.</p>
+                              </div>
+                              <button
+                                type='button'
+                                onClick={() => setShowQuickClientForm(false)}
+                                className='rounded-xl border border-border bg-surface-secondary px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-background'
+                              >
+                                Fechar
+                              </button>
+                            </div>
+                            <div className='mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]'>
+                              <input
+                                type='text'
+                                value={quickClient.name}
+                                onChange={(event) => setQuickClient((current) => ({ ...current, name: event.target.value }))}
+                                placeholder='Nome'
+                                className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                              />
+                              <input
+                                type='email'
+                                value={quickClient.email}
+                                onChange={(event) => setQuickClient((current) => ({ ...current, email: event.target.value }))}
+                                placeholder='Email'
+                                className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                              />
+                              <button
+                                type='button'
+                                onClick={createQuickClient}
+                                disabled={quickClientSaving}
+                                className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
+                              >
+                                {quickClientSaving ? 'Criando...' : 'Criar'}
+                              </button>
+                            </div>
+                          </div>
+                          )}
+                        </div>
                         <label className='block md:col-span-2'>
                           <span className='mb-2 block text-sm font-semibold text-foreground'>Valor de venda</span>
                           <input

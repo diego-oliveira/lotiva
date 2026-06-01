@@ -54,6 +54,10 @@ interface User {
   profession?: string | null
   birthplace?: string | null
   maritalStatus?: string | null
+  memberships?: {
+    development: { id: string; name: string }
+    roles: { role: { id: string; name: string } }[]
+  }[]
 }
 
 interface SaleFormData {
@@ -140,6 +144,17 @@ export default function SalesForm({
   const [lotSearch, setLotSearch] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [paymentTouched, setPaymentTouched] = useState(false)
+  const [documentSaving, setDocumentSaving] = useState(false)
+  const [documentNotice, setDocumentNotice] = useState<string | null>(null)
+  const [documentForm, setDocumentForm] = useState({
+    cpf: '',
+    rg: '',
+    address: '',
+    birthDate: '',
+    profession: '',
+    birthplace: '',
+    maritalStatus: '',
+  })
 
   const [formData, setFormData] = useState<SaleFormData>({
     userId: '',
@@ -186,6 +201,7 @@ export default function SalesForm({
     setCurrentStep(!sale && initialData?.userId && initialData?.lotId ? 3 : 1)
     setUserSearch('')
     setLotSearch('')
+    setDocumentNotice(null)
     setErrors({})
   }, [isOpen, sale, initialData])
 
@@ -234,6 +250,20 @@ export default function SalesForm({
   const missingDocumentFields = selectedUser
     ? REQUIRED_DOCUMENT_FIELDS.filter((field) => !selectedUser[field.key])
     : REQUIRED_DOCUMENT_FIELDS
+
+  useEffect(() => {
+    if (!selectedUser) return
+    setDocumentForm({
+      cpf: selectedUser.cpf ?? '',
+      rg: selectedUser.rg ?? '',
+      address: selectedUser.address ?? '',
+      birthDate: selectedUser.birthDate ? selectedUser.birthDate.slice(0, 10) : '',
+      profession: selectedUser.profession ?? '',
+      birthplace: selectedUser.birthplace ?? '',
+      maritalStatus: selectedUser.maritalStatus ?? '',
+    })
+    setDocumentNotice(null)
+  }, [selectedUser?.id])
 
   const filteredUsers = users.filter((user) => {
     if (!userSearch) return true
@@ -353,6 +383,65 @@ export default function SalesForm({
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const updateDocumentField = (field: keyof typeof documentForm, value: string) => {
+    setDocumentForm((current) => ({ ...current, [field]: value }))
+    if (errors.documents) setErrors((current) => ({ ...current, documents: '' }))
+  }
+
+  const saveClientDocuments = async () => {
+    if (!selectedUser) return
+
+    const missing = REQUIRED_DOCUMENT_FIELDS.filter((field) => {
+      const value = documentForm[field.key as keyof typeof documentForm]
+      return !String(value ?? '').trim()
+    })
+    if (missing.length > 0) {
+      setErrors((current) => ({
+        ...current,
+        documents: `Complete os dados do cliente: ${missing.map((field) => field.label).join(', ')}`,
+      }))
+      return
+    }
+
+    try {
+      setDocumentSaving(true)
+      setErrors((current) => ({ ...current, documents: '' }))
+      setDocumentNotice(null)
+
+      const memberships = selectedUser.memberships?.map((membership) => ({
+        developmentId: membership.development.id,
+        roleId: membership.roles[0]?.role.id ?? '',
+      })) ?? []
+
+      const response = await fetch(`/api/clients/${selectedUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: selectedUser.name,
+          email: selectedUser.email,
+          ...documentForm,
+          memberships,
+        }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json()
+        throw new Error(payload.error || 'Erro ao atualizar dados do cliente')
+      }
+
+      const updatedUser = await response.json()
+      setUsers((current) => current.map((user) => (user.id === updatedUser.id ? { ...user, ...updatedUser } : user)))
+      setDocumentNotice('Dados do cliente salvos. Voce ja pode avancar para a revisao.')
+    } catch (error) {
+      setErrors((current) => ({
+        ...current,
+        documents: error instanceof Error ? error.message : 'Erro ao atualizar dados do cliente',
+      }))
+    } finally {
+      setDocumentSaving(false)
     }
   }
 
@@ -598,21 +687,86 @@ export default function SalesForm({
               <section className='space-y-5'>
                 <div>
                   <h3 className='text-base font-semibold text-foreground'>Documentos</h3>
-                  <p className='mt-1 text-sm text-muted'>Todos os dados abaixo precisam estar completos para gerar a venda e contrato.</p>
+                  <p className='mt-1 text-sm text-muted'>Complete os dados contratuais sem sair do fluxo de venda.</p>
                 </div>
-                <div className='grid gap-3 md:grid-cols-2'>
-                  {REQUIRED_DOCUMENT_FIELDS.map((field) => {
-                    const complete = Boolean(selectedUser?.[field.key])
-                    return (
-                      <div key={field.key} className={`rounded-2xl border p-4 ${complete ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
-                        <p className={`text-sm font-semibold ${complete ? 'text-emerald-800' : 'text-amber-800'}`}>{field.label}</p>
-                        <p className={`mt-1 text-sm ${complete ? 'text-emerald-700' : 'text-amber-700'}`}>
-                          {field.key === 'birthDate' ? formatDate(selectedUser?.birthDate) : String(selectedUser?.[field.key] ?? 'Pendente')}
-                        </p>
-                      </div>
-                    )
-                  })}
+                <div className='grid gap-4 md:grid-cols-2'>
+                  <label className='block'>
+                    <span className='mb-2 block text-sm font-semibold text-foreground'>CPF</span>
+                    <input
+                      value={documentForm.cpf}
+                      onChange={(event) => updateDocumentField('cpf', event.target.value)}
+                      className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                    />
+                  </label>
+                  <label className='block'>
+                    <span className='mb-2 block text-sm font-semibold text-foreground'>RG</span>
+                    <input
+                      value={documentForm.rg}
+                      onChange={(event) => updateDocumentField('rg', event.target.value)}
+                      className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                    />
+                  </label>
+                  <label className='block'>
+                    <span className='mb-2 block text-sm font-semibold text-foreground'>Data de nascimento</span>
+                    <input
+                      type='date'
+                      value={documentForm.birthDate}
+                      onChange={(event) => updateDocumentField('birthDate', event.target.value)}
+                      className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                    />
+                  </label>
+                  <label className='block'>
+                    <span className='mb-2 block text-sm font-semibold text-foreground'>Profissao</span>
+                    <input
+                      value={documentForm.profession}
+                      onChange={(event) => updateDocumentField('profession', event.target.value)}
+                      className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                    />
+                  </label>
+                  <label className='block'>
+                    <span className='mb-2 block text-sm font-semibold text-foreground'>Naturalidade</span>
+                    <input
+                      value={documentForm.birthplace}
+                      onChange={(event) => updateDocumentField('birthplace', event.target.value)}
+                      className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                    />
+                  </label>
+                  <label className='block'>
+                    <span className='mb-2 block text-sm font-semibold text-foreground'>Estado civil</span>
+                    <input
+                      value={documentForm.maritalStatus}
+                      onChange={(event) => updateDocumentField('maritalStatus', event.target.value)}
+                      className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                    />
+                  </label>
+                  <label className='block md:col-span-2'>
+                    <span className='mb-2 block text-sm font-semibold text-foreground'>Endereco</span>
+                    <textarea
+                      rows={3}
+                      value={documentForm.address}
+                      onChange={(event) => updateDocumentField('address', event.target.value)}
+                      className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                    />
+                  </label>
                 </div>
+                <div className='flex flex-col gap-3 md:flex-row md:items-center'>
+                  <button
+                    type='button'
+                    onClick={saveClientDocuments}
+                    disabled={documentSaving}
+                    className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
+                  >
+                    {documentSaving ? 'Salvando...' : 'Salvar dados do cliente'}
+                  </button>
+                  {missingDocumentFields.length === 0 && (
+                    <span className='pill bg-emerald-50 text-emerald-700'>Dados completos</span>
+                  )}
+                </div>
+                {documentNotice && (
+                  <div className='rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800'>
+                    {documentNotice}
+                  </div>
+                )}
                 {errors.documents && (
                   <div className='rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700'>
                     {errors.documents}
