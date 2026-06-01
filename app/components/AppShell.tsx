@@ -9,7 +9,7 @@ type NavItem = {
   href: string
   label: string
   description: string
-  icon: 'dashboard' | 'setup' | 'company' | 'development' | 'user' | 'lot' | 'sale'
+  icon: 'dashboard' | 'setup' | 'company' | 'development' | 'user' | 'lot' | 'sale' | 'finance'
 }
 
 const navItems: NavItem[] = [
@@ -55,6 +55,12 @@ const navItems: NavItem[] = [
     description: 'Transactions',
     icon: 'sale',
   },
+  {
+    href: '/finance',
+    label: 'Financeiro',
+    description: 'Receivables',
+    icon: 'finance',
+  },
 ]
 
 function NavIcon({ icon }: { icon: NavItem['icon'] }) {
@@ -95,6 +101,12 @@ function NavIcon({ icon }: { icon: NavItem['icon'] }) {
       return (
         <svg className={className} fill='none' stroke='currentColor' viewBox='0 0 24 24'>
           <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-10v12M4 12a8 8 0 1016 0 8 8 0 10-16 0z' />
+        </svg>
+      )
+    case 'finance':
+      return (
+        <svg className={className} fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M4 7h16M6 11h12M8 15h4M6 19h12a2 2 0 002-2V7a2 2 0 00-2-2H6a2 2 0 00-2 2v10a2 2 0 002 2z' />
         </svg>
       )
     default:

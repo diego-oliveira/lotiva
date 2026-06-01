@@ -5,6 +5,13 @@ import { NextResponse } from 'next/server'
 
 type Params = { params: Promise<{ id: string }> }
 
+function parseDateOnly(value?: string | null) {
+  if (!value) return new Date()
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return new Date()
+  return new Date(year, month - 1, day, 12)
+}
+
 export async function PATCH(req: Request, { params }: Params) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
@@ -28,13 +35,15 @@ export async function PATCH(req: Request, { params }: Params) {
       return NextResponse.json({ error: 'Valor pago invalido.' }, { status: 400 })
     }
 
+    const balance = Math.max(receivable.amount - paidAmount, 0)
     const updated = await prisma.receivable.update({
       where: { id },
       data: {
-        status: 'paid',
+        status: balance > 0 ? 'pending' : 'paid',
         paidAmount,
-        balance: Math.max(receivable.amount - paidAmount, 0),
-        paidAt: data.paidAt ? new Date(data.paidAt) : new Date(),
+        balance,
+        paidAt: parseDateOnly(data.paidAt),
+        notes: typeof data.notes === 'string' ? data.notes.trim() || null : receivable.notes,
       },
     })
 
@@ -49,6 +58,7 @@ export async function PATCH(req: Request, { params }: Params) {
         paidAmount: 0,
         balance: receivable.amount,
         paidAt: null,
+        notes: typeof data.notes === 'string' ? data.notes.trim() || null : receivable.notes,
       },
     })
 
