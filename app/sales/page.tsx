@@ -21,7 +21,7 @@ interface User {
   id: string
   name: string
   email: string
-  cpf: string
+  cpf?: string | null
 }
 
 interface Reservation {
@@ -47,6 +47,26 @@ interface Sale {
   reservation?: Reservation
 }
 
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(value)
+}
+
+function formatDate(dateString: string) {
+  return new Date(dateString).toLocaleDateString('pt-BR')
+}
+
+function getInitials(name: string) {
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+}
+
 export default function SalesPage() {
   const [sales, setSales] = useState<Sale[]>([])
   const [loading, setLoading] = useState(true)
@@ -54,24 +74,34 @@ export default function SalesPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
+  const [initialSaleData, setInitialSaleData] = useState<{ userId?: string; lotId?: string; reservationId?: string } | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [showContract, setShowContract] = useState(false)
   const [contractSaleId, setContractSaleId] = useState<string>('')
 
   useEffect(() => {
     fetchSales()
+
+    const params = new URLSearchParams(window.location.search)
+    const lotId = params.get('lotId')
+    if (lotId) {
+      setEditingSale(null)
+      setInitialSaleData({
+        lotId,
+        userId: params.get('userId') ?? undefined,
+        reservationId: params.get('reservationId') ?? undefined,
+      })
+      setShowForm(true)
+    }
   }, [])
 
   const fetchSales = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/sales', {
-        cache: 'no-store'
-      })
-      if (!response.ok) {
-        throw new Error('Failed to fetch sales')
-      }
-      const data = await response.json()
-      setSales(data)
+      setNotice(null)
+      const response = await fetch('/api/sales', { cache: 'no-store' })
+      if (!response.ok) throw new Error('Failed to fetch sales')
+      setSales(await response.json())
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
@@ -80,45 +110,33 @@ export default function SalesPage() {
     }
   }
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(value)
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR')
-  }
-
-  const getInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map(n => n[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2)
-  }
-
   const handleAddSale = () => {
     setEditingSale(null)
+    setInitialSaleData(null)
+    setNotice(null)
     setShowForm(true)
   }
 
   const handleEditSale = (sale: Sale) => {
     setEditingSale(sale)
+    setInitialSaleData(null)
+    setNotice(null)
     setShowForm(true)
   }
 
   const handleFormClose = () => {
     setShowForm(false)
     setEditingSale(null)
+    setInitialSaleData(null)
   }
 
   const handleFormSave = async () => {
+    const message = editingSale ? 'Venda atualizada com sucesso.' : 'Venda criada com sucesso. O lote foi marcado como vendido e o contrato foi gerado.'
     await fetchSales()
     setShowForm(false)
     setEditingSale(null)
+    setInitialSaleData(null)
+    setNotice(message)
   }
 
   const handleViewContract = (saleId: string) => {
@@ -131,296 +149,212 @@ export default function SalesPage() {
     setContractSaleId('')
   }
 
-  const filteredSales = sales.filter(sale => {
+  const filteredSales = sales.filter((sale) => {
     if (!searchTerm) return true
-    
+
     const searchLower = searchTerm.toLowerCase()
+    const digits = searchTerm.replace(/\D/g, '')
     return (
       sale.user.name.toLowerCase().includes(searchLower) ||
       sale.user.email.toLowerCase().includes(searchLower) ||
-      sale.user.cpf.replace(/\D/g, '').includes(searchTerm.replace(/\D/g, '')) ||
+      Boolean(digits && sale.user.cpf?.replace(/\D/g, '').includes(digits)) ||
       `${sale.lot.block.identifier}${sale.lot.identifier}`.toLowerCase().includes(searchLower)
     )
   })
 
+  const totals = sales.reduce(
+    (acc, sale) => ({
+      totalValue: acc.totalValue + sale.totalValue,
+      downPayment: acc.downPayment + sale.downPayment,
+      openBalance: acc.openBalance + sale.totalValue - sale.downPayment,
+    }),
+    { totalValue: 0, downPayment: 0, openBalance: 0 },
+  )
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/4 mb-6"></div>
-            <div className="bg-white dark:bg-gray-800 shadow rounded-lg">
-              <div className="px-4 py-5 sm:p-6">
-                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mb-4"></div>
-                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-4"></div>
-                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
-              </div>
-            </div>
-          </div>
+      <div className='space-y-6'>
+        <div className='h-20 animate-pulse rounded-2xl bg-surface-secondary' />
+        <div className='grid gap-4 md:grid-cols-4'>
+          {[1, 2, 3, 4].map((item) => (
+            <div key={item} className='h-24 animate-pulse rounded-2xl bg-surface-secondary' />
+          ))}
         </div>
+        <div className='h-96 animate-pulse rounded-2xl bg-surface-secondary' />
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-800 rounded-md p-4">
-            <div className="flex">
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
-                  Erro ao carregar vendas
-                </h3>
-                <div className="mt-2 text-sm text-red-700 dark:text-red-300">
-                  <p>{error}</p>
-                </div>
-                <div className="mt-4">
-                  <button
-                    onClick={fetchSales}
-                    className="bg-red-100 dark:bg-red-800 hover:bg-red-200 dark:hover:bg-red-700 text-red-800 dark:text-red-200 px-3 py-2 rounded-md text-sm font-medium"
-                  >
-                    Tentar novamente
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div className='rounded-2xl border border-red-200 bg-red-50 p-5 text-red-700'>
+        <p className='font-semibold'>Erro ao carregar vendas</p>
+        <p className='mt-1 text-sm'>{error}</p>
+        <button onClick={fetchSales} className='mt-4 rounded-xl bg-red-100 px-4 py-2 text-sm font-semibold text-red-800 transition hover:bg-red-200'>
+          Tentar novamente
+        </button>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Vendas
-          </h1>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-            Gerenciar todas as vendas de lotes realizadas
-          </p>
+    <div className='space-y-6'>
+      <div className='flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'>
+        <div>
+          <h1 className='page-title'>Vendas</h1>
+          <p className='page-subtitle'>Conclua vendas, acompanhe contratos e revise as condicoes comerciais fechadas.</p>
         </div>
+        <div className='flex flex-wrap gap-3'>
+          <button onClick={fetchSales} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+            Atualizar
+          </button>
+          <button onClick={handleAddSale} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+            Nova venda
+          </button>
+        </div>
+      </div>
 
-        <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-          <div className="px-4 py-5 sm:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 space-y-3 sm:space-y-0">
-              <h2 className="text-lg font-medium text-gray-900 dark:text-white">
-                {searchTerm ? (
-                  `${filteredSales.length} de ${sales.length} vendas`
-                ) : (
-                  `Total de vendas: ${sales.length}`
-                )}
-              </h2>
-              
-              <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Buscar por cliente ou lote..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md leading-5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                  />
-                  {searchTerm && (
-                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
-                      <button
-                        onClick={() => setSearchTerm('')}
-                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                        title="Limpar busca"
-                      >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  )}
-                </div>
+      {notice && (
+        <div className='rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800'>
+          {notice}
+        </div>
+      )}
 
-                <button
-                  onClick={handleAddSale}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 dark:focus:ring-offset-gray-800"
-                >
-                  <svg className="-ml-1 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                  </svg>
-                  Nova Venda
-                </button>
-                
-                <button
-                  onClick={fetchSales}
-                  className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800"
-                >
-                  <svg className="-ml-1 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Atualizar
-                </button>
-              </div>
-            </div>
+      <section className='grid gap-4 md:grid-cols-4'>
+        <div className='metric-card px-5 py-4'>
+          <p className='metric-label'>Vendas</p>
+          <p className='metric-value'>{sales.length}</p>
+        </div>
+        <div className='metric-card px-5 py-4'>
+          <p className='metric-label'>Valor contratado</p>
+          <p className='metric-value'>{formatCurrency(totals.totalValue)}</p>
+        </div>
+        <div className='metric-card px-5 py-4'>
+          <p className='metric-label'>Entradas</p>
+          <p className='metric-value text-emerald-700'>{formatCurrency(totals.downPayment)}</p>
+        </div>
+        <div className='metric-card px-5 py-4'>
+          <p className='metric-label'>Saldo contratado</p>
+          <p className='metric-value'>{formatCurrency(totals.openBalance)}</p>
+        </div>
+      </section>
 
-            {filteredSales.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="mx-auto h-12 w-12 text-gray-400">
-                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                  </svg>
-                </div>
-                <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
-                  {searchTerm ? 'Nenhuma venda encontrada' : 'Nenhuma venda realizada'}
-                </h3>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  {searchTerm ? (
-                    <>Nenhuma venda corresponde à busca "<span className="font-medium">{searchTerm}</span>". Tente outros termos.</>
-                  ) : (
-                    'Comece realizando uma nova venda.'
-                  )}
-                </p>
-                {!searchTerm && (
-                  <div className="mt-6">
-                    <button
-                      onClick={handleAddSale}
-                      className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                    >
-                      <svg className="-ml-1 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                      </svg>
-                      Primeira Venda
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                  <thead className="bg-gray-50 dark:bg-gray-700">
-                    <tr>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Cliente
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Lote
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Valor Total
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Entrada
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Parcelas
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Data da Venda
-                      </th>
-                      <th scope="col" className="relative px-6 py-3">
-                        <span className="sr-only">Ações</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {filteredSales.map((sale) => (
-                      <tr key={sale.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="h-10 w-10 flex-shrink-0">
-                              <div className="h-10 w-10 rounded-full bg-indigo-500 flex items-center justify-center">
-                                <span className="text-sm font-medium text-white">
-                                  {getInitials(sale.user.name)}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="ml-4">
-                              <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                {sale.user.name}
-                              </div>
-                              <div className="text-sm text-gray-500 dark:text-gray-400">
-                                {sale.user.email}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
-                            Bloco {sale.lot.block.identifier} - Lote {sale.lot.identifier}
-                          </div>
-                          <div className="text-sm text-gray-500 dark:text-gray-400">
-                            {sale.lot.totalArea.toFixed(2)} m²
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
-                            {formatCurrency(sale.totalValue)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 dark:text-white">
-                            {formatCurrency(sale.downPayment)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 dark:text-white">
-                            {sale.installmentCount}x {formatCurrency(sale.installmentValue)}
-                          </div>
-                          {sale.annualAdjustment && (
-                            <div className="text-xs text-gray-500 dark:text-gray-400">
-                              Com reajuste anual
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                          {formatDate(sale.createdAt)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <div className="flex items-center justify-end space-x-2">
-                            <button
-                              onClick={() => handleViewContract(sale.id)}
-                              className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
-                              title="Ver contrato"
-                            >
-                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => handleEditSale(sale)}
-                              className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
-                              title="Editar venda"
-                            >
-                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+      <div className='panel overflow-hidden'>
+        <div className='panel-header flex flex-col gap-4 px-6 py-5 md:flex-row md:items-center md:justify-between'>
+          <h2 className='text-lg font-semibold text-foreground'>
+            {searchTerm ? `${filteredSales.length} de ${sales.length} vendas` : `Total de vendas: ${sales.length}`}
+          </h2>
+          <div className='relative w-full md:max-w-xs'>
+            <input
+              type='text'
+              placeholder='Buscar por cliente, CPF ou lote...'
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className='block w-full rounded-2xl border border-border bg-background px-4 py-3 pr-10 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className='absolute inset-y-0 right-3 my-auto h-5 text-muted transition hover:text-foreground'
+                title='Limpar busca'
+              >
+                <svg className='h-5 w-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                  <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M6 18L18 6M6 6l12 12' />
+                </svg>
+              </button>
             )}
           </div>
         </div>
 
-        <SalesForm
-          sale={editingSale}
-          isOpen={showForm}
-          onClose={handleFormClose}
-          onSave={handleFormSave}
-        />
-
-        <ContractViewer
-          saleId={contractSaleId}
-          isOpen={showContract}
-          onClose={handleCloseContract}
-        />
+        {filteredSales.length === 0 ? (
+          <div className='px-6 py-12 text-center'>
+            <div className='mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-secondary text-muted'>
+              <svg className='h-7 w-7' fill='none' viewBox='0 0 24 24' stroke='currentColor'>
+                <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={1.8} d='M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-4 7h4m-4 4h4' />
+              </svg>
+            </div>
+            <h3 className='mt-4 text-base font-semibold text-foreground'>
+              {searchTerm ? 'Nenhuma venda encontrada' : 'Nenhuma venda realizada'}
+            </h3>
+            <p className='mt-2 text-sm text-muted'>
+              {searchTerm ? <>Nenhuma venda corresponde a "<span className='font-medium'>{searchTerm}</span>".</> : 'Comece realizando uma nova venda.'}
+            </p>
+            {!searchTerm && (
+              <button onClick={handleAddSale} className='mt-6 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+                Primeira venda
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className='overflow-x-auto'>
+            <table className='min-w-full divide-y divide-border'>
+              <thead className='bg-surface-secondary'>
+                <tr>
+                  <th className='table-head px-6 py-4 text-left'>Cliente</th>
+                  <th className='table-head px-6 py-4 text-left'>Lote</th>
+                  <th className='table-head px-6 py-4 text-left'>Valor total</th>
+                  <th className='table-head px-6 py-4 text-left'>Entrada</th>
+                  <th className='table-head px-6 py-4 text-left'>Parcelas</th>
+                  <th className='table-head px-6 py-4 text-left'>Data</th>
+                  <th className='table-head px-6 py-4 text-right'>Acoes</th>
+                </tr>
+              </thead>
+              <tbody className='divide-y divide-border bg-surface'>
+                {filteredSales.map((sale) => (
+                  <tr key={sale.id} className='transition hover:bg-surface-secondary/70'>
+                    <td className='whitespace-nowrap px-6 py-4'>
+                      <div className='flex items-center gap-4'>
+                        <div className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-semibold text-white'>
+                          {getInitials(sale.user.name)}
+                        </div>
+                        <div>
+                          <div className='text-sm font-semibold text-foreground'>{sale.user.name}</div>
+                          <div className='text-sm text-muted'>{sale.user.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className='whitespace-nowrap px-6 py-4'>
+                      <div className='text-sm font-semibold text-foreground'>Quadra {sale.lot.block.identifier}, Lote {sale.lot.identifier}</div>
+                      <div className='text-sm text-muted'>{sale.lot.totalArea.toFixed(2)} m2</div>
+                    </td>
+                    <td className='whitespace-nowrap px-6 py-4 text-sm font-semibold text-foreground'>{formatCurrency(sale.totalValue)}</td>
+                    <td className='whitespace-nowrap px-6 py-4 text-sm text-foreground'>{formatCurrency(sale.downPayment)}</td>
+                    <td className='whitespace-nowrap px-6 py-4'>
+                      <div className='text-sm text-foreground'>{sale.installmentCount}x {formatCurrency(sale.installmentValue)}</div>
+                      {sale.annualAdjustment && <div className='mt-1 text-xs text-muted'>Com reajuste anual</div>}
+                    </td>
+                    <td className='whitespace-nowrap px-6 py-4 text-sm text-muted'>{formatDate(sale.createdAt)}</td>
+                    <td className='whitespace-nowrap px-6 py-4 text-right text-sm font-semibold'>
+                      <div className='flex items-center justify-end gap-2'>
+                        <button onClick={() => handleViewContract(sale.id)} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>
+                          Contrato
+                        </button>
+                        <button onClick={() => handleEditSale(sale)} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>
+                          Editar
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
+
+      <SalesForm
+        sale={editingSale}
+        initialData={initialSaleData}
+        isOpen={showForm}
+        onClose={handleFormClose}
+        onSave={handleFormSave}
+      />
+
+      <ContractViewer
+        saleId={contractSaleId}
+        isOpen={showContract}
+        onClose={handleCloseContract}
+      />
     </div>
   )
 }

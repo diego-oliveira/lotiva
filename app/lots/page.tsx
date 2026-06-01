@@ -992,9 +992,12 @@ export default function LotsPage() {
 
                     {(selectedLot.status === 'reserved' || selectedLot.status === 'on_hold') && (
                       <>
-                        <button className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+                        <Link
+                          href={`/sales?lotId=${selectedLot.id}${getActiveReservation(selectedLot) ? `&userId=${getActiveReservation(selectedLot)!.user.id}&reservationId=${getActiveReservation(selectedLot)!.id}` : ''}`}
+                          className='block w-full rounded-xl bg-primary px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-primary-strong'
+                        >
                           Converter em venda
-                        </button>
+                        </Link>
                         <button onClick={openSimulator} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
                           Simular nova condicao
                         </button>

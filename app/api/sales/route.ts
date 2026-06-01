@@ -47,9 +47,16 @@ export async function POST(req: Request) {
             developmentId: true,
           },
         },
+        sale: true,
+        reservations: {
+          orderBy: { createdAt: 'desc' },
+        },
       },
     })
     if (!lot?.block.developmentId) return forbiddenResponse()
+    if (lot.sale || lot.status === 'sold') {
+      return NextResponse.json({ error: 'Este lote ja foi vendido.' }, { status: 400 })
+    }
 
     const buyerMembership = await prisma.developmentUser.findUnique({
       where: {
@@ -62,10 +69,16 @@ export async function POST(req: Request) {
     })
     if (!buyerMembership) return forbiddenResponse()
 
-    if (data.reservationId) {
+    const activeReservation = lot.reservations.find((reservation) => !reservation.cancelledAt && reservation.status !== 'cancelled')
+    if (activeReservation && activeReservation.userId !== data.userId) {
+      return NextResponse.json({ error: 'Este lote esta reservado para outro cliente.' }, { status: 409 })
+    }
+
+    const reservationId = data.reservationId || activeReservation?.id || null
+    if (reservationId) {
       const reservation = await prisma.reservation.findFirst({
         where: {
-          id: data.reservationId,
+          id: reservationId,
           lotId: data.lotId,
           userId: data.userId,
           ...reservationAccessWhere(currentUserId),
@@ -96,7 +109,7 @@ export async function POST(req: Request) {
         data: {
           userId: data.userId,
           lotId: data.lotId,
-          reservationId: data.reservationId || null,
+          reservationId,
           installmentCount: data.installmentCount,
           installmentValue: data.installmentValue,
           downPayment: data.downPayment,
@@ -119,6 +132,13 @@ export async function POST(req: Request) {
         where: { id: data.lotId },
         data: { status: 'sold' }
       })
+
+      if (reservationId) {
+        await prisma.reservation.update({
+          where: { id: reservationId },
+          data: { status: 'converted' },
+        })
+      }
 
       // Auto-generate contract
       try {
