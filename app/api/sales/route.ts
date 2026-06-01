@@ -4,6 +4,7 @@ import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, lotAccessWhere, reservationAccessWhere, saleAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 import { generateContractNumber, generateContractHTML } from '@/lib/contractGenerator'
+import { createLotEvent } from '@/lib/lot-events'
 
 function addMonths(date: Date, months: number) {
   const next = new Date(date)
@@ -213,6 +214,14 @@ export async function POST(req: Request) {
           data: { status: 'converted' },
         })
       }
+
+      await createLotEvent(prisma, {
+        lotId: data.lotId,
+        userId: currentUserId,
+        type: 'sale_created',
+        title: 'Venda registrada',
+        description: `Venda para ${sale.user.name} no valor de ${sale.totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`,
+      })
 
       // Auto-generate contract
       try {

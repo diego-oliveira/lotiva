@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, lotAccessWhere, reservationAccessWhere, userAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
+import { createLotEvent } from '@/lib/lot-events'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -42,7 +43,7 @@ export async function PUT(req: Request, { params }: Params) {
           id,
           ...reservationAccessWhere(currentUserId),
         },
-        select: { id: true },
+        select: { id: true, lotId: true, status: true },
       }),
       prisma.lot.findFirst({
         where: {
@@ -56,22 +57,35 @@ export async function PUT(req: Request, { params }: Params) {
           id: data.userId,
           ...userAccessWhere(currentUserId),
         },
-        select: { id: true },
+        select: { id: true, name: true },
       }),
     ])
     if (!reservation || !lot || !user) return forbiddenResponse()
 
-    const updated = await prisma.reservation.update({
-      where: { id: id },
-      data: {
-        userId: data.userId,
+    const updated = await prisma.$transaction(async (tx) => {
+      const saved = await tx.reservation.update({
+        where: { id: id },
+        data: {
+          userId: data.userId,
+          lotId: data.lotId,
+          proposal: data.proposal,
+          status: data.status,
+          expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
+          cancelledAt: data.status === 'cancelled' ? new Date() : null,
+          updatedAt: new Date(),
+        },
+      })
+
+      await createLotEvent(tx, {
         lotId: data.lotId,
-        proposal: data.proposal,
-        status: data.status,
-        expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
-        cancelledAt: data.status === 'cancelled' ? new Date() : null,
-        updatedAt: new Date(),
-      },
+        userId: currentUserId,
+        type: data.status === 'cancelled' ? 'reservation_cancelled' : 'reservation_updated',
+        title: data.status === 'cancelled' ? 'Reserva cancelada' : 'Reserva atualizada',
+        description: `Reserva de ${user.name} atualizada para ${data.status}.`,
+        notes: data.proposal || null,
+      })
+
+      return saved
     })
 
     return NextResponse.json(updated)
@@ -119,6 +133,14 @@ export async function DELETE(_: Request, { params }: Params) {
     await tx.lot.update({
       where: { id: reservation.lotId },
       data: { status: 'available' },
+    })
+
+    await createLotEvent(tx, {
+      lotId: reservation.lotId,
+      userId: currentUserId,
+      type: 'reservation_cancelled',
+      title: 'Reserva cancelada',
+      description: 'Lote liberado para venda.',
     })
   })
 

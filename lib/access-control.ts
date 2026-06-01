@@ -27,6 +27,12 @@ export function lotAccessWhere(userId: string) {
   }
 }
 
+export function lotEventAccessWhere(userId: string) {
+  return {
+    lot: lotAccessWhere(userId),
+  }
+}
+
 export function saleAccessWhere(userId: string) {
   return {
     lot: lotAccessWhere(userId),

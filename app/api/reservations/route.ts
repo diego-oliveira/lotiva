@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, lotAccessWhere, reservationAccessWhere, userAccessWhere } from '@/lib/access-control'
 import { NextResponse } from "next/server";
+import { createLotEvent } from '@/lib/lot-events'
 
 function parseExpiration(value: unknown, fallbackDays: number) {
   if (typeof value === 'string' && value) {
@@ -62,7 +63,7 @@ export async function POST(req: Request) {
           id: data.userId,
           ...userAccessWhere(currentUserId),
         },
-        select: { id: true },
+        select: { id: true, name: true },
       }),
     ])
     if (!lot || !user) return forbiddenResponse()
@@ -103,6 +104,15 @@ export async function POST(req: Request) {
       await tx.lot.update({
         where: { id: data.lotId },
         data: { status: 'reserved' },
+      })
+
+      await createLotEvent(tx, {
+        lotId: data.lotId,
+        userId: currentUserId,
+        type: existingReservation ? 'reservation_updated' : 'reservation_created',
+        title: existingReservation ? 'Reserva atualizada' : 'Reserva registrada',
+        description: `Reserva para ${user.name} com validade em ${expiresAt.toLocaleDateString('pt-BR')}.`,
+        notes: data.proposal || null,
       })
 
       return savedReservation

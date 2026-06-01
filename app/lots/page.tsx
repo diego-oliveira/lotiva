@@ -81,6 +81,16 @@ interface LotProposal {
   user: Person
 }
 
+interface LotEvent {
+  id: string
+  type: string
+  title: string
+  description?: string | null
+  notes?: string | null
+  createdAt: string
+  user?: Person | null
+}
+
 interface Lot {
   id: string
   identifier: string
@@ -98,6 +108,7 @@ interface Lot {
   reservations: LotReservation[]
   proposals: LotProposal[]
   sale?: LotSale | null
+  events: LotEvent[]
 }
 
 const statusMeta: Record<string, { label: string; tile: string; badge: string; dot: string }> = {
@@ -209,6 +220,9 @@ export default function LotsPage() {
   const [error, setError] = useState<string | null>(null)
   const [reservationError, setReservationError] = useState<string | null>(null)
   const [reservationSaving, setReservationSaving] = useState(false)
+  const [eventSaving, setEventSaving] = useState(false)
+  const [eventError, setEventError] = useState<string | null>(null)
+  const [eventNote, setEventNote] = useState('')
   const [showReservationForm, setShowReservationForm] = useState(false)
   const [reservationForm, setReservationForm] = useState({
     userId: '',
@@ -272,6 +286,32 @@ export default function LotsPage() {
     const response = await fetch('/api/clients', { cache: 'no-store' })
     if (!response.ok) throw new Error('Nao foi possivel carregar clientes')
     setClients(await response.json())
+  }
+
+  async function saveLotEventNote() {
+    if (!selectedLot || !eventNote.trim()) return
+
+    try {
+      setEventSaving(true)
+      setEventError(null)
+      const response = await fetch(`/api/lots/${selectedLot.id}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: eventNote }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload.error || 'Nao foi possivel registrar a observacao')
+      }
+
+      setEventNote('')
+      await fetchLots()
+    } catch (err) {
+      setEventError(err instanceof Error ? err.message : 'Nao foi possivel registrar a observacao')
+    } finally {
+      setEventSaving(false)
+    }
   }
 
   const developments = useMemo(() => {
@@ -1096,9 +1136,6 @@ export default function LotsPage() {
                       </>
                     )}
 
-                    <button className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
-                      Ver historico
-                    </button>
                   </div>
 
                   {showReservationForm && (
@@ -1163,23 +1200,54 @@ export default function LotsPage() {
                 </div>
 
                 <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
-                  <h3 className='text-sm font-semibold text-foreground'>Atividade recente</h3>
-                  <div className='mt-4 space-y-3'>
-                    <div className='rounded-xl border border-border bg-surface px-4 py-3'>
-                      <p className='text-sm font-semibold text-foreground'>Lote cadastrado</p>
-                      <p className='mt-1 text-xs text-muted'>{formatDate(selectedLot.createdAt)}</p>
+                  <div className='flex items-start justify-between gap-3'>
+                    <div>
+                      <h3 className='text-sm font-semibold text-foreground'>Historico do lote</h3>
+                      <p className='mt-1 text-xs text-muted'>{selectedLot.events.length} evento(s) registrados</p>
                     </div>
-                    {getActiveReservation(selectedLot) && (
-                      <div className='rounded-xl border border-border bg-surface px-4 py-3'>
-                        <p className='text-sm font-semibold text-foreground'>Reserva registrada</p>
-                        <p className='mt-1 text-xs text-muted'>{formatDate(getActiveReservation(selectedLot)!.createdAt)}</p>
+                    <span className='pill bg-surface text-muted'>Timeline</span>
+                  </div>
+
+                  <div className='mt-4 rounded-xl border border-border bg-surface p-4'>
+                    <label className='block'>
+                      <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Observacao manual</span>
+                      <textarea
+                        rows={3}
+                        value={eventNote}
+                        onChange={(event) => setEventNote(event.target.value)}
+                        className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                        placeholder='Registre uma decisao, contato ou detalhe importante'
+                      />
+                    </label>
+                    {eventError && <p className='mt-2 text-sm font-medium text-red-600'>{eventError}</p>}
+                    <button
+                      onClick={saveLotEventNote}
+                      disabled={eventSaving || !eventNote.trim()}
+                      className='mt-3 w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
+                    >
+                      {eventSaving ? 'Registrando...' : 'Registrar observacao'}
+                    </button>
+                  </div>
+
+                  <div className='mt-4 space-y-3'>
+                    {selectedLot.events.length === 0 ? (
+                      <div className='rounded-xl border border-dashed border-border bg-surface px-4 py-5 text-center text-sm text-muted'>
+                        Nenhum evento registrado para este lote.
                       </div>
-                    )}
-                    {selectedLot.sale && (
-                      <div className='rounded-xl border border-border bg-surface px-4 py-3'>
-                        <p className='text-sm font-semibold text-foreground'>Venda registrada</p>
-                        <p className='mt-1 text-xs text-muted'>{formatDate(selectedLot.sale.createdAt)}</p>
-                      </div>
+                    ) : (
+                      selectedLot.events.slice(0, 8).map((event) => (
+                        <div key={event.id} className='rounded-xl border border-border bg-surface px-4 py-3'>
+                          <div className='flex items-start justify-between gap-3'>
+                            <div>
+                              <p className='text-sm font-semibold text-foreground'>{event.title}</p>
+                              {event.description && <p className='mt-1 text-sm leading-5 text-muted'>{event.description}</p>}
+                              {event.notes && <p className='mt-2 rounded-lg bg-surface-secondary px-3 py-2 text-sm leading-5 text-foreground'>{event.notes}</p>}
+                            </div>
+                            <p className='shrink-0 text-xs text-muted'>{formatDate(event.createdAt)}</p>
+                          </div>
+                          <p className='mt-2 text-xs text-muted'>{event.user ? `Por ${event.user.name}` : 'Evento do sistema'}</p>
+                        </div>
+                      ))
                     )}
                   </div>
                 </div>

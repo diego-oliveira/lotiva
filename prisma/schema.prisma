@@ -78,6 +78,7 @@ model User {
   memberships  DevelopmentUser[]
   accounts     Account[]
   sessions     Session[]
+  lotEvents    LotEvent[]
 }
 
 model Account {
@@ -180,6 +181,7 @@ model Lot {
   reservations Reservation[]
   proposals    Proposal[]
   sale         Sale?    // 👈 one-to-one back relation
+  events       LotEvent[]
 }
 
 model Reservation {
@@ -281,4 +283,21 @@ model Receivable {
   @@unique([saleId, kind, sequence])
   @@index([dueDate])
   @@index([status])
+}
+
+model LotEvent {
+  id          String   @id @default(uuid())
+  lotId       String
+  userId      String?
+  type        String
+  title       String
+  description String?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  lot  Lot   @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([lotId, createdAt])
+  @@index([type])
 }

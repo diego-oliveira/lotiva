@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, lotAccessWhere, proposalAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
+import { createLotEvent } from '@/lib/lot-events'
 
 function toNumber(value: unknown) {
   const parsed = Number(value)
@@ -137,7 +138,7 @@ export async function POST(req: Request) {
         data: { status: 'reserved' },
       })
 
-      return tx.proposal.create({
+      const savedProposal = await tx.proposal.create({
         data: {
           lotId: data.lotId,
           userId: data.userId,
@@ -162,6 +163,17 @@ export async function POST(req: Request) {
           reservation: true,
         },
       })
+
+      await createLotEvent(tx, {
+        lotId: data.lotId,
+        userId: currentUserId,
+        type: 'proposal_created',
+        title: 'Proposta registrada',
+        description: `Proposta de ${totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} para ${savedProposal.user.name}.`,
+        notes: data.notes || null,
+      })
+
+      return savedProposal
     })
 
     return NextResponse.json(proposal, { status: 201 })
