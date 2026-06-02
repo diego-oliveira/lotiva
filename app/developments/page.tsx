@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import DevelopmentForm from './components/DevelopmentForm'
+import LotBatchDrawer from './components/LotBatchDrawer'
 import InlineAlert from '@/app/components/InlineAlert'
 
 interface Company {
@@ -61,6 +62,7 @@ export default function DevelopmentsPage() {
   const [error, setError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editingDevelopment, setEditingDevelopment] = useState<Development | null>(null)
+  const [lotBatchDevelopment, setLotBatchDevelopment] = useState<Development | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
@@ -268,9 +270,9 @@ export default function DevelopmentsPage() {
                     <Link href={`/lots?developmentId=${development.id}`} className='rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong'>
                       Ver lotes
                     </Link>
-                    <Link href={`/onboarding?developmentId=${development.id}`} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+                    <button type='button' onClick={() => setLotBatchDevelopment(development)} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
                       {metrics.totalLots > 0 ? 'Complementar lotes' : 'Criar lotes'}
-                    </Link>
+                    </button>
                     <button onClick={() => { setEditingDevelopment(development); setShowForm(true) }} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>Editar empreendimento</button>
                   </div>
                 </article>
@@ -317,6 +319,16 @@ export default function DevelopmentsPage() {
               ? 'O empreendimento foi criado com sucesso.'
               : 'O empreendimento foi atualizado com sucesso.',
           )
+        }}
+      />
+      <LotBatchDrawer
+        development={lotBatchDevelopment}
+        isOpen={Boolean(lotBatchDevelopment)}
+        onClose={() => setLotBatchDevelopment(null)}
+        onSave={async (count) => {
+          await refresh()
+          setLotBatchDevelopment(null)
+          setSuccessMessage(`${count} lote(s) foram criados com sucesso.`)
         }}
       />
     </div>
