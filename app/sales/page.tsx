@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
 import SalesForm from './components/SalesForm'
 import ContractViewer from './components/ContractViewer'
 import ReceivablesDrawer from './components/ReceivablesDrawer'
@@ -8,6 +9,12 @@ import ReceivablesDrawer from './components/ReceivablesDrawer'
 interface Block {
   id: string
   identifier: string
+  development?: Development | null
+}
+
+interface Development {
+  id: string
+  name: string
 }
 
 interface Lot {
@@ -83,10 +90,12 @@ function getInitials(name: string) {
 }
 
 export default function SalesPage() {
+  const searchParams = useSearchParams()
   const [sales, setSales] = useState<Sale[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [developmentFilter, setDevelopmentFilter] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
   const [initialSaleData, setInitialSaleData] = useState<{ userId?: string; lotId?: string; reservationId?: string } | null>(null)
@@ -110,6 +119,11 @@ export default function SalesPage() {
       setShowForm(true)
     }
   }, [])
+
+  useEffect(() => {
+    const developmentId = searchParams.get('developmentId')
+    if (developmentId) setDevelopmentFilter(developmentId)
+  }, [searchParams])
 
   const fetchSales = async () => {
     try {
@@ -181,7 +195,18 @@ export default function SalesPage() {
     })
   }
 
+  const developments = useMemo(() => {
+    const map = new Map<string, Development>()
+    sales.forEach((sale) => {
+      if (sale.lot.block.development) map.set(sale.lot.block.development.id, sale.lot.block.development)
+    })
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+  }, [sales])
+
+  const selectedDevelopment = developments.find((development) => development.id === developmentFilter) ?? null
+
   const filteredSales = sales.filter((sale) => {
+    if (developmentFilter && sale.lot.block.development?.id !== developmentFilter) return false
     if (!searchTerm) return true
 
     const searchLower = searchTerm.toLowerCase()
@@ -194,7 +219,7 @@ export default function SalesPage() {
     )
   })
 
-  const totals = sales.reduce(
+  const totals = filteredSales.reduce(
     (acc, sale) => ({
       totalValue: acc.totalValue + sale.totalValue,
       downPayment: acc.downPayment + sale.downPayment,
@@ -252,10 +277,37 @@ export default function SalesPage() {
         </div>
       )}
 
+      <section className='panel px-6 py-5'>
+        <div className='grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,360px)] lg:items-center'>
+          <div>
+            <p className='text-xs font-semibold uppercase tracking-[0.18em] text-muted'>Empreendimento selecionado</p>
+            <h2 className='mt-2 text-2xl font-bold text-foreground'>{selectedDevelopment?.name ?? 'Todos os empreendimentos'}</h2>
+            <p className='mt-1 text-sm text-muted'>
+              {selectedDevelopment
+                ? `${filteredSales.length} venda(s) encontradas para este empreendimento.`
+                : 'Selecione um empreendimento para filtrar vendas, contratos e parcelas.'}
+            </p>
+          </div>
+          <label className='block'>
+            <span className='mb-2 block text-sm font-semibold text-foreground'>Filtrar empreendimento</span>
+            <select
+              value={developmentFilter}
+              onChange={(event) => setDevelopmentFilter(event.target.value)}
+              className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm font-semibold text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+            >
+              <option value=''>Todos os empreendimentos</option>
+              {developments.map((development) => (
+                <option key={development.id} value={development.id}>{development.name}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </section>
+
       <section className='grid gap-4 md:grid-cols-4'>
         <div className='metric-card px-5 py-4'>
           <p className='metric-label'>Vendas</p>
-          <p className='metric-value'>{sales.length}</p>
+          <p className='metric-value'>{filteredSales.length}</p>
         </div>
         <div className='metric-card px-5 py-4'>
           <p className='metric-label'>Valor contratado</p>
@@ -274,7 +326,7 @@ export default function SalesPage() {
       <div className='panel overflow-hidden'>
         <div className='panel-header flex flex-col gap-4 px-6 py-5 md:flex-row md:items-center md:justify-between'>
           <h2 className='text-lg font-semibold text-foreground'>
-            {searchTerm ? `${filteredSales.length} de ${sales.length} vendas` : `Total de vendas: ${sales.length}`}
+            {(searchTerm || developmentFilter) ? `${filteredSales.length} de ${sales.length} vendas` : `Total de vendas: ${sales.length}`}
           </h2>
           <div className='relative w-full md:max-w-xs'>
             <input
@@ -306,14 +358,14 @@ export default function SalesPage() {
               </svg>
             </div>
             <h3 className='mt-4 text-base font-semibold text-foreground'>
-              {searchTerm ? 'Nenhuma venda encontrada' : 'Nenhuma venda realizada'}
+              {(searchTerm || developmentFilter) ? 'Nenhuma venda encontrada' : 'Nenhuma venda realizada'}
             </h3>
             <p className='mt-2 text-sm text-muted'>
-              {searchTerm ? <>Nenhuma venda corresponde a "<span className='font-medium'>{searchTerm}</span>".</> : 'Converta um lote disponivel ou reservado em venda para gerar contrato e parcelas.'}
+              {(searchTerm || developmentFilter) ? <>Nenhuma venda corresponde aos filtros atuais.</> : 'Converta um lote disponivel ou reservado em venda para gerar contrato e parcelas.'}
             </p>
-            {searchTerm ? (
-              <button onClick={() => setSearchTerm('')} className='mt-6 rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
-                Limpar busca
+            {(searchTerm || developmentFilter) ? (
+              <button onClick={() => { setSearchTerm(''); setDevelopmentFilter('') }} className='mt-6 rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+                Limpar filtros
               </button>
             ) : (
               <button onClick={handleAddSale} className='mt-6 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
@@ -351,7 +403,7 @@ export default function SalesPage() {
                     </td>
                     <td className='whitespace-nowrap px-6 py-4'>
                       <div className='text-sm font-semibold text-foreground'>Quadra {sale.lot.block.identifier}, Lote {sale.lot.identifier}</div>
-                      <div className='text-sm text-muted'>{sale.lot.totalArea.toFixed(2)} m2</div>
+                      <div className='text-sm text-muted'>{sale.lot.block.development?.name ?? 'Sem empreendimento'} · {sale.lot.totalArea.toFixed(2)} m2</div>
                     </td>
                     <td className='whitespace-nowrap px-6 py-4 text-sm font-semibold text-foreground'>{formatCurrency(sale.totalValue)}</td>
                     <td className='whitespace-nowrap px-6 py-4 text-sm text-foreground'>{formatCurrency(sale.downPayment)}</td>
