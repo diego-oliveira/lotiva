@@ -76,7 +76,7 @@ export default async function Home({ searchParams }: HomeProps) {
     return (
       <div className='space-y-6'>
         <div>
-          <h1 className='page-title'>Dashboard</h1>
+          <h1 className='page-title'>Painel</h1>
           <p className='page-subtitle'>Crie um empreendimento para acompanhar os indicadores comerciais e financeiros.</p>
         </div>
         <section className='panel px-6 py-10 text-center'>
@@ -263,7 +263,7 @@ export default async function Home({ searchParams }: HomeProps) {
     <div className='space-y-6'>
       <div className='flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'>
         <div>
-          <h1 className='page-title'>Dashboard</h1>
+          <h1 className='page-title'>Painel</h1>
           <p className='page-subtitle'>Resumo executivo de estoque, vendas e recebiveis do empreendimento.</p>
         </div>
         <DevelopmentSelector
