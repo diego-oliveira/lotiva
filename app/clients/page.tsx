@@ -5,6 +5,8 @@ import ClientForm from './components/ClientForm'
 import ClientProfileDrawer from './components/ClientProfileDrawer'
 import DeleteConfirmModal from './components/DeleteConfirmModal'
 
+const ITEMS_PER_PAGE = 10
+
 interface Membership {
   id: string
   development: { id: string; name: string }
@@ -47,8 +49,13 @@ export default function ClientsPage() {
   const [deletingClient, setDeletingClient] = useState<Client | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
 
   useEffect(() => { fetchClients() }, [])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm])
 
   const fetchClients = async () => {
     try {
@@ -90,6 +97,8 @@ export default function ClientsPage() {
       (digits && c.cpf?.replace(/\D/g, '').includes(digits))
     )
   })
+  const totalPages = Math.max(1, Math.ceil(filteredClients.length / ITEMS_PER_PAGE))
+  const paginatedClients = filteredClients.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
 
   if (loading) return <div className='animate-pulse'><div className='h-8 w-56 rounded-xl bg-surface-secondary' /></div>
   if (error) return <div className='rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700'>{error}</div>
@@ -175,7 +184,7 @@ export default function ClientsPage() {
                 </tr>
               </thead>
               <tbody className='divide-y divide-border bg-surface'>
-                {filteredClients.map((client) => {
+                {paginatedClients.map((client) => {
                   const complete = profileComplete(client)
                   return (
                     <tr key={client.id} className='transition hover:bg-surface-secondary/70'>
@@ -243,12 +252,6 @@ export default function ClientsPage() {
                             Ver ficha
                           </button>
                           <button
-                            onClick={() => { setEditingClient(client); setShowForm(true) }}
-                            className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'
-                          >
-                            Editar
-                          </button>
-                          <button
                             onClick={() => { setDeletingClient(client); setShowDeleteModal(true) }}
                             className='rounded-xl px-3 py-2 text-red-600 transition hover:bg-red-50'
                           >
@@ -261,6 +264,34 @@ export default function ClientsPage() {
                 })}
               </tbody>
             </table>
+            {filteredClients.length > ITEMS_PER_PAGE && (
+              <div className='flex flex-col gap-3 border-t border-border px-6 py-4 sm:flex-row sm:items-center sm:justify-between'>
+                <p className='text-sm text-muted'>
+                  Mostrando {(currentPage - 1) * ITEMS_PER_PAGE + 1} a {Math.min(currentPage * ITEMS_PER_PAGE, filteredClients.length)} de {filteredClients.length} usuarios
+                </p>
+                <div className='flex items-center gap-2'>
+                  <button
+                    type='button'
+                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                    disabled={currentPage === 1}
+                    className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:opacity-50'
+                  >
+                    Anterior
+                  </button>
+                  <span className='rounded-xl bg-surface-secondary px-3 py-2 text-sm font-semibold text-muted'>
+                    {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    type='button'
+                    onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                    disabled={currentPage === totalPages}
+                    className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:opacity-50'
+                  >
+                    Proxima
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
