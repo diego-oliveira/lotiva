@@ -246,6 +246,48 @@ export default function ClientProfileDrawer({
                 <section className='rounded-2xl border border-border bg-surface-secondary p-5'>
                   <div className='flex items-center justify-between gap-3'>
                     <div>
+                      <h3 className='text-base font-semibold text-foreground'>Vendas e financeiro</h3>
+                      <p className='mt-1 text-sm text-muted'>Contratos, entradas e parcelas da relacao comercial.</p>
+                    </div>
+                    <Link href={`/sales?userId=${client.id}`} className='rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-background'>
+                      Vendas do cliente
+                    </Link>
+                  </div>
+                  <div className='mt-4 space-y-3'>
+                    {client.sales.length === 0 ? (
+                      <div className='rounded-xl border border-dashed border-border bg-surface px-4 py-5 text-center text-sm text-muted'>
+                        Nenhuma venda encontrada.
+                      </div>
+                    ) : (
+                      client.sales.map((sale) => (
+                        <div key={sale.id} className='rounded-xl border border-border bg-surface px-4 py-3'>
+                          <div className='flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
+                            <div>
+                              <p className='text-sm font-semibold text-foreground'>{getLotLabel(sale.lot)}</p>
+                              <p className='mt-1 text-xs text-muted'>
+                                Entrada {formatCurrency(sale.downPayment)} · {sale.installmentCount}x de {formatCurrency(sale.installmentValue)}
+                              </p>
+                            </div>
+                            <p className='text-sm font-bold text-foreground'>{formatCurrency(sale.totalValue)}</p>
+                          </div>
+                          <div className='mt-3 flex flex-wrap gap-2 text-xs text-muted'>
+                            <span className='rounded-full bg-surface-secondary px-2.5 py-1'>Venda em {formatDate(sale.createdAt)}</span>
+                            <span className='rounded-full bg-surface-secondary px-2.5 py-1'>{sale.annualAdjustment ? 'Com reajuste anual' : 'Sem reajuste anual'}</span>
+                            {sale.contract && (
+                              <span className='rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700'>
+                                Contrato {sale.contract.contractNumber}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </section>
+
+                <section className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                  <div className='flex items-center justify-between gap-3'>
+                    <div>
                       <h3 className='text-base font-semibold text-foreground'>Propostas</h3>
                       <p className='mt-1 text-sm text-muted'>Condicoes comerciais simuladas e salvas para este cliente.</p>
                     </div>
@@ -336,47 +378,6 @@ export default function ClientProfileDrawer({
                   </div>
                 </section>
 
-                <section className='rounded-2xl border border-border bg-surface-secondary p-5'>
-                  <div className='flex items-center justify-between gap-3'>
-                    <div>
-                      <h3 className='text-base font-semibold text-foreground'>Vendas e financeiro</h3>
-                      <p className='mt-1 text-sm text-muted'>Contratos, entradas e parcelas da relacao comercial.</p>
-                    </div>
-                    <Link href={`/sales?userId=${client.id}`} className='rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-background'>
-                      Vendas do cliente
-                    </Link>
-                  </div>
-                  <div className='mt-4 space-y-3'>
-                    {client.sales.length === 0 ? (
-                      <div className='rounded-xl border border-dashed border-border bg-surface px-4 py-5 text-center text-sm text-muted'>
-                        Nenhuma venda encontrada.
-                      </div>
-                    ) : (
-                      client.sales.map((sale) => (
-                        <div key={sale.id} className='rounded-xl border border-border bg-surface px-4 py-3'>
-                          <div className='flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
-                            <div>
-                              <p className='text-sm font-semibold text-foreground'>{getLotLabel(sale.lot)}</p>
-                              <p className='mt-1 text-xs text-muted'>
-                                Entrada {formatCurrency(sale.downPayment)} · {sale.installmentCount}x de {formatCurrency(sale.installmentValue)}
-                              </p>
-                            </div>
-                            <p className='text-sm font-bold text-foreground'>{formatCurrency(sale.totalValue)}</p>
-                          </div>
-                          <div className='mt-3 flex flex-wrap gap-2 text-xs text-muted'>
-                            <span className='rounded-full bg-surface-secondary px-2.5 py-1'>Venda em {formatDate(sale.createdAt)}</span>
-                            <span className='rounded-full bg-surface-secondary px-2.5 py-1'>{sale.annualAdjustment ? 'Com reajuste anual' : 'Sem reajuste anual'}</span>
-                            {sale.contract && (
-                              <span className='rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700'>
-                                Contrato {sale.contract.contractNumber}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </section>
               </div>
             ) : null}
           </div>
