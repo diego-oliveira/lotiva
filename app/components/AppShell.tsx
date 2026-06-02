@@ -21,59 +21,65 @@ type PermissionMap = {
   finance: boolean
 }
 
+type CurrentUser = {
+  id: string
+  name?: string | null
+  email: string
+}
+
 const navItems: NavItem[] = [
   {
     href: '/',
     label: 'Dashboard',
-    description: 'Overview',
+    description: 'Indicadores gerais',
     icon: 'dashboard',
   },
   {
     href: '/onboarding',
     label: 'Onboarding',
-    description: 'Client setup',
+    description: 'Cadastro guiado',
     icon: 'setup',
     permission: 'manageSettings',
   },
   {
     href: '/companies',
     label: 'Empresas',
-    description: 'Holding companies',
+    description: 'Proprietarias',
     icon: 'company',
     permission: 'manageSettings',
   },
   {
     href: '/developments',
     label: 'Empreendimentos',
-    description: 'Projects and subdivisions',
+    description: 'Loteamentos',
     icon: 'development',
     permission: 'manageSettings',
   },
   {
     href: '/clients',
-    label: 'Usuarios',
-    description: 'People and records',
+    label: 'Clientes',
+    description: 'Cadastros',
     icon: 'user',
     permission: 'manageUsers',
   },
   {
     href: '/lots',
     label: 'Lotes',
-    description: 'Inventory',
+    description: 'Estoque comercial',
     icon: 'lot',
     permission: 'sales',
   },
   {
     href: '/sales',
     label: 'Vendas',
-    description: 'Transactions',
+    description: 'Contratos',
     icon: 'sale',
     permission: 'sales',
   },
   {
     href: '/finance',
     label: 'Financeiro',
-    description: 'Receivables',
+    description: 'Recebimentos',
     icon: 'finance',
     permission: 'finance',
   },
@@ -137,26 +143,33 @@ function NavIcon({ icon }: { icon: NavItem['icon'] }) {
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [permissions, setPermissions] = useState<PermissionMap | null>(null)
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const isAuthPage = pathname.startsWith('/signin') || pathname.startsWith('/auth')
 
   useEffect(() => {
     if (isAuthPage) return
     fetch('/api/me/permissions', { cache: 'no-store' })
       .then((response) => (response.ok ? response.json() : null))
-      .then((payload) => setPermissions(payload?.permissions ?? null))
-      .catch(() => setPermissions(null))
+      .then((payload) => {
+        setPermissions(payload?.permissions ?? null)
+        setCurrentUser(payload?.user ?? null)
+      })
+      .catch(() => {
+        setPermissions(null)
+        setCurrentUser(null)
+      })
   }, [isAuthPage])
+
+  useEffect(() => {
+    setUserMenuOpen(false)
+  }, [pathname])
 
   const visibleNavItems = useMemo(() => {
     if (!permissions) return navItems
     return navItems.filter((item) => !item.permission || permissions[item.permission])
   }, [permissions])
-
-  const currentItem = useMemo(
-    () => visibleNavItems.find((item) => (item.href === '/' ? pathname === '/' : pathname.startsWith(item.href))),
-    [pathname, visibleNavItems],
-  )
 
   if (isAuthPage) {
     return <>{children}</>
@@ -177,7 +190,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </div>
               <div>
                 <p className='text-xs font-semibold uppercase tracking-[0.24em] text-slate-400'>Lotiva</p>
-                <h1 className='mt-1 text-[19px] font-semibold text-white'>Management</h1>
+                <h1 className='mt-1 text-[19px] font-semibold text-white'>Loteamentos</h1>
               </div>
             </div>
             <button
@@ -192,12 +205,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className='px-5 py-6'>
-            <div className='mb-7 rounded-2xl border border-white/8 bg-white/5 px-4 py-4'>
-              <p className='text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400'>Current area</p>
-              <p className='mt-2 text-lg font-semibold text-white'>{currentItem?.label ?? 'Workspace'}</p>
-              <p className='mt-1 text-sm text-slate-400'>{currentItem?.description ?? 'Navigate the platform'}</p>
-            </div>
-
             <p className='mb-3 px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500'>Menu</p>
             <nav className='space-y-1.5'>
               {visibleNavItems.map((item) => {
@@ -231,7 +238,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               onClick={() => signOut({ callbackUrl: '/signin' })}
               className='mt-6 flex w-full items-center justify-center rounded-xl border border-white/10 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white md:hidden'
             >
-              Sign out
+              Sair
             </button>
           </div>
         </aside>
@@ -251,39 +258,49 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 </button>
 
                 <div>
-                  <p className='text-xs font-semibold uppercase tracking-[0.2em] text-muted'>TailAdmin-style workspace</p>
-                  <p className='mt-1 text-lg font-semibold text-foreground'>{currentItem?.label ?? 'Dashboard'}</p>
+                  <p className='text-xs font-semibold uppercase tracking-[0.2em] text-muted'>Lotiva</p>
+                  <p className='mt-1 text-sm font-medium text-foreground'>Gestao comercial de loteamentos</p>
                 </div>
               </div>
 
-              <div className='hidden items-center gap-4 md:flex'>
-                <div className='flex min-w-[320px] items-center gap-3 rounded-xl border border-border bg-surface-secondary px-4 py-3 text-sm text-muted'>
-                  <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                    <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z' />
-                  </svg>
-                  <span>Search or type command...</span>
-                </div>
-                <button type='button' className='rounded-xl border border-border bg-surface p-3 text-muted transition hover:bg-surface-secondary'>
-                  <svg className='h-5 w-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                    <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0a3 3 0 11-6 0m6 0H9' />
-                  </svg>
-                </button>
+              <div className='flex items-center gap-4'>
+                <div className='relative'>
                 <button
                   type='button'
-                  onClick={() => signOut({ callbackUrl: '/signin' })}
-                  className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-muted transition hover:bg-surface-secondary hover:text-foreground'
+                  onClick={() => setUserMenuOpen((current) => !current)}
+                  className='flex items-center gap-3 rounded-2xl border border-border bg-surface px-3 py-2 text-left shadow-sm transition hover:bg-surface-secondary'
+                  aria-expanded={userMenuOpen}
                 >
-                  Sign out
-                </button>
-                <div className='flex items-center gap-3 rounded-2xl border border-border bg-surface px-3 py-2 shadow-sm'>
                   <div className='flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-sm font-semibold text-white'>
-                    LO
+                    {(currentUser?.name ?? currentUser?.email ?? 'LO').slice(0, 2).toUpperCase()}
                   </div>
-                  <div className='pr-1'>
-                    <p className='text-sm font-semibold text-foreground'>Lotiva Admin</p>
-                    <p className='text-xs text-muted'>Operations</p>
+                  <div className='hidden min-w-0 pr-1 sm:block'>
+                    <p className='max-w-[180px] truncate text-sm font-semibold text-foreground'>{currentUser?.name || currentUser?.email || 'Usuario'}</p>
+                    <p className='max-w-[180px] truncate text-xs text-muted'>{currentUser?.email ?? 'Sessao ativa'}</p>
                   </div>
-                </div>
+                  <svg className={`h-4 w-4 text-muted transition ${userMenuOpen ? 'rotate-180' : ''}`} fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                    <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M6 9l6 6 6-6' />
+                  </svg>
+                </button>
+                {userMenuOpen && (
+                  <div className='absolute right-0 mt-3 w-64 overflow-hidden rounded-2xl border border-border bg-surface shadow-xl'>
+                    <div className='border-b border-border px-4 py-3'>
+                      <p className='truncate text-sm font-semibold text-foreground'>{currentUser?.name || 'Usuario Lotiva'}</p>
+                      <p className='mt-1 truncate text-xs text-muted'>{currentUser?.email ?? 'Sessao ativa'}</p>
+                    </div>
+                    <button
+                      type='button'
+                      onClick={() => signOut({ callbackUrl: '/signin' })}
+                      className='flex w-full items-center justify-between px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'
+                    >
+                      Sair
+                      <svg className='h-4 w-4 text-muted' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6A2.25 2.25 0 005.25 5.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12' />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+              </div>
               </div>
             </div>
           </header>

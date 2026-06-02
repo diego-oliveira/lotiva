@@ -7,5 +7,12 @@ export async function GET() {
   if (auth.response) return auth.response
 
   const permissions = await getUserPermissions(auth.session.user.id)
-  return NextResponse.json(permissions)
+  return NextResponse.json({
+    ...permissions,
+    user: {
+      id: auth.session.user.id,
+      name: auth.session.user.name,
+      email: auth.session.user.email,
+    },
+  })
 }
