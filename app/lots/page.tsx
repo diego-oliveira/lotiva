@@ -418,6 +418,7 @@ export default function LotsPage() {
     [filteredLots, lots, selectedLotId],
   )
   const selectedLotStatus = selectedLot ? getEffectiveLotStatus(selectedLot) : null
+  const selectedDevelopmentSettings = selectedLot?.block.development?.settings ?? null
 
   const simulation = useMemo(() => {
     const balance = Math.max(simulatorForm.salePrice - simulatorForm.downPayment, 0)
@@ -449,7 +450,28 @@ export default function LotsPage() {
     [simulatorForm, simulation.installmentValue],
   )
 
-  const proposalCanBeSaved = simulationIsValid && Boolean(proposalForm.userId) && !proposalSaving
+  const commercialRules = useMemo(() => {
+    const minDownPaymentPercentage = selectedDevelopmentSettings?.minDownPaymentPercentage ?? 0
+    const minDownPayment = (simulatorForm.salePrice * minDownPaymentPercentage) / 100
+    const maxInstallments = selectedDevelopmentSettings?.maxInstallments ?? 240
+    const allowCustomTerms = selectedDevelopmentSettings?.allowCustomTerms ?? true
+    const belowMinimumDownPayment = simulatorForm.downPayment < minDownPayment
+    const aboveMaxInstallments = simulatorForm.installmentCount > maxInstallments
+    const hasException = belowMinimumDownPayment || aboveMaxInstallments
+
+    return {
+      minDownPayment,
+      minDownPaymentPercentage,
+      maxInstallments,
+      allowCustomTerms,
+      belowMinimumDownPayment,
+      aboveMaxInstallments,
+      hasException,
+      canSave: !hasException || allowCustomTerms,
+    }
+  }, [selectedDevelopmentSettings, simulatorForm.downPayment, simulatorForm.installmentCount, simulatorForm.salePrice])
+
+  const proposalCanBeSaved = simulationIsValid && commercialRules.canSave && Boolean(proposalForm.userId) && !proposalSaving
 
   const filteredClients = useMemo(() => {
     const query = clientSearch.trim().toLowerCase()
@@ -670,6 +692,10 @@ export default function LotsPage() {
     if (!selectedLot) return
     if (!proposalForm.userId) {
       setProposalError('Selecione um cliente para salvar a proposta.')
+      return
+    }
+    if (!commercialRules.canSave) {
+      setProposalError('A proposta esta fora das regras comerciais do empreendimento.')
       return
     }
 
@@ -1573,6 +1599,9 @@ export default function LotsPage() {
                             onChange={(event) => setSimulatorForm((current) => ({ ...current, downPayment: Math.min(Number(event.target.value) || 0, current.salePrice) }))}
                             className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
                           />
+                          <span className={`mt-2 block text-xs font-semibold ${commercialRules.belowMinimumDownPayment ? 'text-amber-700' : 'text-muted'}`}>
+                            Minimo do empreendimento: {formatCurrency(commercialRules.minDownPayment)} ({commercialRules.minDownPaymentPercentage}%)
+                          </span>
                         </label>
                         <label className='block'>
                           <span className='mb-2 block text-sm font-semibold text-foreground'>Parcelas</span>
@@ -1584,6 +1613,9 @@ export default function LotsPage() {
                             onChange={(event) => setSimulatorForm((current) => ({ ...current, installmentCount: Math.max(Number(event.target.value) || 1, 1) }))}
                             className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
                           />
+                          <span className={`mt-2 block text-xs font-semibold ${commercialRules.aboveMaxInstallments ? 'text-amber-700' : 'text-muted'}`}>
+                            Maximo configurado: {commercialRules.maxInstallments} parcelas
+                          </span>
                         </label>
                         <label className='block md:col-span-2'>
                           <span className='mb-2 block text-sm font-semibold text-foreground'>Observacao</span>
@@ -1654,6 +1686,18 @@ export default function LotsPage() {
                     <div className='rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-800'>
                       A correcao {simulatorForm.correctionIndex === 'none' ? 'nao sera aplicada nesta estimativa' : `${simulatorForm.correctionIndex.toUpperCase()} sera considerada como regra da proposta`}.
                     </div>
+
+                    {commercialRules.hasException && (
+                      <div className={`rounded-2xl border px-5 py-4 text-sm leading-6 ${
+                        commercialRules.allowCustomTerms
+                          ? 'border-amber-200 bg-amber-50 text-amber-800'
+                          : 'border-red-200 bg-red-50 text-red-700'
+                      }`}>
+                        {commercialRules.allowCustomTerms
+                          ? 'Esta proposta esta fora dos padroes do empreendimento, mas condicoes customizadas estao permitidas.'
+                          : 'Esta proposta esta fora dos padroes do empreendimento. Ajuste entrada ou parcelas para salvar.'}
+                      </div>
+                    )}
                   </div>
 
                   <aside className='self-start lg:sticky lg:top-0'>
