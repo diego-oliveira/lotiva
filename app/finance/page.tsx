@@ -201,6 +201,41 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
         </Link>
       </div>
 
+      <section className='panel px-6 py-5'>
+        <div className='grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,360px)] lg:items-center'>
+          <div>
+            <p className='text-xs font-semibold uppercase tracking-[0.18em] text-muted'>Empreendimento selecionado</p>
+            <h2 className='mt-2 text-2xl font-bold text-foreground'>{selectedDevelopment.name}</h2>
+            <p className='mt-1 text-sm text-muted'>
+              {selectedDevelopment.company.name} · {receivables.length} parcela(s) no recorte financeiro atual.
+            </p>
+          </div>
+          <form action='/finance' className='block'>
+            <input type='hidden' name='status' value={status} />
+            <input type='hidden' name='search' value={search} />
+            <input type='hidden' name='dueFrom' value={params?.dueFrom ?? ''} />
+            <input type='hidden' name='dueTo' value={params?.dueTo ?? ''} />
+            <label className='block'>
+              <span className='mb-2 block text-sm font-semibold text-foreground'>Trocar empreendimento</span>
+              <select
+                name='developmentId'
+                defaultValue={selectedDevelopment.id}
+                className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm font-semibold text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+              >
+                {developments.map((development) => (
+                  <option key={development.id} value={development.id}>
+                    {development.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type='submit' className='mt-3 w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+              Aplicar empreendimento
+            </button>
+          </form>
+        </div>
+      </section>
+
       <section className='grid gap-4 md:grid-cols-2 xl:grid-cols-5'>
         <div className='metric-card px-5 py-4'>
           <p className='metric-label'>Previsto</p>
@@ -225,7 +260,8 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
       </section>
 
       <section className='panel overflow-hidden'>
-        <form action='/finance' className='panel-header grid gap-4 px-6 py-5 lg:grid-cols-[1fr_180px_180px_150px_150px_auto] lg:items-end'>
+        <form action='/finance' className='panel-header grid gap-4 px-6 py-5 lg:grid-cols-[1fr_180px_150px_150px_auto] lg:items-end'>
+          <input type='hidden' name='developmentId' value={selectedDevelopment.id} />
           <label className='block'>
             <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Busca</span>
             <input
@@ -234,20 +270,6 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
               placeholder='Cliente, email, CPF, lote ou venda...'
               className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
             />
-          </label>
-          <label className='block'>
-            <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Empreendimento</span>
-            <select
-              name='developmentId'
-              defaultValue={selectedDevelopment.id}
-              className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
-            >
-              {developments.map((development) => (
-                <option key={development.id} value={development.id}>
-                  {development.name}
-                </option>
-              ))}
-            </select>
           </label>
           <label className='block'>
             <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Status</span>
