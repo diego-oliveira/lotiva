@@ -41,7 +41,7 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
-  }).format(value)
+  }).format(value).replace(/\u00A0/g, ' ')
 }
 
 function formatDate(dateString: string) {
@@ -156,22 +156,22 @@ export default function ReceivablesDrawer({ sale, isOpen, onClose, onUpdated }: 
             </div>
           )}
 
-          <section className='grid gap-4 md:grid-cols-4'>
-            <div className='metric-card px-5 py-4'>
+          <section className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
+            <div className='metric-card min-w-0 px-4 py-4'>
               <p className='metric-label'>Total previsto</p>
-              <p className='metric-value'>{formatCurrency(summary.total)}</p>
+              <p className='mt-2 break-words text-2xl font-bold leading-8 text-foreground'>{formatCurrency(summary.total)}</p>
             </div>
-            <div className='metric-card px-5 py-4'>
+            <div className='metric-card min-w-0 px-4 py-4'>
               <p className='metric-label'>Recebido</p>
-              <p className='metric-value text-emerald-700'>{formatCurrency(summary.paid)}</p>
+              <p className='mt-2 break-words text-2xl font-bold leading-8 text-emerald-700'>{formatCurrency(summary.paid)}</p>
             </div>
-            <div className='metric-card px-5 py-4'>
+            <div className='metric-card min-w-0 px-4 py-4'>
               <p className='metric-label'>Saldo</p>
-              <p className='metric-value'>{formatCurrency(summary.balance)}</p>
+              <p className='mt-2 break-words text-2xl font-bold leading-8 text-foreground'>{formatCurrency(summary.balance)}</p>
             </div>
-            <div className='metric-card px-5 py-4'>
+            <div className='metric-card min-w-0 px-4 py-4'>
               <p className='metric-label'>Vencidas</p>
-              <p className={`metric-value ${summary.overdue > 0 ? 'text-red-700' : ''}`}>{summary.overdue}</p>
+              <p className={`mt-2 break-words text-2xl font-bold leading-8 ${summary.overdue > 0 ? 'text-red-700' : 'text-foreground'}`}>{summary.overdue}</p>
             </div>
           </section>
 
