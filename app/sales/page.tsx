@@ -97,6 +97,7 @@ export default function SalesPage() {
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [developmentFilter, setDevelopmentFilter] = useState('')
+  const [clientFilter, setClientFilter] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
   const [correctionSale, setCorrectionSale] = useState<Sale | null>(null)
@@ -125,7 +126,9 @@ export default function SalesPage() {
 
   useEffect(() => {
     const developmentId = searchParams.get('developmentId')
+    const userId = searchParams.get('userId')
     if (developmentId) setDevelopmentFilter(developmentId)
+    if (userId) setClientFilter(userId)
   }, [searchParams])
 
   const fetchSales = async () => {
@@ -220,9 +223,11 @@ export default function SalesPage() {
   }, [sales])
 
   const selectedDevelopment = developments.find((development) => development.id === developmentFilter) ?? null
+  const selectedClient = clientFilter ? sales.find((sale) => sale.userId === clientFilter)?.user ?? null : null
 
   const filteredSales = sales.filter((sale) => {
     if (developmentFilter && sale.lot.block.development?.id !== developmentFilter) return false
+    if (clientFilter && sale.userId !== clientFilter) return false
     if (!searchTerm) return true
 
     const searchLower = searchTerm.toLowerCase()
@@ -296,7 +301,9 @@ export default function SalesPage() {
             <p className='text-xs font-semibold uppercase tracking-[0.18em] text-muted'>Empreendimento selecionado</p>
             <h2 className='mt-2 text-2xl font-bold text-foreground'>{selectedDevelopment?.name ?? 'Todos os empreendimentos'}</h2>
             <p className='mt-1 text-sm text-muted'>
-              {selectedDevelopment
+              {selectedClient
+                ? `Mostrando vendas de ${selectedClient.name}.`
+                : selectedDevelopment
                 ? `${filteredSales.length} venda(s) encontradas para este empreendimento.`
                 : 'Selecione um empreendimento para filtrar vendas, contratos e parcelas.'}
             </p>
@@ -339,7 +346,7 @@ export default function SalesPage() {
       <div className='panel overflow-hidden'>
         <div className='panel-header flex flex-col gap-4 px-6 py-5 md:flex-row md:items-center md:justify-between'>
           <h2 className='text-lg font-semibold text-foreground'>
-            {(searchTerm || developmentFilter) ? `${filteredSales.length} de ${sales.length} vendas` : `Total de vendas: ${sales.length}`}
+            {(searchTerm || developmentFilter || clientFilter) ? `${filteredSales.length} de ${sales.length} vendas` : `Total de vendas: ${sales.length}`}
           </h2>
           <div className='relative w-full md:max-w-xs'>
             <input
@@ -371,13 +378,13 @@ export default function SalesPage() {
               </svg>
             </div>
             <h3 className='mt-4 text-base font-semibold text-foreground'>
-              {(searchTerm || developmentFilter) ? 'Nenhuma venda encontrada' : 'Nenhuma venda realizada'}
+              {(searchTerm || developmentFilter || clientFilter) ? 'Nenhuma venda encontrada' : 'Nenhuma venda realizada'}
             </h3>
             <p className='mt-2 text-sm text-muted'>
-              {(searchTerm || developmentFilter) ? <>Nenhuma venda corresponde aos filtros atuais.</> : 'Converta um lote disponivel ou reservado em venda para gerar contrato e parcelas.'}
+              {(searchTerm || developmentFilter || clientFilter) ? <>Nenhuma venda corresponde aos filtros atuais.</> : 'Converta um lote disponivel ou reservado em venda para gerar contrato e parcelas.'}
             </p>
-            {(searchTerm || developmentFilter) ? (
-              <button onClick={() => { setSearchTerm(''); setDevelopmentFilter('') }} className='mt-6 rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+            {(searchTerm || developmentFilter || clientFilter) ? (
+              <button onClick={() => { setSearchTerm(''); setDevelopmentFilter(''); setClientFilter('') }} className='mt-6 rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
                 Limpar filtros
               </button>
             ) : (

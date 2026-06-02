@@ -288,8 +288,8 @@ export default function ClientProfileDrawer({
                       <h3 className='text-base font-semibold text-foreground'>Empreendimentos</h3>
                       <p className='mt-1 text-sm text-muted'>Acessos e papeis vinculados a este cliente.</p>
                     </div>
-                    <Link href='/lots' className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong'>
-                      Ver lotes
+                    <Link href={`/lots?userId=${client.id}`} className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+                      Lotes do cliente
                     </Link>
                   </div>
                   <div className='mt-4 flex flex-wrap gap-2'>
@@ -342,8 +342,8 @@ export default function ClientProfileDrawer({
                       <h3 className='text-base font-semibold text-foreground'>Vendas e financeiro</h3>
                       <p className='mt-1 text-sm text-muted'>Contratos, entradas e parcelas da relacao comercial.</p>
                     </div>
-                    <Link href='/sales' className='rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-background'>
-                      Ver vendas
+                    <Link href={`/sales?userId=${client.id}`} className='rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-background'>
+                      Vendas do cliente
                     </Link>
                   </div>
                   <div className='mt-4 space-y-3'>

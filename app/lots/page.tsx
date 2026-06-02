@@ -266,6 +266,7 @@ export default function LotsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('map')
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null)
   const [developmentFilter, setDevelopmentFilter] = useState('')
+  const [clientFilter, setClientFilter] = useState('')
   const [blockFilter, setBlockFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
@@ -292,10 +293,16 @@ export default function LotsPage() {
 
   useEffect(() => {
     const developmentId = searchParams.get('developmentId')
-    if (!developmentId) return
-    setDevelopmentFilter(developmentId)
-    setBlockFilter('')
-    setSelectedLotId(null)
+    const userId = searchParams.get('userId')
+    if (developmentId) {
+      setDevelopmentFilter(developmentId)
+      setBlockFilter('')
+      setSelectedLotId(null)
+    }
+    if (userId) {
+      setClientFilter(userId)
+      setSelectedLotId(null)
+    }
   }, [searchParams])
 
   async function fetchClients() {
@@ -364,6 +371,12 @@ export default function LotsPage() {
 
     return lots
       .filter((lot) => !developmentFilter || lot.block.development?.id === developmentFilter)
+      .filter((lot) => (
+        !clientFilter ||
+        lot.sale?.user.id === clientFilter ||
+        lot.reservations.some((reservation) => reservation.user.id === clientFilter) ||
+        lot.proposals.some((proposal) => proposal.user.id === clientFilter)
+      ))
       .filter((lot) => !blockFilter || lot.blockId === blockFilter)
       .filter((lot) => !statusFilter || getEffectiveLotStatus(lot) === statusFilter)
       .filter((lot) => {
@@ -389,9 +402,21 @@ export default function LotsPage() {
 
         return sortDirection === 'asc' ? result : -result
       })
-  }, [lots, developmentFilter, blockFilter, statusFilter, searchTerm, sortBy, sortDirection])
+  }, [lots, developmentFilter, clientFilter, blockFilter, statusFilter, searchTerm, sortBy, sortDirection])
 
-  const hasActiveLotFilters = Boolean(developmentFilter || blockFilter || statusFilter || searchTerm)
+  const clientFilterName = useMemo(() => {
+    if (!clientFilter) return null
+    for (const lot of lots) {
+      if (lot.sale?.user.id === clientFilter) return lot.sale.user.name
+      const reservation = lot.reservations.find((item) => item.user.id === clientFilter)
+      if (reservation) return reservation.user.name
+      const proposal = lot.proposals.find((item) => item.user.id === clientFilter)
+      if (proposal) return proposal.user.name
+    }
+    return 'cliente selecionado'
+  }, [lots, clientFilter])
+
+  const hasActiveLotFilters = Boolean(developmentFilter || clientFilter || blockFilter || statusFilter || searchTerm)
 
   const lotsByBlock = useMemo(() => {
     const map = new Map<string, { block: Block; lots: Lot[] }>()
@@ -513,6 +538,7 @@ export default function LotsPage() {
 
   const clearFilters = () => {
     setDevelopmentFilter('')
+    setClientFilter('')
     setBlockFilter('')
     setStatusFilter('')
     setSearchTerm('')
@@ -867,7 +893,9 @@ export default function LotsPage() {
             <p className='text-xs font-semibold uppercase tracking-[0.18em] text-muted'>Empreendimento selecionado</p>
             <h2 className='mt-2 text-2xl font-bold text-foreground'>{selectedDevelopment?.name ?? 'Todos os empreendimentos'}</h2>
             <p className='mt-1 text-sm text-muted'>
-              {selectedDevelopment
+              {clientFilterName
+                ? `Mostrando lotes relacionados a ${clientFilterName}.`
+                : selectedDevelopment
                 ? `${stats.total} lotes no recorte atual, com ${stats.available} disponiveis para venda.`
                 : 'Selecione um empreendimento para focar o mapa, a lista e as metricas de estoque.'}
             </p>
