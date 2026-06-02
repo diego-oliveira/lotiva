@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@/app/generated/prisma'
 import { hasAnyDevelopmentPermission, hasDevelopmentPermission } from '@/lib/permissions'
 import ReceivableActions from './components/ReceivableActions'
+import FinanceDevelopmentSelect from './components/FinanceDevelopmentSelect'
 
 type FinancePageProps = {
   searchParams?: Promise<{
@@ -204,35 +205,15 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
       <section className='panel px-6 py-5'>
         <div className='grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,360px)] lg:items-center'>
           <div>
-            <p className='text-xs font-semibold uppercase tracking-[0.18em] text-muted'>Empreendimento selecionado</p>
-            <h2 className='mt-2 text-2xl font-bold text-foreground'>{selectedDevelopment.name}</h2>
+            <h2 className='text-2xl font-bold text-foreground'>{selectedDevelopment.name}</h2>
             <p className='mt-1 text-sm text-muted'>
               {selectedDevelopment.company.name} · {receivables.length} parcela(s) no recorte financeiro atual.
             </p>
           </div>
-          <form action='/finance' className='block'>
-            <input type='hidden' name='status' value={status} />
-            <input type='hidden' name='search' value={search} />
-            <input type='hidden' name='dueFrom' value={params?.dueFrom ?? ''} />
-            <input type='hidden' name='dueTo' value={params?.dueTo ?? ''} />
-            <label className='block'>
-              <span className='mb-2 block text-sm font-semibold text-foreground'>Trocar empreendimento</span>
-              <select
-                name='developmentId'
-                defaultValue={selectedDevelopment.id}
-                className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm font-semibold text-foreground outline-none transition focus:ring-2 focus:ring-primary'
-              >
-                {developments.map((development) => (
-                  <option key={development.id} value={development.id}>
-                    {development.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type='submit' className='mt-3 w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
-              Aplicar empreendimento
-            </button>
-          </form>
+          <FinanceDevelopmentSelect
+            developments={developments.map((development) => ({ id: development.id, name: development.name }))}
+            selectedDevelopmentId={selectedDevelopment.id}
+          />
         </div>
       </section>
 
