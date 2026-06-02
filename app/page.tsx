@@ -177,6 +177,14 @@ export default async function Home({ searchParams }: HomeProps) {
   const soldValue = sales.reduce((sum, sale) => sum + sale.totalValue, 0)
   const conversionRate = lotMetrics.total > 0 ? lotMetrics.sold / lotMetrics.total : 0
   const defaultRate = financialMetrics.open > 0 ? financialMetrics.overdueAmount / financialMetrics.open : 0
+  const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+  const previousMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+  const currentMonthSalesCount = sales.filter((sale) => sale.createdAt >= currentMonthStart).length
+  const previousMonthSalesCount = sales.filter((sale) => sale.createdAt >= previousMonthStart && sale.createdAt < currentMonthStart).length
+  const salesMonthDelta = currentMonthSalesCount - previousMonthSalesCount
+  const salesMonthDeltaLabel =
+    salesMonthDelta === 0 ? 'estavel vs. mes anterior' : `${salesMonthDelta > 0 ? '+' : ''}${salesMonthDelta} vs. mes anterior`
+  const salesMonthDeltaTone = salesMonthDelta > 0 ? 'text-emerald-700' : salesMonthDelta < 0 ? 'text-red-700' : 'text-muted'
 
   const monthlySeries = buildMonthlySeries()
   const monthlyByKey = new Map(monthlySeries.map((point) => [point.key, point]))
@@ -193,6 +201,13 @@ export default async function Home({ searchParams }: HomeProps) {
   })
 
   const maxMonthlyValue = Math.max(1, ...monthlySeries.flatMap((point) => [point.sales, point.received]))
+  const receivedLinePoints = monthlySeries
+    .map((point, index) => {
+      const x = monthlySeries.length === 1 ? 0 : (index / (monthlySeries.length - 1)) * 100
+      const y = 100 - (point.received / maxMonthlyValue) * 92
+      return `${x},${y}`
+    })
+    .join(' ')
   const overdueReceivables = receivables
     .filter((receivable) => receivable.status !== 'paid' && receivable.dueDate < today)
     .slice(0, 5)
@@ -319,7 +334,7 @@ export default async function Home({ searchParams }: HomeProps) {
         </section>
       )}
 
-      <section className='grid gap-4 md:grid-cols-2 xl:grid-cols-5'>
+      <section className='grid gap-4 md:grid-cols-2 xl:grid-cols-6'>
         <div className='metric-card px-5 py-4'>
           <p className='metric-label'>VGV total</p>
           <p className='metric-value'>{formatCurrency(lotMetrics.vgv)}</p>
@@ -342,6 +357,11 @@ export default async function Home({ searchParams }: HomeProps) {
             {formatPercent(defaultRate)}
           </p>
         </div>
+        <div className='metric-card px-5 py-4'>
+          <p className='metric-label'>Vendas no mes</p>
+          <p className='metric-value'>{currentMonthSalesCount}</p>
+          <p className={`mt-1 text-xs font-semibold ${salesMonthDeltaTone}`}>{salesMonthDeltaLabel}</p>
+        </div>
       </section>
 
       <section className='grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]'>
@@ -356,7 +376,29 @@ export default async function Home({ searchParams }: HomeProps) {
               <span className='inline-flex items-center gap-2'><span className='h-2.5 w-2.5 rounded-full bg-emerald-500' />Recebido no mes</span>
             </div>
           </div>
-          <div className='space-y-4 px-6 py-6'>
+          <div className='px-6 py-6'>
+            <div className='rounded-2xl border border-border bg-surface-secondary px-4 py-4'>
+              <div className='mb-3 flex items-center justify-between gap-3'>
+                <p className='text-sm font-semibold text-foreground'>Recebido mes a mes</p>
+                <p className='text-xs font-semibold text-muted'>Ultimos 6 meses</p>
+              </div>
+              <svg viewBox='0 0 100 110' className='h-44 w-full overflow-visible' preserveAspectRatio='none'>
+                <polyline
+                  fill='none'
+                  stroke='rgb(16 185 129)'
+                  strokeWidth='3'
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  points={receivedLinePoints}
+                />
+                {monthlySeries.map((point, index) => {
+                  const x = monthlySeries.length === 1 ? 0 : (index / (monthlySeries.length - 1)) * 100
+                  const y = 100 - (point.received / maxMonthlyValue) * 92
+                  return <circle key={point.key} cx={x} cy={y} r='2.2' fill='rgb(16 185 129)' />
+                })}
+              </svg>
+            </div>
+            <div className='mt-6 space-y-4'>
             {monthlySeries.map((point) => (
               <div key={point.key} className='grid gap-3 md:grid-cols-[72px_minmax(0,1fr)] md:items-center'>
                 <p className='text-sm font-semibold capitalize text-foreground'>{point.label}</p>
@@ -382,6 +424,7 @@ export default async function Home({ searchParams }: HomeProps) {
                 </div>
               </div>
             ))}
+            </div>
           </div>
         </div>
 
