@@ -44,9 +44,9 @@ export async function GET(_: Request, { params }: Params) {
     })
 
   } catch (error) {
-    console.error('Error fetching contract:', error)
+    console.error('Erro ao buscar contrato:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch contract' },
+      { error: 'Nao foi possivel carregar o contrato' },
       { status: 500 }
     )
   }

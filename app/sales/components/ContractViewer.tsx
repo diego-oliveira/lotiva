@@ -36,17 +36,17 @@ export default function ContractViewer({
 
       if (!response.ok) {
         if (response.status === 404) {
-          // Contract doesn't exist, try to generate it
+          // Gera o contrato quando ele ainda nao existe.
           await generateContract();
           return;
         }
-        throw new Error('Failed to fetch contract');
+        throw new Error('Nao foi possivel carregar o contrato');
       }
 
       const html = await response.text();
       setContractHTML(html);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load contract');
+      setError(err instanceof Error ? err.message : 'Nao foi possivel carregar o contrato');
     } finally {
       setLoading(false);
     }

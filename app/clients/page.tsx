@@ -54,11 +54,11 @@ export default function ClientsPage() {
     try {
       setLoading(true)
       const res = await fetch('/api/clients')
-      if (!res.ok) throw new Error('Failed to fetch clients')
+      if (!res.ok) throw new Error('Nao foi possivel carregar os clientes')
       setClients(await res.json())
       setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      setError(err instanceof Error ? err.message : 'Erro ao carregar clientes')
     } finally {
       setLoading(false)
     }

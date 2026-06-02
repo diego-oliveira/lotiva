@@ -18,7 +18,7 @@ export default async function SignInPage() {
           </div>
           <div className='mt-16'>
             <p className='text-xs font-semibold uppercase tracking-[0.24em] text-slate-400'>Lotiva</p>
-            <h1 className='mt-3 text-3xl font-bold tracking-tight'>Acesse o workspace</h1>
+            <h1 className='mt-3 text-3xl font-bold tracking-tight'>Acesse o Lotiva</h1>
             <p className='mt-4 max-w-sm text-sm leading-6 text-slate-300'>
               Receba um link seguro por email para entrar no painel administrativo.
             </p>

@@ -30,13 +30,13 @@ type CurrentUser = {
 const navItems: NavItem[] = [
   {
     href: '/',
-    label: 'Dashboard',
+    label: 'Painel',
     description: 'Indicadores gerais',
     icon: 'dashboard',
   },
   {
     href: '/onboarding',
-    label: 'Onboarding',
+    label: 'Cadastro inicial',
     description: 'Cadastro guiado',
     icon: 'setup',
     permission: 'manageSettings',

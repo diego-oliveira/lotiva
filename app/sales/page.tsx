@@ -116,13 +116,13 @@ export default function SalesPage() {
       setLoading(true)
       setNotice(null)
       const response = await fetch('/api/sales', { cache: 'no-store' })
-      if (!response.ok) throw new Error('Failed to fetch sales')
+      if (!response.ok) throw new Error('Nao foi possivel carregar as vendas')
       const nextSales = (await response.json()) as Sale[]
       setSales(nextSales)
       setError(null)
       return nextSales
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      setError(err instanceof Error ? err.message : 'Erro ao carregar vendas')
       return null
     } finally {
       setLoading(false)

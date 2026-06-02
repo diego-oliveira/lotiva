@@ -44,14 +44,14 @@ export default function DevelopmentsPage() {
 
   const fetchDevelopments = async () => {
     const response = await fetch('/api/developments')
-    if (!response.ok) throw new Error('Failed to fetch developments')
+    if (!response.ok) throw new Error('Nao foi possivel carregar os empreendimentos')
     const data = await response.json()
     setDevelopments(data)
   }
 
   const fetchCompanies = async () => {
     const response = await fetch('/api/companies')
-    if (!response.ok) throw new Error('Failed to fetch companies')
+    if (!response.ok) throw new Error('Nao foi possivel carregar as empresas')
     const data = await response.json()
     setCompanies(data)
   }
@@ -62,7 +62,7 @@ export default function DevelopmentsPage() {
       await Promise.all([fetchDevelopments(), fetchCompanies()])
       setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      setError(err instanceof Error ? err.message : 'Erro ao carregar empreendimentos')
     } finally {
       setLoading(false)
     }

@@ -37,11 +37,11 @@ export default function CompaniesPage() {
     try {
       setLoading(true)
       const response = await fetch('/api/companies')
-      if (!response.ok) throw new Error('Failed to fetch companies')
+      if (!response.ok) throw new Error('Nao foi possivel carregar as empresas')
       setCompanies(await response.json())
       setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      setError(err instanceof Error ? err.message : 'Erro ao carregar empresas')
     } finally {
       setLoading(false)
     }

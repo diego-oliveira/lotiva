@@ -74,18 +74,18 @@ async function sendMagicLinkEmail({
   await transport.sendMail({
     to: identifier,
     from: provider.from,
-    subject: `Sign in to Lotiva`,
-    text: `Sign in to Lotiva\n\n${url}\n\nThis link expires soon. If you did not request it, you can ignore this email.`,
+    subject: 'Acesse o Lotiva',
+    text: `Acesse o Lotiva\n\n${url}\n\nEste link expira em breve. Se voce nao solicitou este acesso, ignore este email.`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #1c2434;">
-        <h1 style="font-size: 22px; margin-bottom: 16px;">Sign in to Lotiva</h1>
-        <p style="font-size: 15px; line-height: 1.6;">Use the button below to access your Lotiva workspace.</p>
+        <h1 style="font-size: 22px; margin-bottom: 16px;">Acesse o Lotiva</h1>
+        <p style="font-size: 15px; line-height: 1.6;">Use o botao abaixo para acessar sua conta no Lotiva.</p>
         <p style="margin: 28px 0;">
           <a href="${url}" style="display: inline-block; background: #3c50e0; color: #ffffff; padding: 12px 18px; border-radius: 8px; text-decoration: none; font-weight: 700;">
-            Sign in
+            Acessar
           </a>
         </p>
-        <p style="font-size: 13px; line-height: 1.6; color: #64748b;">This link was requested for ${host}. If you did not request it, you can ignore this email.</p>
+        <p style="font-size: 13px; line-height: 1.6; color: #64748b;">Este link foi solicitado para ${host}. Se voce nao solicitou este acesso, ignore este email.</p>
       </div>
     `,
   })
