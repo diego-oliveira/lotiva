@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import DevelopmentForm from './components/DevelopmentForm'
-import DevelopmentSettingsForm from './components/DevelopmentSettingsForm'
 import InlineAlert from '@/app/components/InlineAlert'
 
 interface Company {
@@ -61,9 +60,7 @@ export default function DevelopmentsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
-  const [showSettingsForm, setShowSettingsForm] = useState(false)
   const [editingDevelopment, setEditingDevelopment] = useState<Development | null>(null)
-  const [settingsDevelopment, setSettingsDevelopment] = useState<Development | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
@@ -274,8 +271,7 @@ export default function DevelopmentsPage() {
                     <Link href={`/onboarding?developmentId=${development.id}`} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
                       {metrics.totalLots > 0 ? 'Complementar lotes' : 'Criar lotes'}
                     </Link>
-                    <button onClick={() => { setSettingsDevelopment(development); setShowSettingsForm(true) }} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>Configurar</button>
-                    <button onClick={() => { setEditingDevelopment(development); setShowForm(true) }} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>Editar</button>
+                    <button onClick={() => { setEditingDevelopment(development); setShowForm(true) }} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>Editar empreendimento</button>
                   </div>
                 </article>
               )
@@ -321,17 +317,6 @@ export default function DevelopmentsPage() {
               ? 'O empreendimento foi criado com sucesso.'
               : 'O empreendimento foi atualizado com sucesso.',
           )
-        }}
-      />
-      <DevelopmentSettingsForm
-        development={settingsDevelopment}
-        isOpen={showSettingsForm}
-        onClose={() => { setShowSettingsForm(false); setSettingsDevelopment(null) }}
-        onSave={async () => {
-          await refresh()
-          setShowSettingsForm(false)
-          setSettingsDevelopment(null)
-          setSuccessMessage('As configuracoes comerciais foram atualizadas com sucesso.')
         }}
       />
     </div>
