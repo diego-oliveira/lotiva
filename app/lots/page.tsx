@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 
 type ViewMode = 'map' | 'list'
@@ -220,6 +221,7 @@ function calculateInstallment(balance: number, installmentCount: number, monthly
 }
 
 export default function LotsPage() {
+  const searchParams = useSearchParams()
   const [lots, setLots] = useState<Lot[]>([])
   const [clients, setClients] = useState<Person[]>([])
   const [loading, setLoading] = useState(true)
@@ -288,6 +290,14 @@ export default function LotsPage() {
     void fetchLots()
   }, [])
 
+  useEffect(() => {
+    const developmentId = searchParams.get('developmentId')
+    if (!developmentId) return
+    setDevelopmentFilter(developmentId)
+    setBlockFilter('')
+    setSelectedLotId(null)
+  }, [searchParams])
+
   async function fetchClients() {
     const response = await fetch('/api/clients', { cache: 'no-store' })
     if (!response.ok) throw new Error('Nao foi possivel carregar clientes')
@@ -327,6 +337,11 @@ export default function LotsPage() {
     })
     return Array.from(map.values()).sort((a, b) => compareNatural(a.name, b.name))
   }, [lots])
+
+  const selectedDevelopment = useMemo(
+    () => developments.find((development) => development.id === developmentFilter) ?? null,
+    [developments, developmentFilter],
+  )
 
   const blocks = useMemo(() => {
     const map = new Map<string, Block>()
@@ -823,9 +838,36 @@ export default function LotsPage() {
         </div>
       </section>
 
+      <section className='panel px-6 py-5'>
+        <div className='grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,360px)] lg:items-center'>
+          <div>
+            <p className='text-xs font-semibold uppercase tracking-[0.18em] text-muted'>Empreendimento selecionado</p>
+            <h2 className='mt-2 text-2xl font-bold text-foreground'>{selectedDevelopment?.name ?? 'Todos os empreendimentos'}</h2>
+            <p className='mt-1 text-sm text-muted'>
+              {selectedDevelopment
+                ? `${stats.total} lotes no recorte atual, com ${stats.available} disponiveis para venda.`
+                : 'Selecione um empreendimento para focar o mapa, a lista e as metricas de estoque.'}
+            </p>
+          </div>
+          <label className='block'>
+            <span className='mb-2 block text-sm font-semibold text-foreground'>Trocar empreendimento</span>
+            <select
+              value={developmentFilter}
+              onChange={(event) => handleDevelopmentChange(event.target.value)}
+              className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm font-semibold text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+            >
+              <option value=''>Todos os empreendimentos</option>
+              {developments.map((development) => (
+                <option key={development.id} value={development.id}>{development.name}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </section>
+
       <section className='panel overflow-hidden'>
         <div className='panel-header px-6 py-5'>
-          <div className='grid gap-4 lg:grid-cols-[minmax(220px,1.3fr)_minmax(160px,0.8fr)_minmax(160px,0.8fr)_minmax(160px,0.8fr)_auto] lg:items-end'>
+          <div className='grid gap-4 lg:grid-cols-[minmax(220px,1.3fr)_minmax(160px,0.8fr)_minmax(160px,0.8fr)_auto] lg:items-end'>
             <label className='block'>
               <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Busca</span>
               <input
@@ -834,19 +876,6 @@ export default function LotsPage() {
                 placeholder='Lote, quadra ou empreendimento...'
                 className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
               />
-            </label>
-            <label className='block'>
-              <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Empreendimento</span>
-              <select
-                value={developmentFilter}
-                onChange={(event) => handleDevelopmentChange(event.target.value)}
-                className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
-              >
-                <option value=''>Todos</option>
-                {developments.map((development) => (
-                  <option key={development.id} value={development.id}>{development.name}</option>
-                ))}
-              </select>
             </label>
             <label className='block'>
               <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Quadra</span>
