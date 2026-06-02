@@ -825,9 +825,6 @@ export default function LotsPage() {
           <p className='page-subtitle'>Consulte disponibilidade no mapa operacional ou compare os lotes pela lista.</p>
         </div>
         <div className='flex flex-wrap gap-3'>
-          <button onClick={fetchLots} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
-            Atualizar
-          </button>
           <div className='inline-flex overflow-hidden rounded-xl border border-border bg-surface p-1'>
             <button
               onClick={() => setViewMode('map')}

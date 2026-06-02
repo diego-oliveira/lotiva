@@ -278,9 +278,6 @@ export default function SalesPage() {
           <p className='page-subtitle'>Conclua vendas, acompanhe contratos e revise as condicoes comerciais fechadas.</p>
         </div>
         <div className='flex flex-wrap gap-3'>
-          <button onClick={fetchSales} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
-            Atualizar
-          </button>
           <button onClick={handleAddSale} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
             Nova venda
           </button>
