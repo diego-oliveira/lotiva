@@ -67,6 +67,7 @@ interface Sale {
   lot: Lot
   reservation?: Reservation
   receivables?: Receivable[]
+  contract?: { id: string; contractNumber: string } | null
 }
 
 function formatCurrency(value: number) {
@@ -98,6 +99,8 @@ export default function SalesPage() {
   const [developmentFilter, setDevelopmentFilter] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
+  const [correctionSale, setCorrectionSale] = useState<Sale | null>(null)
+  const [correctionReason, setCorrectionReason] = useState('')
   const [initialSaleData, setInitialSaleData] = useState<{ userId?: string; lotId?: string; reservationId?: string } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [showContract, setShowContract] = useState(false)
@@ -150,10 +153,21 @@ export default function SalesPage() {
     setShowForm(true)
   }
 
+  const saleHasPaidReceivable = (sale: Sale) => Boolean(sale.receivables?.some((receivable) => receivable.status === 'paid' || receivable.paidAmount > 0))
+  const saleIsLocked = (sale: Sale) => Boolean(sale.contract || saleHasPaidReceivable(sale))
+
   const handleEditSale = (sale: Sale) => {
-    setEditingSale(sale)
+    if (saleIsLocked(sale)) return
+    setCorrectionSale(sale)
+    setCorrectionReason('')
+  }
+
+  const confirmSaleCorrection = () => {
+    if (!correctionSale || !correctionReason.trim()) return
+    setEditingSale(correctionSale)
     setInitialSaleData(null)
     setNotice(null)
+    setCorrectionSale(null)
     setShowForm(true)
   }
 
@@ -161,6 +175,7 @@ export default function SalesPage() {
     setShowForm(false)
     setEditingSale(null)
     setInitialSaleData(null)
+    setCorrectionReason('')
   }
 
   const handleFormSave = async () => {
@@ -169,6 +184,7 @@ export default function SalesPage() {
     setShowForm(false)
     setEditingSale(null)
     setInitialSaleData(null)
+    setCorrectionReason('')
     setNotice(message)
   }
 
@@ -420,8 +436,13 @@ export default function SalesPage() {
                         <button onClick={() => handleViewReceivables(sale)} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>
                           Parcelas
                         </button>
-                        <button onClick={() => handleEditSale(sale)} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>
-                          Editar
+                        <button
+                          onClick={() => handleEditSale(sale)}
+                          disabled={saleIsLocked(sale)}
+                          title={saleIsLocked(sale) ? 'Venda com contrato ou parcela paga nao pode ser corrigida diretamente' : 'Corrigir venda'}
+                          className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8 disabled:cursor-not-allowed disabled:text-muted disabled:hover:bg-transparent'
+                        >
+                          Corrigir
                         </button>
                       </div>
                     </td>
@@ -439,7 +460,49 @@ export default function SalesPage() {
         isOpen={showForm}
         onClose={handleFormClose}
         onSave={handleFormSave}
+        correctionReason={correctionReason}
       />
+
+      {correctionSale && (
+        <div className='fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4'>
+          <div className='w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-2xl'>
+            <h2 className='text-lg font-semibold text-foreground'>Corrigir venda</h2>
+            <p className='mt-2 text-sm leading-6 text-muted'>
+              Informe o motivo da correcao antes de alterar esta venda. A justificativa sera registrada no historico do lote.
+            </p>
+            <div className='mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800'>
+              Revise com cuidado: alteracoes em vendas podem afetar contrato, parcelas e financeiro.
+            </div>
+            <label className='mt-5 block'>
+              <span className='mb-2 block text-sm font-semibold text-foreground'>Motivo da correcao</span>
+              <textarea
+                rows={4}
+                value={correctionReason}
+                onChange={(event) => setCorrectionReason(event.target.value)}
+                className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                placeholder='Ex.: ajuste de data de vencimento solicitado pelo cliente'
+              />
+            </label>
+            <div className='mt-6 flex justify-end gap-3'>
+              <button
+                type='button'
+                onClick={() => { setCorrectionSale(null); setCorrectionReason('') }}
+                className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'
+              >
+                Cancelar
+              </button>
+              <button
+                type='button'
+                onClick={confirmSaleCorrection}
+                disabled={!correctionReason.trim()}
+                className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
+              >
+                Continuar correcao
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ContractViewer
         saleId={contractSaleId}

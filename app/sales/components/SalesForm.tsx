@@ -83,6 +83,7 @@ interface SalesFormProps {
   isOpen: boolean
   onClose: () => void
   onSave: () => void
+  correctionReason?: string
 }
 
 const STEPS = [
@@ -161,6 +162,7 @@ export default function SalesForm({
   isOpen,
   onClose,
   onSave,
+  correctionReason,
 }: SalesFormProps) {
   const [currentStep, setCurrentStep] = useState(1)
   const [loading, setLoading] = useState(false)
@@ -397,7 +399,10 @@ export default function SalesForm({
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          correctionReason,
+        }),
       })
 
       if (!response.ok) {

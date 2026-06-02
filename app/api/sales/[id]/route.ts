@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, lotAccessWhere, reservationAccessWhere, saleAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
+import { createLotEvent } from '@/lib/lot-events'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -62,9 +63,29 @@ export async function PUT(req: Request, { params }: Params) {
         id,
         ...saleAccessWhere(currentUserId),
       },
-      select: { id: true },
+      select: {
+        id: true,
+        lotId: true,
+        contract: { select: { id: true } },
+        receivables: {
+          where: {
+            OR: [
+              { status: 'paid' },
+              { paidAmount: { gt: 0 } },
+            ],
+          },
+          select: { id: true },
+          take: 1,
+        },
+      },
     })
     if (!existingSale) return forbiddenResponse()
+    if (!data.correctionReason?.trim()) {
+      return NextResponse.json({ error: 'Informe o motivo da correcao da venda.' }, { status: 400 })
+    }
+    if (existingSale.contract || existingSale.receivables.length > 0) {
+      return NextResponse.json({ error: 'Esta venda possui contrato ou parcelas pagas e nao pode ser editada diretamente.' }, { status: 409 })
+    }
 
     const lot = await prisma.lot.findFirst({
       where: {
@@ -105,35 +126,48 @@ export async function PUT(req: Request, { params }: Params) {
       if (!reservation) return forbiddenResponse()
     }
 
-    const updated = await prisma.sale.update({
-      where: { id },
-      data: {
-        userId: data.userId,
-        lotId: data.lotId,
-        reservationId: data.reservationId || null,
-        installmentCount: data.installmentCount,
-        installmentValue: data.installmentValue,
-        downPayment: data.downPayment,
-        firstDueDate: parseDateOnly(data.firstDueDate),
-        annualAdjustment: data.annualAdjustment,
-        totalValue: data.totalValue,
-        updatedAt: new Date(),
-      },
-      include: {
-        user: true,
-        lot: {
-          include: {
-            block: true
-          }
+    const updated = await prisma.$transaction(async (tx) => {
+      const sale = await tx.sale.update({
+        where: { id },
+        data: {
+          userId: data.userId,
+          lotId: data.lotId,
+          reservationId: data.reservationId || null,
+          installmentCount: data.installmentCount,
+          installmentValue: data.installmentValue,
+          downPayment: data.downPayment,
+          firstDueDate: parseDateOnly(data.firstDueDate),
+          annualAdjustment: data.annualAdjustment,
+          totalValue: data.totalValue,
+          updatedAt: new Date(),
         },
-        reservation: true,
-        receivables: {
-          orderBy: [
-            { dueDate: 'asc' },
-            { sequence: 'asc' },
-          ],
-        },
-      }
+        include: {
+          user: true,
+          lot: {
+            include: {
+              block: true
+            }
+          },
+          reservation: true,
+          receivables: {
+            orderBy: [
+              { dueDate: 'asc' },
+              { sequence: 'asc' },
+            ],
+          },
+        }
+      })
+
+      await createLotEvent(tx, {
+        lotId: sale.lotId,
+        userId: currentUserId,
+        type: 'sale_corrected',
+        title: 'Venda corrigida',
+        description: `Venda corrigida para ${sale.user.name}.`,
+        notes: data.correctionReason.trim(),
+      })
+
+      return sale
     })
 
     return NextResponse.json(updated)
