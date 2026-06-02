@@ -909,8 +909,8 @@ export default function LotsPage() {
           </div>
         </div>
 
-        <div className='grid min-h-[620px] xl:grid-cols-[minmax(0,1fr)_360px]'>
-          <div className='min-w-0 border-b border-border xl:border-b-0 xl:border-r'>
+        <div className='min-h-[620px]'>
+          <div className='min-w-0'>
             {filteredLots.length === 0 ? (
               <div className='flex min-h-[420px] flex-col items-center justify-center px-6 py-12 text-center'>
                 <div className='flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-secondary text-muted'>
@@ -1038,13 +1038,32 @@ export default function LotsPage() {
             )}
           </div>
 
-          <aside className='bg-surface px-6 py-6'>
-            {selectedLot ? (
+          {selectedLot && (
+            <>
+              <button
+                type='button'
+                aria-label='Fechar detalhes do lote'
+                className='fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-[1px] lg:left-[290px]'
+                onClick={() => setSelectedLotId(null)}
+              />
+              <aside className='fixed inset-y-0 right-0 z-50 w-full max-w-3xl overflow-y-auto border-l border-border bg-surface px-6 py-6 shadow-2xl'>
               <div className='space-y-6'>
-                <div>
-                  <p className='text-xs font-semibold uppercase tracking-[0.18em] text-muted'>Lote selecionado</p>
-                  <h2 className='mt-2 text-2xl font-bold text-foreground'>Quadra {selectedLot.block.identifier}, Lote {selectedLot.identifier}</h2>
-                  <p className='mt-1 text-sm text-muted'>{selectedLot.block.development?.name ?? 'Sem empreendimento'}</p>
+                <div className='flex items-start justify-between gap-4'>
+                  <div>
+                    <p className='text-xs font-semibold uppercase tracking-[0.18em] text-muted'>Lote selecionado</p>
+                    <h2 className='mt-2 text-2xl font-bold text-foreground'>Quadra {selectedLot.block.identifier}, Lote {selectedLot.identifier}</h2>
+                    <p className='mt-1 text-sm text-muted'>{selectedLot.block.development?.name ?? 'Sem empreendimento'}</p>
+                  </div>
+                  <button
+                    type='button'
+                    onClick={() => setSelectedLotId(null)}
+                    className='rounded-xl border border-border bg-surface-secondary p-2 text-muted transition hover:bg-background hover:text-foreground'
+                    aria-label='Fechar'
+                  >
+                    <svg className='h-5 w-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M6 18L18 6M6 6l12 12' />
+                    </svg>
+                  </button>
                 </div>
 
                 <div className='flex flex-wrap items-center gap-2'>
@@ -1349,18 +1368,9 @@ export default function LotsPage() {
                   </div>
                 </div>
               </div>
-            ) : (
-              <div className='flex h-full min-h-[420px] flex-col items-center justify-center text-center'>
-                <div className='flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-secondary text-muted'>
-                  <svg className='h-7 w-7' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                    <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M4 6h16v12H4zM8 6v12M16 6v12M4 10h16M4 14h16' />
-                  </svg>
-                </div>
-                <h2 className='mt-4 text-base font-semibold text-foreground'>Selecione um lote</h2>
-                <p className='mt-2 text-sm leading-6 text-muted'>Clique em um lote no mapa ou em uma linha da lista para ver status, preco e medidas.</p>
-              </div>
-            )}
-          </aside>
+              </aside>
+            </>
+          )}
         </div>
       </section>
 
