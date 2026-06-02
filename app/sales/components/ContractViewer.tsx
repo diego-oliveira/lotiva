@@ -63,14 +63,13 @@ export default function ContractViewer({
       });
 
       if (!generateResponse.ok) {
-        throw new Error('Failed to generate contract');
+        throw new Error('Nao foi possivel gerar o contrato');
       }
 
-      // After generating, fetch the contract HTML
       await fetchContract();
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : 'Failed to generate contract'
+        err instanceof Error ? err.message : 'Nao foi possivel gerar o contrato'
       );
       setLoading(false);
     }
@@ -84,7 +83,7 @@ export default function ContractViewer({
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(
-          errorData.details || errorData.error || 'Failed to generate PDF'
+          errorData.details || errorData.error || 'Nao foi possivel gerar o PDF'
         );
       }
 
@@ -98,8 +97,8 @@ export default function ContractViewer({
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('PDF download error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to download PDF');
+      console.error('Erro ao baixar PDF:', err);
+      setError(err instanceof Error ? err.message : 'Nao foi possivel baixar o PDF');
     }
   };
 
@@ -116,14 +115,14 @@ export default function ContractViewer({
       });
 
       if (!response.ok) {
-        throw new Error('Failed to send email');
+        throw new Error('Nao foi possivel enviar o email');
       }
 
       setEmailSent(true);
       setShowEmailDialog(false);
       setCustomMessage('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send email');
+      setError(err instanceof Error ? err.message : 'Nao foi possivel enviar o email');
     } finally {
       setEmailSending(false);
     }
@@ -142,23 +141,26 @@ export default function ContractViewer({
   if (!isOpen) return null;
 
   return (
-    <div className='fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50'>
-      <div className='relative top-4 mx-auto p-5 border w-full max-w-7xl bg-white dark:bg-gray-800 rounded-md shadow-lg min-h-[90vh]'>
-        <div className='flex items-center justify-between pb-4 border-b border-gray-200 dark:border-gray-700'>
-          <h3 className='text-lg font-medium text-gray-900 dark:text-white'>
-            Visualizar Contrato
-          </h3>
+    <div className='fixed inset-0 z-50 bg-slate-950/40 px-4 py-4 backdrop-blur-[1px]'>
+      <div className='mx-auto flex h-full w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl'>
+        <div className='border-b border-border px-6 py-5'>
+          <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
+            <div>
+              <p className='text-xs font-semibold uppercase tracking-[0.18em] text-muted'>Contrato</p>
+              <h3 className='mt-2 text-2xl font-bold text-foreground'>Visualizacao do contrato</h3>
+              <p className='mt-1 text-sm text-muted'>Revise, imprima, baixe em PDF ou envie o documento por email.</p>
+            </div>
 
-          <div className='flex items-center space-x-3'>
+          <div className='flex flex-wrap items-center gap-3'>
             {contractHTML && (
               <>
                 <button
                   onClick={handlePrint}
-                  className='inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600'
+                  className='inline-flex items-center rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'
                   title='Imprimir contrato'
                 >
                   <svg
-                    className='w-4 h-4 mr-2'
+                    className='mr-2 h-4 w-4'
                     fill='none'
                     stroke='currentColor'
                     viewBox='0 0 24 24'
@@ -175,11 +177,11 @@ export default function ContractViewer({
 
                 <button
                   onClick={handleDownloadPDF}
-                  className='inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700'
+                  className='inline-flex items-center rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'
                   title='Baixar PDF'
                 >
                   <svg
-                    className='w-4 h-4 mr-2'
+                    className='mr-2 h-4 w-4'
                     fill='none'
                     stroke='currentColor'
                     viewBox='0 0 24 24'
@@ -196,11 +198,11 @@ export default function ContractViewer({
 
                 <button
                   onClick={() => setShowEmailDialog(true)}
-                  className='inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700'
+                  className='inline-flex items-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100'
                   title='Enviar por email'
                 >
                   <svg
-                    className='w-4 h-4 mr-2'
+                    className='mr-2 h-4 w-4'
                     fill='none'
                     stroke='currentColor'
                     viewBox='0 0 24 24'
@@ -212,17 +214,18 @@ export default function ContractViewer({
                       d='M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'
                     />
                   </svg>
-                  Enviar Email
+                  Enviar email
                 </button>
               </>
             )}
 
             <button
               onClick={onClose}
-              className='text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
+              className='rounded-xl border border-border bg-surface-secondary p-3 text-muted transition hover:bg-background hover:text-foreground'
+              aria-label='Fechar'
             >
               <svg
-                className='w-6 h-6'
+                className='h-5 w-5'
                 fill='none'
                 stroke='currentColor'
                 viewBox='0 0 24 24'
@@ -236,14 +239,15 @@ export default function ContractViewer({
               </svg>
             </button>
           </div>
+          </div>
         </div>
 
         {error && (
-          <div className='mb-4 bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-800 rounded-md p-4'>
-            <p className='text-sm text-red-600 dark:text-red-400'>{error}</p>
+          <div className='mx-6 mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3'>
+            <p className='text-sm font-medium text-red-700'>{error}</p>
             <button
               onClick={() => setError(null)}
-              className='mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline'
+              className='mt-2 text-sm font-semibold text-red-700 underline hover:no-underline'
             >
               Fechar
             </button>
@@ -251,54 +255,53 @@ export default function ContractViewer({
         )}
 
         {emailSent && (
-          <div className='mb-4 bg-green-50 dark:bg-green-900 border border-green-200 dark:border-green-800 rounded-md p-4'>
-            <p className='text-sm text-green-600 dark:text-green-400'>
+          <div className='mx-6 mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3'>
+            <p className='text-sm font-medium text-emerald-800'>
               Contrato enviado por email com sucesso!
             </p>
             <button
               onClick={() => setEmailSent(false)}
-              className='mt-2 text-sm text-green-600 dark:text-green-400 underline hover:no-underline'
+              className='mt-2 text-sm font-semibold text-emerald-800 underline hover:no-underline'
             >
               Fechar
             </button>
           </div>
         )}
 
-        <div className='mt-4 h-[80vh] overflow-auto border border-gray-200 dark:border-gray-700 rounded-md'>
+        <div className='m-6 min-h-0 flex-1 overflow-hidden rounded-2xl border border-border bg-surface-secondary'>
           {loading ? (
-            <div className='flex items-center justify-center h-full'>
-              <div className='animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600'></div>
+            <div className='flex h-full items-center justify-center'>
+              <div className='h-12 w-12 animate-spin rounded-full border-b-2 border-primary'></div>
             </div>
           ) : contractHTML ? (
             <iframe
               srcDoc={contractHTML}
-              className='w-full h-full border-none'
-              title='Contract Preview'
+              className='h-full w-full border-none bg-white'
+              title='Visualizacao do contrato'
             />
           ) : (
-            <div className='flex items-center justify-center h-full'>
-              <p className='text-gray-500 dark:text-gray-400'>
-                Nenhum contrato disponível
+            <div className='flex h-full items-center justify-center'>
+              <p className='text-sm text-muted'>
+                Nenhum contrato disponivel
               </p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Email Dialog */}
       {showEmailDialog && (
-        <div className='fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-60'>
-          <div className='relative top-20 mx-auto p-5 border w-full max-w-md bg-white dark:bg-gray-800 rounded-md shadow-lg'>
-            <div className='flex items-center justify-between pb-3 border-b border-gray-200 dark:border-gray-700'>
-              <h4 className='text-lg font-medium text-gray-900 dark:text-white'>
-                Enviar Contrato por Email
+        <div className='fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 px-4'>
+          <div className='w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-2xl'>
+            <div className='flex items-center justify-between gap-4 border-b border-border pb-4'>
+              <h4 className='text-lg font-semibold text-foreground'>
+                Enviar contrato por email
               </h4>
               <button
                 onClick={() => setShowEmailDialog(false)}
-                className='text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
+                className='rounded-xl border border-border bg-surface-secondary p-2 text-muted transition hover:bg-background hover:text-foreground'
               >
                 <svg
-                  className='w-5 h-5'
+                  className='h-5 w-5'
                   fill='none'
                   stroke='currentColor'
                   viewBox='0 0 24 24'
@@ -314,22 +317,22 @@ export default function ContractViewer({
             </div>
 
             <div className='mt-4'>
-              <label className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2'>
-                Mensagem Personalizada (Opcional)
+              <label className='mb-2 block text-sm font-semibold text-foreground'>
+                Mensagem personalizada (opcional)
               </label>
               <textarea
                 value={customMessage}
                 onChange={(e) => setCustomMessage(e.target.value)}
                 rows={4}
                 placeholder='Digite uma mensagem personalizada para incluir no email...'
-                className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white'
+                className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
               />
             </div>
 
-            <div className='flex items-center justify-end space-x-3 mt-6'>
+            <div className='mt-6 flex items-center justify-end gap-3'>
               <button
                 onClick={() => setShowEmailDialog(false)}
-                className='px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-md'
+                className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'
                 disabled={emailSending}
               >
                 Cancelar
@@ -337,9 +340,9 @@ export default function ContractViewer({
               <button
                 onClick={handleSendEmail}
                 disabled={emailSending}
-                className='px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed'
+                className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50'
               >
-                {emailSending ? 'Enviando...' : 'Enviar Email'}
+                {emailSending ? 'Enviando...' : 'Enviar email'}
               </button>
             </div>
           </div>
