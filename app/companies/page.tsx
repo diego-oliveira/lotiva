@@ -96,7 +96,6 @@ export default function CompaniesPage() {
               <thead className='bg-surface-secondary'>
                 <tr>
                   <th className='table-head px-6 py-4 text-left'>Empresa</th>
-                  <th className='table-head px-6 py-4 text-left'>Logo</th>
                   <th className='table-head px-6 py-4 text-left'>Empreendimentos</th>
                   <th className='table-head px-6 py-4 text-left'>Criada em</th>
                   <th className='table-head px-6 py-4 text-right'>Acoes</th>
@@ -105,8 +104,19 @@ export default function CompaniesPage() {
               <tbody className='divide-y divide-border bg-surface'>
                 {filteredCompanies.map((company) => (
                   <tr key={company.id} className='transition hover:bg-surface-secondary/70'>
-                    <td className='px-6 py-4 whitespace-nowrap'><div className='flex items-center'><div className='flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900 text-sm font-semibold text-white'>{getInitials(company.name)}</div><div className='ml-4'><div className='text-sm font-semibold text-foreground'>{company.name}</div><div className='text-sm text-muted'>{company.logo}</div></div></div></td>
-                    <td className='px-6 py-4 whitespace-nowrap'><img src={company.logo} alt={`Logo de ${company.name}`} className='h-12 w-24 rounded-2xl border border-border bg-background p-2 object-contain' /></td>
+                    <td className='px-6 py-4 whitespace-nowrap'>
+                      <div className='flex items-center gap-4'>
+                        {company.logo ? (
+                          <img src={company.logo} alt={`Logo de ${company.name}`} className='h-11 w-11 rounded-xl border border-border bg-background object-contain p-2' />
+                        ) : (
+                          <div className='flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900 text-sm font-semibold text-white'>{getInitials(company.name)}</div>
+                        )}
+                        <div>
+                          <div className='text-sm font-semibold text-foreground'>{company.name}</div>
+                          <div className='text-sm text-muted'>Empresa proprietaria</div>
+                        </div>
+                      </div>
+                    </td>
                     <td className='px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground'><span className='rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700'>{company._count?.developments ?? 0}</span></td>
                     <td className='px-6 py-4 whitespace-nowrap text-sm text-muted'>{formatDate(company.createdAt)}</td>
                     <td className='px-6 py-4 whitespace-nowrap text-right text-sm font-semibold'><button onClick={() => { setEditingCompany(company); setShowForm(true) }} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>Editar</button></td>
@@ -119,17 +129,17 @@ export default function CompaniesPage() {
 
         <aside className='panel'>
           <div className='panel-header px-6 py-5'>
-            <h2 className='text-lg font-semibold text-foreground'>How it maps</h2>
-            <p className='mt-1 text-sm text-muted'>Empresa is the legal owner above every empreendimento.</p>
+            <h2 className='text-lg font-semibold text-foreground'>Estrutura juridica</h2>
+            <p className='mt-1 text-sm text-muted'>A empresa proprietaria organiza os empreendimentos vinculados.</p>
           </div>
           <div className='space-y-4 px-6 py-6'>
             <div className='rounded-2xl border border-border bg-surface-secondary px-4 py-4'>
-              <p className='text-sm font-semibold text-foreground'>Example</p>
-              <p className='mt-2 text-sm leading-6 text-muted'>Oliveira Construcoes can contain multiple developments like Loteamento Cajueiro I and II.</p>
+              <p className='text-sm font-semibold text-foreground'>Uso esperado</p>
+              <p className='mt-2 text-sm leading-6 text-muted'>Uma empresa pode conter varios empreendimentos, cada um com regras comerciais e estoque proprios.</p>
             </div>
             <div className='rounded-2xl border border-border bg-surface-secondary px-4 py-4'>
-              <p className='text-sm font-semibold text-foreground'>Next linkage</p>
-              <p className='mt-2 text-sm leading-6 text-muted'>Blocks should be attached to a development, not directly to the company.</p>
+              <p className='text-sm font-semibold text-foreground'>Proximo passo</p>
+              <p className='mt-2 text-sm leading-6 text-muted'>Depois de criar a empresa, cadastre os empreendimentos e seus lotes.</p>
             </div>
           </div>
         </aside>
