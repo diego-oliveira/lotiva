@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 
 type ChecklistStatus = 'complete' | 'action' | 'pending'
@@ -173,6 +173,7 @@ function NumberField({
 
 export default function OnboardingPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [status, setStatus] = useState<OnboardingStatus | null>(null)
   const [formData, setFormData] = useState<SetupForm>(initialForm)
   const [loading, setLoading] = useState(true)
@@ -183,7 +184,9 @@ export default function OnboardingPage() {
   const [createdSetup, setCreatedSetup] = useState<CreatedSetup | null>(null)
 
   async function fetchStatus() {
-    const response = await fetch('/api/onboarding/status', { cache: 'no-store' })
+    const developmentId = searchParams.get('developmentId')
+    const query = developmentId ? `?developmentId=${encodeURIComponent(developmentId)}` : ''
+    const response = await fetch(`/api/onboarding/status${query}`, { cache: 'no-store' })
     if (!response.ok) throw new Error('Nao foi possivel carregar o status do onboarding')
     const payload = (await response.json()) as OnboardingStatus
     setStatus(payload)
@@ -221,7 +224,7 @@ export default function OnboardingPage() {
     }
 
     void loadStatus()
-  }, [])
+  }, [searchParams])
 
   const totals = useMemo(() => {
     const lots = formData.blockCount * formData.lotsPerBlock

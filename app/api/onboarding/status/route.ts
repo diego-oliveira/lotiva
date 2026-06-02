@@ -17,10 +17,11 @@ type ChecklistItem = {
   metric: string
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
   const userId = auth.session.user.id
+  const requestedDevelopmentId = new URL(req.url).searchParams.get('developmentId')
 
   const [
     companyCount,
@@ -58,11 +59,17 @@ export async function GET() {
     }),
     prisma.lot.count({ where: { ...lotAccessWhere(userId), status: 'available' } }),
     prisma.development.findFirst({
-      where: membershipWhere(userId),
+      where: {
+        ...membershipWhere(userId),
+        ...(requestedDevelopmentId ? { id: requestedDevelopmentId } : {}),
+      },
       include: {
         company: true,
         blocks: {
           include: {
+            _count: {
+              select: { lots: true },
+            },
             lots: {
               orderBy: { createdAt: 'asc' },
               take: 1,
@@ -86,7 +93,7 @@ export async function GET() {
 
   const setupCompany = primaryDevelopment?.company ?? fallbackCompany
   const firstLot = primaryDevelopment?.blocks.find((block) => block.lots.length > 0)?.lots[0] ?? null
-  const firstBlockLotCount = primaryDevelopment?.blocks[0]?.lots.length ?? null
+  const firstBlockLotCount = primaryDevelopment?.blocks[0]?._count.lots ?? null
 
   const checklist: ChecklistItem[] = [
     {

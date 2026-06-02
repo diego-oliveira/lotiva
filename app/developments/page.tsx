@@ -268,6 +268,9 @@ export default function DevelopmentsPage() {
                     <Link href={`/lots?developmentId=${development.id}`} className='rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong'>
                       Ver lotes
                     </Link>
+                    <Link href={`/onboarding?developmentId=${development.id}`} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+                      {metrics.totalLots > 0 ? 'Complementar lotes' : 'Criar lotes'}
+                    </Link>
                     <button onClick={() => { setSettingsDevelopment(development); setShowSettingsForm(true) }} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>Configurar</button>
                     <button onClick={() => { setEditingDevelopment(development); setShowForm(true) }} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>Editar</button>
                   </div>
