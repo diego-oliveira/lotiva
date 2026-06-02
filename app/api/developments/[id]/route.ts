@@ -5,6 +5,24 @@ import { NextRequest, NextResponse } from 'next/server'
 
 type Params = { params: Promise<{ id: string }> }
 
+function normalizeSettings(settings: any = {}) {
+  const paymentMethods = Array.isArray(settings.paymentMethods)
+    ? settings.paymentMethods.join(',')
+    : settings.paymentMethods || 'cash,installments'
+
+  return {
+    reservationValidityDays: Number(settings.reservationValidityDays) || 7,
+    defaultInterestRate: Number(settings.defaultInterestRate) || 0,
+    interestCalculation: settings.interestCalculation || 'none',
+    correctionIndex: settings.correctionIndex || 'none',
+    correctionFrequency: settings.correctionFrequency || 'monthly',
+    minDownPaymentPercentage: Number(settings.minDownPaymentPercentage) || 10,
+    maxInstallments: Number(settings.maxInstallments) || 120,
+    paymentMethods,
+    allowCustomTerms: settings.allowCustomTerms !== false,
+  }
+}
+
 export async function GET(_req: NextRequest, { params }: Params) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
@@ -51,14 +69,27 @@ export async function PUT(req: NextRequest, { params }: Params) {
   })
   if (!canAccessDevelopment) return forbiddenResponse()
 
-  const updated = await prisma.development.update({
-    where: { id },
-    data: {
-      name: data.name,
-      logo: data.logo,
-      companyId: data.companyId,
-      updatedAt: new Date(),
-    },
+  const updated = await prisma.$transaction(async (tx) => {
+    const development = await tx.development.update({
+      where: { id },
+      data: {
+        name: data.name,
+        logo: data.logo,
+        companyId: data.companyId,
+        updatedAt: new Date(),
+      },
+    })
+
+    await tx.developmentSettings.upsert({
+      where: { developmentId: id },
+      create: {
+        developmentId: id,
+        ...normalizeSettings(data.settings),
+      },
+      update: normalizeSettings(data.settings),
+    })
+
+    return development
   })
 
   return NextResponse.json(updated)

@@ -21,10 +21,13 @@ interface Development {
   settings?: {
     reservationValidityDays: number
     defaultInterestRate: number
-    interestCalculation: string
-    correctionIndex: string
+    interestCalculation: 'none' | 'simple' | 'compound'
+    correctionIndex: 'none' | 'ipca' | 'incc' | 'igpm' | 'fixed'
+    correctionFrequency: 'monthly' | 'annual'
+    minDownPaymentPercentage: number
     maxInstallments: number
     paymentMethods: string
+    allowCustomTerms: boolean
   } | null
   _count?: {
     blocks: number

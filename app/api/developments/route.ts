@@ -3,6 +3,24 @@ import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, membershipWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 
+function normalizeSettings(settings: any = {}) {
+  const paymentMethods = Array.isArray(settings.paymentMethods)
+    ? settings.paymentMethods.join(',')
+    : settings.paymentMethods || 'cash,installments'
+
+  return {
+    reservationValidityDays: Number(settings.reservationValidityDays) || 7,
+    defaultInterestRate: Number(settings.defaultInterestRate) || 0,
+    interestCalculation: settings.interestCalculation || 'none',
+    correctionIndex: settings.correctionIndex || 'none',
+    correctionFrequency: settings.correctionFrequency || 'monthly',
+    minDownPaymentPercentage: Number(settings.minDownPaymentPercentage) || 10,
+    maxInstallments: Number(settings.maxInstallments) || 120,
+    paymentMethods,
+    allowCustomTerms: settings.allowCustomTerms !== false,
+  }
+}
+
 export async function GET() {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
@@ -44,7 +62,7 @@ export async function POST(req: Request) {
       logo: data.logo,
         companyId: data.companyId,
         settings: {
-          create: {},
+          create: normalizeSettings(data.settings),
         },
         memberships: {
           create: {
