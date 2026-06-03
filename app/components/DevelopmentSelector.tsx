@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
 
 type DevelopmentOption = {
   id: string
@@ -9,6 +10,20 @@ type DevelopmentOption = {
 }
 
 export default function DevelopmentSelector({
+  developments,
+  selectedDevelopmentId,
+}: {
+  developments: DevelopmentOption[]
+  selectedDevelopmentId: string
+}) {
+  return (
+    <Suspense fallback={null}>
+      <DevelopmentSelectorContent developments={developments} selectedDevelopmentId={selectedDevelopmentId} />
+    </Suspense>
+  )
+}
+
+function DevelopmentSelectorContent({
   developments,
   selectedDevelopmentId,
 }: {

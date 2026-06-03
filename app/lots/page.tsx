@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 
 type ViewMode = 'map' | 'list'
 type SortField = 'identifier' | 'block' | 'totalArea' | 'price' | 'status'
@@ -220,7 +220,7 @@ function calculateInstallment(balance: number, installmentCount: number, monthly
   return (balance * monthlyRate * factor) / (factor - 1)
 }
 
-export default function LotsPage() {
+function LotsContent() {
   const searchParams = useSearchParams()
   const [lots, setLots] = useState<Lot[]>([])
   const [clients, setClients] = useState<Person[]>([])
@@ -1783,5 +1783,13 @@ export default function LotsPage() {
         </>
       )}
     </div>
+  )
+}
+
+export default function LotsPage() {
+  return (
+    <Suspense fallback={<div className='h-24 animate-pulse rounded-2xl bg-surface-secondary' />}>
+      <LotsContent />
+    </Suspense>
   )
 }

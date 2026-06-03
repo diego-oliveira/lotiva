@@ -1,7 +1,7 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import SalesForm from './components/SalesForm'
 import ContractViewer from './components/ContractViewer'
 import ReceivablesDrawer from './components/ReceivablesDrawer'
@@ -90,7 +90,7 @@ function getInitials(name: string) {
     .slice(0, 2)
 }
 
-export default function SalesPage() {
+function SalesContent() {
   const searchParams = useSearchParams()
   const [sales, setSales] = useState<Sale[]>([])
   const [loading, setLoading] = useState(true)
@@ -521,5 +521,13 @@ export default function SalesPage() {
         onUpdated={handleReceivablesUpdated}
       />
     </div>
+  )
+}
+
+export default function SalesPage() {
+  return (
+    <Suspense fallback={<div className='h-24 animate-pulse rounded-2xl bg-surface-secondary' />}>
+      <SalesContent />
+    </Suspense>
   )
 }

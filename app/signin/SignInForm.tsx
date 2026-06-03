@@ -2,9 +2,17 @@
 
 import { signIn } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 
 export default function SignInForm() {
+  return (
+    <Suspense fallback={null}>
+      <SignInFormContent />
+    </Suspense>
+  )
+}
+
+function SignInFormContent() {
   const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)

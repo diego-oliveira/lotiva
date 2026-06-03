@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
 
 type DevelopmentOption = {
   id: string
@@ -13,6 +14,17 @@ type FinanceDevelopmentSelectProps = {
 }
 
 export default function FinanceDevelopmentSelect({
+  developments,
+  selectedDevelopmentId,
+}: FinanceDevelopmentSelectProps) {
+  return (
+    <Suspense fallback={null}>
+      <FinanceDevelopmentSelectContent developments={developments} selectedDevelopmentId={selectedDevelopmentId} />
+    </Suspense>
+  )
+}
+
+function FinanceDevelopmentSelectContent({
   developments,
   selectedDevelopmentId,
 }: FinanceDevelopmentSelectProps) {

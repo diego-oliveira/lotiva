@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 
 type ChecklistStatus = 'complete' | 'action' | 'pending'
 
@@ -171,7 +171,7 @@ function NumberField({
   )
 }
 
-export default function OnboardingPage() {
+function OnboardingContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [status, setStatus] = useState<OnboardingStatus | null>(null)
@@ -610,5 +610,13 @@ export default function OnboardingPage() {
         </aside>
       </section>
     </div>
+  )
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense fallback={<div className='h-24 animate-pulse rounded-2xl bg-surface-secondary' />}>
+      <OnboardingContent />
+    </Suspense>
   )
 }
