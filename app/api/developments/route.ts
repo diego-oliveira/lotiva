@@ -21,6 +21,20 @@ function normalizeSettings(settings: any = {}) {
   }
 }
 
+function normalizeContractSettings(contractSettings: any = {}) {
+  return {
+    sellerName: String(contractSettings.sellerName || ''),
+    sellerDocument: String(contractSettings.sellerDocument || ''),
+    sellerAddress: String(contractSettings.sellerAddress || ''),
+    sellerRepresentatives: String(contractSettings.sellerRepresentatives || ''),
+    propertyDescription: String(contractSettings.propertyDescription || ''),
+    acquisitionDescription: String(contractSettings.acquisitionDescription || ''),
+    paymentInstructions: String(contractSettings.paymentInstructions || ''),
+    jurisdiction: String(contractSettings.jurisdiction || ''),
+    additionalClauses: String(contractSettings.additionalClauses || ''),
+  }
+}
+
 export async function GET() {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
@@ -31,6 +45,7 @@ export async function GET() {
     include: {
       company: true,
       settings: true,
+      contractSettings: true,
       _count: {
         select: {
           blocks: true,
@@ -63,6 +78,9 @@ export async function POST(req: Request) {
         companyId: data.companyId,
         settings: {
           create: normalizeSettings(data.settings),
+        },
+        contractSettings: {
+          create: normalizeContractSettings(data.contractSettings),
         },
         memberships: {
           create: {

@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { contractAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server';
-import { generateContractPDFProduction } from '@/lib/pdfGeneratorProduction';
+import { generatePDFFromHTMLProduction } from '@/lib/pdfGeneratorProduction';
 import { emailService } from '@/lib/emailService';
 
 type Params = { params: Promise<{ saleId: string }> };
@@ -42,14 +42,7 @@ export async function POST(req: Request, { params }: Params) {
       );
     }
 
-    // Generate PDF
-    const contractData = {
-      contractNumber: contract.contractNumber,
-      sale: contract.sale,
-      generatedAt: contract.createdAt
-    };
-
-    const pdfBuffer = await generateContractPDFProduction(contractData);
+    const pdfBuffer = await generatePDFFromHTMLProduction(contract.content);
 
     // Send email
     const emailSent = await emailService.sendContractEmail(
@@ -71,8 +64,17 @@ export async function POST(req: Request, { params }: Params) {
     await prisma.contract.update({
       where: { id: contract.id },
       data: {
+        status: 'sent',
         emailSent: true,
-        emailSentAt: new Date()
+        emailSentAt: new Date(),
+        events: {
+          create: {
+            userId: currentUserId,
+            type: 'sent',
+            title: 'Contrato enviado por email',
+            description: `Enviado para ${contract.sale.user.email}`,
+          },
+        },
       }
     });
 

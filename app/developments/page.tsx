@@ -29,6 +29,17 @@ interface Development {
     paymentMethods: string
     allowCustomTerms: boolean
   } | null
+  contractSettings?: {
+    sellerName: string
+    sellerDocument: string
+    sellerAddress: string
+    sellerRepresentatives: string
+    propertyDescription: string
+    acquisitionDescription: string
+    paymentInstructions: string
+    jurisdiction: string
+    additionalClauses: string
+  } | null
   _count?: {
     blocks: number
   }

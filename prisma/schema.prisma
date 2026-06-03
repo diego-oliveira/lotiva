@@ -36,6 +36,7 @@ model Development {
   blocks       Block[]
   memberships  DevelopmentUser[]
   settings     DevelopmentSettings?
+  contractSettings DevelopmentContractSettings?
 }
 
 model DevelopmentSettings {
@@ -52,6 +53,24 @@ model DevelopmentSettings {
   allowCustomTerms         Boolean  @default(true)
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
+
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+}
+
+model DevelopmentContractSettings {
+  id                     String   @id @default(uuid())
+  developmentId          String   @unique
+  sellerName             String   @default("")
+  sellerDocument         String   @default("")
+  sellerAddress          String   @default("")
+  sellerRepresentatives  String   @default("")
+  propertyDescription    String   @default("")
+  acquisitionDescription String   @default("")
+  paymentInstructions    String   @default("")
+  jurisdiction           String   @default("")
+  additionalClauses      String   @default("") @db.Text
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
 }
@@ -255,12 +274,31 @@ model Contract {
   saleId       String    @unique
   contractNumber String  @unique
   content      String    @db.Text
+  status       String    @default("generated")
+  version      Int       @default(1)
+  lastRegenerationReason String?
   emailSent    Boolean   @default(false)
   emailSentAt  DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   sale Sale @relation(fields: [saleId], references: [id])
+  events ContractEvent[]
+}
+
+model ContractEvent {
+  id          String   @id @default(uuid())
+  contractId  String
+  userId      String?
+  type        String
+  title       String
+  description String?
+  createdAt   DateTime @default(now())
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId, createdAt])
+  @@index([type])
 }
 
 model Receivable {

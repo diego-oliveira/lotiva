@@ -14,6 +14,7 @@ interface Development {
   logo: string
   companyId: string
   settings?: DevelopmentSettings | null
+  contractSettings?: DevelopmentContractSettings | null
 }
 
 type DevelopmentSettings = {
@@ -30,6 +31,18 @@ type DevelopmentSettings = {
 
 type DevelopmentSettingsFormData = Omit<DevelopmentSettings, 'paymentMethods'> & {
   paymentMethods: string[]
+}
+
+type DevelopmentContractSettings = {
+  sellerName: string
+  sellerDocument: string
+  sellerAddress: string
+  sellerRepresentatives: string
+  propertyDescription: string
+  acquisitionDescription: string
+  paymentInstructions: string
+  jurisdiction: string
+  additionalClauses: string
 }
 
 interface DevelopmentFormProps {
@@ -52,6 +65,18 @@ const defaultSettings: DevelopmentSettingsFormData = {
   allowCustomTerms: true,
 }
 
+const defaultContractSettings: DevelopmentContractSettings = {
+  sellerName: '',
+  sellerDocument: '',
+  sellerAddress: '',
+  sellerRepresentatives: '',
+  propertyDescription: '',
+  acquisitionDescription: '',
+  paymentInstructions: '',
+  jurisdiction: '',
+  additionalClauses: '',
+}
+
 function isValidLogoReference(value: string) {
   if (value.startsWith('/uploads/')) return true
   try {
@@ -71,6 +96,7 @@ export default function DevelopmentForm({
 }: DevelopmentFormProps) {
   const [formData, setFormData] = useState<Development>({ name: '', logo: '', companyId: '' })
   const [settingsData, setSettingsData] = useState<DevelopmentSettingsFormData>(defaultSettings)
+  const [contractSettingsData, setContractSettingsData] = useState<DevelopmentContractSettings>(defaultContractSettings)
   const [loading, setLoading] = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -78,7 +104,7 @@ export default function DevelopmentForm({
   useEffect(() => {
     setFormData(
       development
-        ? { id: development.id, name: development.name, logo: development.logo, companyId: development.companyId, settings: development.settings }
+        ? { id: development.id, name: development.name, logo: development.logo, companyId: development.companyId, settings: development.settings, contractSettings: development.contractSettings }
         : { name: '', logo: '', companyId: companies[0]?.id ?? '' },
     )
     setSettingsData(
@@ -92,6 +118,7 @@ export default function DevelopmentForm({
           }
         : defaultSettings,
     )
+    setContractSettingsData(development?.contractSettings ? { ...defaultContractSettings, ...development.contractSettings } : defaultContractSettings)
     setErrors({})
   }, [development, isOpen, companies])
 
@@ -124,6 +151,12 @@ export default function DevelopmentForm({
   const updateSettingText = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const { name, value } = e.target
     setSettingsData((prev) => ({ ...prev, [name]: value }))
+    if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }))
+  }
+
+  const updateContractSetting = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    setContractSettingsData((prev) => ({ ...prev, [name]: value }))
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }))
   }
 
@@ -179,6 +212,7 @@ export default function DevelopmentForm({
         body: JSON.stringify({
           ...formData,
           settings: settingsData,
+          contractSettings: contractSettingsData,
         }),
       })
       if (!response.ok) {
@@ -227,6 +261,111 @@ export default function DevelopmentForm({
               ))}
             </select>
             {errors.companyId && <p className='mt-2 text-sm text-red-600'>{errors.companyId}</p>}
+          </div>
+
+          <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+            <div>
+              <h3 className='text-base font-semibold text-foreground'>Contrato</h3>
+              <p className='mt-1 text-sm text-muted'>Dados usados para gerar contratos deste empreendimento.</p>
+            </div>
+
+            <div className='mt-5 grid gap-4 md:grid-cols-2'>
+              <label className='block'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Vendedor</span>
+                <input
+                  name='sellerName'
+                  value={contractSettingsData.sellerName}
+                  onChange={updateContractSetting}
+                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
+                  placeholder='Razao social ou nome do vendedor'
+                />
+              </label>
+              <label className='block'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>CPF/CNPJ do vendedor</span>
+                <input
+                  name='sellerDocument'
+                  value={contractSettingsData.sellerDocument}
+                  onChange={updateContractSetting}
+                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
+                  placeholder='00.000.000/0000-00'
+                />
+              </label>
+              <label className='block md:col-span-2'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Endereco do vendedor</span>
+                <input
+                  name='sellerAddress'
+                  value={contractSettingsData.sellerAddress}
+                  onChange={updateContractSetting}
+                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
+                  placeholder='Endereco completo'
+                />
+              </label>
+              <label className='block md:col-span-2'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Representantes</span>
+                <textarea
+                  name='sellerRepresentatives'
+                  rows={3}
+                  value={contractSettingsData.sellerRepresentatives}
+                  onChange={updateContractSetting}
+                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
+                  placeholder='Ex.: Por Diego Oliveira, socio administrador'
+                />
+              </label>
+              <label className='block md:col-span-2'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Descricao do empreendimento</span>
+                <textarea
+                  name='propertyDescription'
+                  rows={4}
+                  value={contractSettingsData.propertyDescription}
+                  onChange={updateContractSetting}
+                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
+                  placeholder='Localizacao, area, matricula e demais informacoes do empreendimento'
+                />
+              </label>
+              <label className='block md:col-span-2'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Origem/regularidade do imovel</span>
+                <textarea
+                  name='acquisitionDescription'
+                  rows={4}
+                  value={contractSettingsData.acquisitionDescription}
+                  onChange={updateContractSetting}
+                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
+                  placeholder='Historico de aquisicao, matricula e situacao juridica'
+                />
+              </label>
+              <label className='block md:col-span-2'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Instrucoes de pagamento</span>
+                <textarea
+                  name='paymentInstructions'
+                  rows={4}
+                  value={contractSettingsData.paymentInstructions}
+                  onChange={updateContractSetting}
+                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
+                  placeholder='Banco, pix, boleto, regras de pagamento e observacoes'
+                />
+              </label>
+              <label className='block md:col-span-2'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Foro</span>
+                <input
+                  name='jurisdiction'
+                  value={contractSettingsData.jurisdiction}
+                  onChange={updateContractSetting}
+                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
+                  placeholder='Comarca de ...'
+                />
+              </label>
+              <label className='block md:col-span-2'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Clausulas adicionais</span>
+                <textarea
+                  name='additionalClauses'
+                  rows={5}
+                  value={contractSettingsData.additionalClauses}
+                  onChange={updateContractSetting}
+                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
+                  placeholder='Clausulas especificas deste empreendimento'
+                />
+              </label>
+            </div>
           </div>
 
           <div className='rounded-2xl border border-border bg-surface-secondary p-5'>

@@ -23,6 +23,20 @@ function normalizeSettings(settings: any = {}) {
   }
 }
 
+function normalizeContractSettings(contractSettings: any = {}) {
+  return {
+    sellerName: String(contractSettings.sellerName || ''),
+    sellerDocument: String(contractSettings.sellerDocument || ''),
+    sellerAddress: String(contractSettings.sellerAddress || ''),
+    sellerRepresentatives: String(contractSettings.sellerRepresentatives || ''),
+    propertyDescription: String(contractSettings.propertyDescription || ''),
+    acquisitionDescription: String(contractSettings.acquisitionDescription || ''),
+    paymentInstructions: String(contractSettings.paymentInstructions || ''),
+    jurisdiction: String(contractSettings.jurisdiction || ''),
+    additionalClauses: String(contractSettings.additionalClauses || ''),
+  }
+}
+
 export async function GET(_req: NextRequest, { params }: Params) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
@@ -38,6 +52,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     include: {
       company: true,
       settings: true,
+      contractSettings: true,
       _count: {
         select: {
           blocks: true,
@@ -87,6 +102,15 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ...normalizeSettings(data.settings),
       },
       update: normalizeSettings(data.settings),
+    })
+
+    await tx.developmentContractSettings.upsert({
+      where: { developmentId: id },
+      create: {
+        developmentId: id,
+        ...normalizeContractSettings(data.contractSettings),
+      },
+      update: normalizeContractSettings(data.contractSettings),
     })
 
     return development

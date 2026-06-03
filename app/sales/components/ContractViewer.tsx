@@ -8,18 +8,41 @@ interface ContractViewerProps {
   onClose: () => void;
 }
 
+type ContractMeta = {
+  contractNumber: string
+  status: string
+  version: number
+  emailSent: boolean
+  emailSentAt?: string | null
+  createdAt: string
+  updatedAt: string
+  missingFields: string[]
+  sale: {
+    totalValue: number
+    downPayment: number
+    installmentCount: number
+    installmentValue: number
+    user: { name: string; email: string }
+    lot: { identifier: string; block: { identifier: string; development: { name: string } } }
+  }
+  events: Array<{ id: string; title: string; description?: string | null; createdAt: string }>
+}
+
 export default function ContractViewer({
   saleId,
   isOpen,
   onClose
 }: ContractViewerProps) {
   const [contractHTML, setContractHTML] = useState<string>('');
+  const [contractMeta, setContractMeta] = useState<ContractMeta | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [emailSending, setEmailSending] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [customMessage, setCustomMessage] = useState('');
+  const [regenerationReason, setRegenerationReason] = useState('');
 
   useEffect(() => {
     if (isOpen && saleId) {
@@ -45,6 +68,7 @@ export default function ContractViewer({
 
       const html = await response.text();
       setContractHTML(html);
+      await fetchContractMeta();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nao foi possivel carregar o contrato');
     } finally {
@@ -52,20 +76,33 @@ export default function ContractViewer({
     }
   };
 
-  const generateContract = async () => {
+  const fetchContractMeta = async () => {
+    const response = await fetch(`/api/contracts/${saleId}?meta=1`);
+    if (!response.ok) return;
+    setContractMeta(await response.json());
+  };
+
+  const generateContract = async (force = false, reason = '') => {
     try {
+      setLoading(true);
       const generateResponse = await fetch('/api/contracts/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ saleId })
+        body: JSON.stringify({ saleId, force, reason })
       });
 
       if (!generateResponse.ok) {
-        throw new Error('Nao foi possivel gerar o contrato');
+        const payload = await generateResponse.json().catch(() => ({}));
+        if (payload.missingFields) {
+          throw new Error(`Pendencias para gerar contrato: ${payload.missingFields.join(', ')}`);
+        }
+        throw new Error(payload.error || 'Nao foi possivel gerar o contrato');
       }
 
+      setShowRegenerateDialog(false);
+      setRegenerationReason('');
       await fetchContract();
     } catch (err) {
       setError(
@@ -74,6 +111,22 @@ export default function ContractViewer({
       setLoading(false);
     }
   };
+
+  const getStatusLabel = (status?: string) => {
+    const labels: Record<string, string> = {
+      generated: 'Gerado',
+      sent: 'Enviado',
+      signed: 'Assinado',
+      cancelled: 'Cancelado',
+      draft: 'Rascunho',
+    };
+    return labels[status || ''] || 'Pendente';
+  };
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+
+  const formatDate = (value?: string | null) => value ? new Date(value).toLocaleString('pt-BR') : 'Nao informado';
 
   const handleDownloadPDF = async () => {
     try {
@@ -147,13 +200,21 @@ export default function ContractViewer({
           <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
             <div>
               <p className='text-xs font-semibold uppercase tracking-[0.18em] text-muted'>Contrato</p>
-              <h3 className='mt-2 text-2xl font-bold text-foreground'>Visualizacao do contrato</h3>
-              <p className='mt-1 text-sm text-muted'>Revise, imprima, baixe em PDF ou envie o documento por email.</p>
+              <h3 className='mt-2 text-2xl font-bold text-foreground'>{contractMeta?.contractNumber ?? 'Contrato da venda'}</h3>
+              <p className='mt-1 text-sm text-muted'>Revise pendencias, gere, regenere, baixe ou envie o documento.</p>
             </div>
 
           <div className='flex flex-wrap items-center gap-3'>
             {contractHTML && (
               <>
+                <button
+                  onClick={() => setShowRegenerateDialog(true)}
+                  className='inline-flex items-center rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 transition hover:bg-amber-100'
+                  title='Regenerar contrato'
+                >
+                  Regenerar
+                </button>
+
                 <button
                   onClick={handlePrint}
                   className='inline-flex items-center rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'
@@ -268,7 +329,55 @@ export default function ContractViewer({
           </div>
         )}
 
-        <div className='m-6 min-h-0 flex-1 overflow-hidden rounded-2xl border border-border bg-surface-secondary'>
+        <div className='grid min-h-0 flex-1 gap-6 p-6 lg:grid-cols-[320px_minmax(0,1fr)]'>
+          <aside className='space-y-4 overflow-y-auto'>
+            <div className='rounded-2xl border border-border bg-surface-secondary p-4'>
+              <p className='text-xs font-semibold uppercase text-muted'>Status</p>
+              <p className='mt-2 text-xl font-bold text-foreground'>{getStatusLabel(contractMeta?.status)}</p>
+              <p className='mt-1 text-sm text-muted'>Versao {contractMeta?.version ?? 1}</p>
+              {contractMeta?.emailSentAt && <p className='mt-2 text-xs text-muted'>Enviado em {formatDate(contractMeta.emailSentAt)}</p>}
+            </div>
+
+            {contractMeta?.sale && (
+              <div className='rounded-2xl border border-border bg-surface-secondary p-4'>
+                <p className='text-sm font-semibold text-foreground'>Resumo</p>
+                <div className='mt-3 space-y-2 text-sm text-muted'>
+                  <p><span className='font-semibold text-foreground'>Cliente:</span> {contractMeta.sale.user.name}</p>
+                  <p><span className='font-semibold text-foreground'>Lote:</span> Quadra {contractMeta.sale.lot.block.identifier}, Lote {contractMeta.sale.lot.identifier}</p>
+                  <p><span className='font-semibold text-foreground'>Empreendimento:</span> {contractMeta.sale.lot.block.development.name}</p>
+                  <p><span className='font-semibold text-foreground'>Valor:</span> {formatCurrency(contractMeta.sale.totalValue)}</p>
+                  <p><span className='font-semibold text-foreground'>Entrada:</span> {formatCurrency(contractMeta.sale.downPayment)}</p>
+                  <p><span className='font-semibold text-foreground'>Parcelas:</span> {contractMeta.sale.installmentCount}x de {formatCurrency(contractMeta.sale.installmentValue)}</p>
+                </div>
+              </div>
+            )}
+
+            {contractMeta?.missingFields && contractMeta.missingFields.length > 0 && (
+              <div className='rounded-2xl border border-amber-200 bg-amber-50 p-4'>
+                <p className='text-sm font-semibold text-amber-900'>Pendencias</p>
+                <ul className='mt-2 list-disc space-y-1 pl-5 text-sm text-amber-800'>
+                  {contractMeta.missingFields.map((field) => <li key={field}>{field}</li>)}
+                </ul>
+              </div>
+            )}
+
+            {contractMeta?.events && contractMeta.events.length > 0 && (
+              <div className='rounded-2xl border border-border bg-surface-secondary p-4'>
+                <p className='text-sm font-semibold text-foreground'>Historico</p>
+                <div className='mt-3 space-y-3'>
+                  {contractMeta.events.slice(0, 6).map((event) => (
+                    <div key={event.id} className='border-l-2 border-primary/30 pl-3'>
+                      <p className='text-sm font-semibold text-foreground'>{event.title}</p>
+                      <p className='text-xs text-muted'>{formatDate(event.createdAt)}</p>
+                      {event.description && <p className='mt-1 text-xs text-muted'>{event.description}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </aside>
+
+          <div className='min-h-0 overflow-hidden rounded-2xl border border-border bg-surface-secondary'>
           {loading ? (
             <div className='flex h-full items-center justify-center'>
               <div className='h-12 w-12 animate-spin rounded-full border-b-2 border-primary'></div>
@@ -286,6 +395,7 @@ export default function ContractViewer({
               </p>
             </div>
           )}
+          </div>
         </div>
       </div>
 
@@ -343,6 +453,35 @@ export default function ContractViewer({
                 className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50'
               >
                 {emailSending ? 'Enviando...' : 'Enviar email'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRegenerateDialog && (
+        <div className='fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 px-4'>
+          <div className='w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-2xl'>
+            <h4 className='text-lg font-semibold text-foreground'>Regenerar contrato</h4>
+            <p className='mt-2 text-sm leading-6 text-muted'>
+              O contrato sera recriado com os dados atuais da venda, cliente e configuracao do empreendimento.
+            </p>
+            <label className='mt-5 block'>
+              <span className='mb-2 block text-sm font-semibold text-foreground'>Motivo</span>
+              <textarea
+                value={regenerationReason}
+                onChange={(event) => setRegenerationReason(event.target.value)}
+                rows={4}
+                className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                placeholder='Ex.: cliente atualizou dados para contrato'
+              />
+            </label>
+            <div className='mt-6 flex justify-end gap-3'>
+              <button onClick={() => setShowRegenerateDialog(false)} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+                Cancelar
+              </button>
+              <button onClick={() => generateContract(true, regenerationReason)} disabled={!regenerationReason.trim()} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'>
+                Regenerar
               </button>
             </div>
           </div>

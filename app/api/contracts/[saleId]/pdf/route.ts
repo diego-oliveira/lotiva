@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { contractAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server';
-import { generateContractPDFProduction } from '@/lib/pdfGeneratorProduction';
+import { generatePDFFromHTMLProduction } from '@/lib/pdfGeneratorProduction';
 
 type Params = { params: Promise<{ saleId: string }> };
 
@@ -40,16 +40,19 @@ export async function GET(_: Request, { params }: Params) {
       );
     }
 
-    // Generate PDF
-    const contractData = {
-      contractNumber: contract.contractNumber,
-      sale: contract.sale,
-      generatedAt: contract.createdAt
-    };
-
     console.log('Generating PDF for contract:', contract.contractNumber);
-    const pdfBuffer = await generateContractPDFProduction(contractData);
+    const pdfBuffer = await generatePDFFromHTMLProduction(contract.content);
     console.log('PDF generated successfully, size:', pdfBuffer.length);
+
+    await prisma.contractEvent.create({
+      data: {
+        contractId: contract.id,
+        userId: currentUserId,
+        type: 'downloaded',
+        title: 'PDF baixado',
+        description: 'PDF do contrato gerado para download.',
+      },
+    });
 
     return new NextResponse(pdfBuffer as any, {
       headers: {
