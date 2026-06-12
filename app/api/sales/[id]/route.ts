@@ -3,14 +3,67 @@ import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, lotAccessWhere, reservationAccessWhere, saleAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 import { createLotEvent } from '@/lib/lot-events'
+import { hasDevelopmentPermission } from '@/lib/permissions'
+import { calculateInstallment, evaluateDirectSaleTerms } from '@/lib/proposal-rules'
 
 type Params = { params: Promise<{ id: string }> }
+
+function addMonths(date: Date, months: number) {
+  const next = new Date(date)
+  next.setMonth(next.getMonth() + months)
+  return next
+}
 
 function parseDateOnly(value?: string | null) {
   if (!value) return null
   const [year, month, day] = value.split('-').map(Number)
   if (!year || !month || !day) return null
   return new Date(year, month - 1, day, 12)
+}
+
+function toDateKey(value?: Date | null) {
+  if (!value) return ''
+  return value.toISOString().slice(0, 10)
+}
+
+function buildReceivables(
+  saleId: string,
+  data: { downPayment: number; installmentCount: number; installmentValue: number; firstDueDate?: Date | null },
+) {
+  const createdAt = new Date()
+  const firstDueDate = data.firstDueDate ?? addMonths(createdAt, 1)
+  const receivables: Array<{
+    saleId: string
+    kind: string
+    sequence: number
+    dueDate: Date
+    amount: number
+    balance: number
+  }> = []
+
+  if (data.downPayment > 0) {
+    receivables.push({
+      saleId,
+      kind: 'down_payment',
+      sequence: 0,
+      dueDate: createdAt,
+      amount: data.downPayment,
+      balance: data.downPayment,
+    })
+  }
+
+  for (let sequence = 1; sequence <= data.installmentCount; sequence += 1) {
+    receivables.push({
+      saleId,
+      kind: 'installment',
+      sequence,
+      dueDate: addMonths(firstDueDate, sequence - 1),
+      amount: data.installmentValue,
+      balance: data.installmentValue,
+    })
+  }
+
+  return receivables
 }
 
 export async function GET(_: Request, { params }: Params) {
@@ -65,7 +118,16 @@ export async function PUT(req: Request, { params }: Params) {
       },
       select: {
         id: true,
+        userId: true,
         lotId: true,
+        reservationId: true,
+        proposalId: true,
+        installmentCount: true,
+        installmentValue: true,
+        downPayment: true,
+        firstDueDate: true,
+        annualAdjustment: true,
+        totalValue: true,
         contract: { select: { id: true } },
         receivables: {
           where: {
@@ -94,13 +156,18 @@ export async function PUT(req: Request, { params }: Params) {
       },
       include: {
         block: {
-          select: {
-            developmentId: true,
+          include: {
+            development: {
+              include: {
+                settings: true,
+              },
+            },
           },
         },
       },
     })
     if (!lot?.block.developmentId) return forbiddenResponse()
+    if (!(await hasDevelopmentPermission(currentUserId, lot.block.developmentId, 'admin'))) return forbiddenResponse()
 
     const buyerMembership = await prisma.developmentUser.findUnique({
       where: {
@@ -126,6 +193,68 @@ export async function PUT(req: Request, { params }: Params) {
       if (!reservation) return forbiddenResponse()
     }
 
+    const requestedDownPayment = Number(data.downPayment)
+    const requestedInstallmentCount = Math.trunc(Number(data.installmentCount))
+    const requestedFirstDueDate = parseDateOnly(data.firstDueDate)
+
+    if (existingSale.proposalId) {
+      const changesApprovedTerms = (
+        data.userId !== existingSale.userId ||
+        data.lotId !== existingSale.lotId ||
+        (data.reservationId || null) !== existingSale.reservationId ||
+        requestedDownPayment !== existingSale.downPayment ||
+        requestedInstallmentCount !== existingSale.installmentCount ||
+        Number(data.installmentValue) !== existingSale.installmentValue ||
+        Number(data.totalValue) !== existingSale.totalValue ||
+        toDateKey(requestedFirstDueDate) !== toDateKey(existingSale.firstDueDate) ||
+        Boolean(data.annualAdjustment) !== existingSale.annualAdjustment
+      )
+      if (changesApprovedTerms) {
+        return NextResponse.json(
+          { error: 'Condicoes de uma proposta aprovada nao podem ser alteradas na venda. Crie uma nova proposta para revisar os valores.' },
+          { status: 409 },
+        )
+      }
+    }
+
+    const settings = lot.block.development?.settings ?? {
+      minDownPaymentPercentage: 10,
+      maxInstallments: 120,
+      defaultInterestRate: 0,
+      interestCalculation: 'none',
+      correctionIndex: 'none',
+    }
+    const directSaleEvaluation = evaluateDirectSaleTerms(settings, {
+      basePrice: lot.price,
+      downPayment: requestedDownPayment,
+      installmentCount: requestedInstallmentCount,
+    })
+    if (!existingSale.proposalId && !directSaleEvaluation.isValid) {
+      return NextResponse.json(
+        { error: `A venda nao atende as regras comerciais: ${directSaleEvaluation.reasons.join('; ')}.` },
+        { status: 422 },
+      )
+    }
+
+    const installmentCount = existingSale.proposalId ? existingSale.installmentCount : requestedInstallmentCount
+    const downPayment = existingSale.proposalId ? existingSale.downPayment : requestedDownPayment
+    const financedBalance = Math.max(lot.price - downPayment, 0)
+    const installmentValue = existingSale.proposalId
+      ? existingSale.installmentValue
+      : Math.round(calculateInstallment(
+          financedBalance,
+          installmentCount,
+          settings.defaultInterestRate,
+          settings.interestCalculation,
+        ) * 100) / 100
+    const totalValue = existingSale.proposalId
+      ? existingSale.totalValue
+      : downPayment + installmentValue * installmentCount
+    const firstDueDate = existingSale.proposalId ? existingSale.firstDueDate : requestedFirstDueDate
+    const annualAdjustment = existingSale.proposalId
+      ? existingSale.annualAdjustment
+      : settings.correctionIndex !== 'none'
+
     const updated = await prisma.$transaction(async (tx) => {
       const sale = await tx.sale.update({
         where: { id },
@@ -133,12 +262,12 @@ export async function PUT(req: Request, { params }: Params) {
           userId: data.userId,
           lotId: data.lotId,
           reservationId: data.reservationId || null,
-          installmentCount: data.installmentCount,
-          installmentValue: data.installmentValue,
-          downPayment: data.downPayment,
-          firstDueDate: parseDateOnly(data.firstDueDate),
-          annualAdjustment: data.annualAdjustment,
-          totalValue: data.totalValue,
+          installmentCount,
+          installmentValue,
+          downPayment,
+          firstDueDate,
+          annualAdjustment,
+          totalValue,
           updatedAt: new Date(),
         },
         include: {
@@ -157,6 +286,17 @@ export async function PUT(req: Request, { params }: Params) {
           },
         }
       })
+
+      await tx.receivable.deleteMany({ where: { saleId: sale.id } })
+      const receivables = buildReceivables(sale.id, {
+        downPayment: sale.downPayment,
+        installmentCount: sale.installmentCount,
+        installmentValue: sale.installmentValue,
+        firstDueDate: sale.firstDueDate,
+      })
+      if (receivables.length > 0) {
+        await tx.receivable.createMany({ data: receivables })
+      }
 
       await createLotEvent(tx, {
         lotId: sale.lotId,

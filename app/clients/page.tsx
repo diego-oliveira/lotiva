@@ -49,13 +49,14 @@ export default function ClientsPage() {
   const [deletingClient, setDeletingClient] = useState<Client | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [personType, setPersonType] = useState<'all' | 'clients' | 'team'>('all')
   const [currentPage, setCurrentPage] = useState(1)
 
   useEffect(() => { fetchClients() }, [])
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm])
+  }, [searchTerm, personType])
 
   const fetchClients = async () => {
     try {
@@ -88,6 +89,9 @@ export default function ClientsPage() {
   }
 
   const filteredClients = clients.filter((c) => {
+    const isTeamMember = c.memberships.some((membership) => membership.roles.length > 0)
+    if (personType === 'clients' && isTeamMember) return false
+    if (personType === 'team' && !isTeamMember) return false
     if (!searchTerm) return true
     const q = searchTerm.toLowerCase()
     const digits = searchTerm.replace(/\D/g, '')
@@ -99,6 +103,8 @@ export default function ClientsPage() {
   })
   const totalPages = Math.max(1, Math.ceil(filteredClients.length / ITEMS_PER_PAGE))
   const paginatedClients = filteredClients.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
+  const clientCount = clients.filter((client) => client.memberships.every((membership) => membership.roles.length === 0)).length
+  const teamCount = clients.length - clientCount
 
   if (loading) return <div className='animate-pulse'><div className='h-8 w-56 rounded-xl bg-surface-secondary' /></div>
   if (error) return <div className='rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700'>{error}</div>
@@ -107,23 +113,42 @@ export default function ClientsPage() {
     <div className='space-y-6'>
       <div className='flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'>
         <div>
-          <h1 className='page-title'>Usuarios</h1>
-          <p className='page-subtitle'>Gerencie pessoas, acessos a empreendimentos e dados cadastrais para contratos.</p>
+          <h1 className='page-title'>Pessoas</h1>
+          <p className='page-subtitle'>Gerencie clientes, compradores e integrantes da equipe em um unico cadastro.</p>
         </div>
         <button
           onClick={() => { setEditingClient(null); setShowForm(true) }}
           className='rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-strong'
         >
-          Novo Usuario
+          Nova pessoa
         </button>
+      </div>
+
+      <div className='inline-flex flex-wrap gap-1 rounded-xl border border-border bg-surface p-1'>
+        {[
+          { value: 'all', label: `Todas (${clients.length})` },
+          { value: 'clients', label: `Clientes (${clientCount})` },
+          { value: 'team', label: `Equipe (${teamCount})` },
+        ].map((option) => (
+          <button
+            key={option.value}
+            type='button'
+            onClick={() => setPersonType(option.value as typeof personType)}
+            className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+              personType === option.value ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary hover:text-foreground'
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
       </div>
 
       <div className='panel overflow-hidden'>
         <div className='panel-header flex flex-col gap-4 px-6 py-5 md:flex-row md:items-center md:justify-between'>
           <h2 className='text-lg font-semibold text-foreground'>
             {searchTerm
-              ? `${filteredClients.length} de ${clients.length} usuarios`
-              : `Total de usuarios: ${clients.length}`}
+              ? `${filteredClients.length} pessoa(s) encontrada(s)`
+              : `${filteredClients.length} pessoa(s) neste grupo`}
           </h2>
           <div className='relative w-full md:max-w-xs'>
             <input
@@ -154,12 +179,12 @@ export default function ClientsPage() {
               </svg>
             </div>
             <h3 className='mt-4 text-base font-semibold text-foreground'>
-              {searchTerm ? 'Nenhum usuario encontrado' : 'Nenhum usuario cadastrado'}
+              {searchTerm ? 'Nenhuma pessoa encontrada' : 'Nenhuma pessoa neste grupo'}
             </h3>
             <p className='mt-2 text-sm text-muted'>
               {searchTerm
                 ? <>Nenhum resultado para "<span className='font-medium'>{searchTerm}</span>".</>
-                : 'Cadastre clientes, vendedores e pessoas que participam do fluxo comercial.'}
+                : 'Cadastre clientes, compradores e integrantes da equipe comercial.'}
             </p>
             {searchTerm ? (
               <button onClick={() => setSearchTerm('')} className='mt-6 rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
@@ -167,7 +192,7 @@ export default function ClientsPage() {
               </button>
             ) : (
               <button onClick={() => { setEditingClient(null); setShowForm(true) }} className='mt-6 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
-                Cadastrar primeiro usuario
+                Cadastrar primeira pessoa
               </button>
             )}
           </div>
@@ -176,7 +201,8 @@ export default function ClientsPage() {
             <table className='min-w-full divide-y divide-border'>
               <thead className='bg-surface-secondary'>
                 <tr>
-                  <th className='table-head px-6 py-4 text-left'>Usuario</th>
+                  <th className='table-head px-6 py-4 text-left'>Pessoa</th>
+                  <th className='table-head px-6 py-4 text-left'>Tipo</th>
                   <th className='table-head px-6 py-4 text-left'>Empreendimentos</th>
                   <th className='table-head px-6 py-4 text-left'>Perfil contrato</th>
                   <th className='table-head px-6 py-4 text-left'>Cadastro</th>
@@ -186,6 +212,7 @@ export default function ClientsPage() {
               <tbody className='divide-y divide-border bg-surface'>
                 {paginatedClients.map((client) => {
                   const complete = profileComplete(client)
+                  const isTeamMember = client.memberships.some((membership) => membership.roles.length > 0)
                   return (
                     <tr key={client.id} className='transition hover:bg-surface-secondary/70'>
                       <td className='px-6 py-4 whitespace-nowrap'>
@@ -198,6 +225,12 @@ export default function ClientsPage() {
                             <div className='text-sm text-muted'>{client.email}</div>
                           </div>
                         </div>
+                      </td>
+
+                      <td className='px-6 py-4 whitespace-nowrap'>
+                        <span className={`pill ${isTeamMember ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                          {isTeamMember ? 'Equipe' : 'Cliente'}
+                        </span>
                       </td>
 
                       <td className='px-6 py-4'>
@@ -267,7 +300,7 @@ export default function ClientsPage() {
             {filteredClients.length > ITEMS_PER_PAGE && (
               <div className='flex flex-col gap-3 border-t border-border px-6 py-4 sm:flex-row sm:items-center sm:justify-between'>
                 <p className='text-sm text-muted'>
-                  Mostrando {(currentPage - 1) * ITEMS_PER_PAGE + 1} a {Math.min(currentPage * ITEMS_PER_PAGE, filteredClients.length)} de {filteredClients.length} usuarios
+                  Mostrando {(currentPage - 1) * ITEMS_PER_PAGE + 1} a {Math.min(currentPage * ITEMS_PER_PAGE, filteredClients.length)} de {filteredClients.length} pessoas
                 </p>
                 <div className='flex items-center gap-2'>
                   <button

@@ -1,11 +1,12 @@
 // app/api/sales/route.ts
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
-import { forbiddenResponse, lotAccessWhere, reservationAccessWhere, saleAccessWhere } from '@/lib/access-control'
+import { forbiddenResponse, lotAccessWhere, proposalAccessWhere, reservationAccessWhere, saleAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 import { generateContractNumber, generateContractHTML } from '@/lib/contractGenerator'
 import { createLotEvent } from '@/lib/lot-events'
 import { hasDevelopmentPermission } from '@/lib/permissions'
+import { calculateInstallment, evaluateDirectSaleTerms } from '@/lib/proposal-rules'
 
 function addMonths(date: Date, months: number) {
   const next = new Date(date)
@@ -105,8 +106,12 @@ export async function POST(req: Request) {
       },
       include: {
         block: {
-          select: {
-            developmentId: true,
+          include: {
+            development: {
+              include: {
+                settings: true,
+              },
+            },
           },
         },
         sale: true,
@@ -131,6 +136,55 @@ export async function POST(req: Request) {
       select: { id: true },
     })
     if (!buyerMembership) return forbiddenResponse()
+
+    const latestProposal = await prisma.proposal.findFirst({
+      where: {
+        lotId: data.lotId,
+        userId: data.userId,
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+    const approvedProposal = await prisma.proposal.findFirst({
+      where: {
+        id: data.proposalId || latestProposal?.id || '',
+        lotId: data.lotId,
+        userId: data.userId,
+        status: 'approved',
+        ...proposalAccessWhere(currentUserId),
+      },
+    })
+    if (data.proposalId && !approvedProposal) {
+      return NextResponse.json({ error: 'A proposta selecionada nao esta aprovada para venda.' }, { status: 409 })
+    }
+    if (latestProposal && latestProposal.id !== approvedProposal?.id) {
+      return NextResponse.json(
+        { error: 'A proposta mais recente precisa ser aprovada antes de continuar com a venda.' },
+        { status: 409 },
+      )
+    }
+
+    const settings = lot.block.development?.settings ?? {
+      minDownPaymentPercentage: 10,
+      maxInstallments: 120,
+      defaultInterestRate: 0,
+      interestCalculation: 'none',
+      correctionIndex: 'none',
+    }
+    const requestedDownPayment = Number(data.downPayment)
+    const requestedInstallmentCount = Math.trunc(Number(data.installmentCount))
+    const directSaleEvaluation = evaluateDirectSaleTerms(settings, {
+      basePrice: lot.price,
+      downPayment: requestedDownPayment,
+      installmentCount: requestedInstallmentCount,
+    })
+    if (!approvedProposal && !directSaleEvaluation.isValid) {
+      return NextResponse.json(
+        {
+          error: `A venda direta nao atende as regras comerciais: ${directSaleEvaluation.reasons.join('; ')}. Crie uma proposta para solicitar uma excecao.`,
+        },
+        { status: 422 },
+      )
+    }
 
     const activeReservation = lot.reservations.find((reservation) => !reservation.cancelledAt && reservation.status !== 'cancelled')
     if (activeReservation && activeReservation.userId !== data.userId) {
@@ -166,7 +220,21 @@ export async function POST(req: Request) {
     }
 
     // Start a transaction to ensure data consistency
-    const firstDueDate = parseDateOnly(data.firstDueDate) ?? addMonths(new Date(), 1)
+    const firstDueDate = approvedProposal?.firstDueDate ?? parseDateOnly(data.firstDueDate) ?? addMonths(new Date(), 1)
+    const downPayment = approvedProposal?.downPayment ?? requestedDownPayment
+    const installmentCount = approvedProposal?.installmentCount ?? requestedInstallmentCount
+    const financedBalance = Math.max(lot.price - downPayment, 0)
+    const calculatedInstallmentValue = calculateInstallment(
+      financedBalance,
+      installmentCount,
+      settings.defaultInterestRate,
+      settings.interestCalculation,
+    )
+    const installmentValue = approvedProposal?.installmentValue ?? Math.round(calculatedInstallmentValue * 100) / 100
+    const totalValue = approvedProposal?.totalValue ?? downPayment + installmentValue * installmentCount
+    const annualAdjustment = approvedProposal
+      ? approvedProposal.correctionIndex !== 'none'
+      : settings.correctionIndex !== 'none'
 
     const result = await prisma.$transaction(async (prisma) => {
       // Create the sale
@@ -175,12 +243,13 @@ export async function POST(req: Request) {
           userId: data.userId,
           lotId: data.lotId,
           reservationId,
-          installmentCount: data.installmentCount,
-          installmentValue: data.installmentValue,
-          downPayment: data.downPayment,
+          proposalId: approvedProposal?.id ?? null,
+          installmentCount,
+          installmentValue,
+          downPayment,
           firstDueDate,
-          annualAdjustment: data.annualAdjustment,
-          totalValue: data.totalValue,
+          annualAdjustment,
+          totalValue,
         },
         include: {
           user: true,
@@ -213,6 +282,13 @@ export async function POST(req: Request) {
       if (reservationId) {
         await prisma.reservation.update({
           where: { id: reservationId },
+          data: { status: 'converted' },
+        })
+      }
+
+      if (approvedProposal) {
+        await prisma.proposal.update({
+          where: { id: approvedProposal.id },
           data: { status: 'converted' },
         })
       }

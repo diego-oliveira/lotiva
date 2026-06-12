@@ -29,7 +29,52 @@ export function lotAccessWhere(userId: string) {
 
 export function lotEventAccessWhere(userId: string) {
   return {
-    lot: lotAccessWhere(userId),
+    AND: [
+      {
+        lot: lotAccessWhere(userId),
+      },
+      {
+        OR: [
+          {
+            type: {
+              notIn: [
+                'proposal_created',
+                'proposal_auto_approved',
+                'proposal_pending_approval',
+                'proposal_approved',
+                'proposal_rejected',
+              ],
+            },
+          },
+          {
+            userId,
+          },
+          {
+            lot: {
+              block: {
+                development: {
+                  memberships: {
+                    some: {
+                      userId,
+                      roles: {
+                        some: {
+                          role: {
+                            name: {
+                              in: ['owner', 'administrador', 'admin', 'gestor', 'manager'],
+                              mode: 'insensitive' as const,
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+    ],
   }
 }
 
@@ -47,7 +92,41 @@ export function reservationAccessWhere(userId: string) {
 
 export function proposalAccessWhere(userId: string) {
   return {
-    lot: lotAccessWhere(userId),
+    AND: [
+      {
+        lot: lotAccessWhere(userId),
+      },
+      {
+        OR: [
+          {
+            createdById: userId,
+          },
+          {
+            lot: {
+              block: {
+                development: {
+                  memberships: {
+                    some: {
+                      userId,
+                      roles: {
+                        some: {
+                          role: {
+                            name: {
+                              in: ['owner', 'administrador', 'admin', 'gestor', 'manager'],
+                              mode: 'insensitive' as const,
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+    ],
   }
 }
 

@@ -5,6 +5,17 @@ import { useEffect, useState } from 'react'
 interface Block {
   id: string
   identifier: string
+  development?: {
+    id: string
+    name: string
+    settings?: {
+      minDownPaymentPercentage: number
+      maxInstallments: number
+      defaultInterestRate: number
+      interestCalculation: string
+      correctionIndex: string
+    } | null
+  } | null
 }
 
 interface ReservationSummary {
@@ -26,6 +37,7 @@ interface ProposalSummary {
   installmentValue: number
   totalValue: number
   firstDueDate?: string | null
+  correctionIndex?: string | null
   user: {
     id: string
     name: string
@@ -42,6 +54,12 @@ interface Lot {
   block: Block
   reservations: ReservationSummary[]
   proposals: ProposalSummary[]
+  saleEligibility?: {
+    userId: string
+    canConvert: boolean
+    requiresApproval: boolean
+    proposalId?: string | null
+  } | null
 }
 
 interface User {
@@ -65,6 +83,7 @@ interface SaleFormData {
   userId: string
   lotId: string
   reservationId?: string
+  proposalId?: string
   installmentCount: number
   installmentValue: number
   downPayment: number
@@ -79,6 +98,7 @@ interface SalesFormProps {
     userId?: string
     lotId?: string
     reservationId?: string
+    proposalId?: string
   } | null
   isOpen: boolean
   onClose: () => void
@@ -156,6 +176,17 @@ function getLotStatusLabel(status: string) {
   return status
 }
 
+function calculateInstallment(balance: number, installmentCount: number, monthlyInterestRate: number, interestCalculation: string) {
+  if (balance <= 0 || installmentCount <= 0) return 0
+
+  const monthlyRate = monthlyInterestRate / 100
+  if (monthlyRate <= 0 || interestCalculation === 'none') return balance / installmentCount
+  if (interestCalculation === 'simple') return (balance * (1 + monthlyRate * installmentCount)) / installmentCount
+
+  const factor = Math.pow(1 + monthlyRate, installmentCount)
+  return (balance * monthlyRate * factor) / (factor - 1)
+}
+
 export default function SalesForm({
   sale,
   initialData,
@@ -207,6 +238,7 @@ export default function SalesForm({
         userId: sale.userId,
         lotId: sale.lotId,
         reservationId: sale.reservationId || '',
+        proposalId: sale.proposalId || '',
         installmentCount: sale.installmentCount,
         installmentValue: sale.installmentValue,
         downPayment: sale.downPayment,
@@ -219,6 +251,7 @@ export default function SalesForm({
         userId: initialData?.userId ?? '',
         lotId: initialData?.lotId ?? '',
         reservationId: initialData?.reservationId ?? '',
+        proposalId: initialData?.proposalId ?? '',
         installmentCount: 1,
         installmentValue: 0,
         downPayment: 0,
@@ -244,10 +277,11 @@ export default function SalesForm({
       userId: initialData.userId ?? prev.userId,
       lotId: initialData.lotId ?? prev.lotId,
       reservationId: initialData.reservationId ?? prev.reservationId,
+      proposalId: initialData.proposalId ?? prev.proposalId,
     }))
 
     if (initialData.userId && initialData.lotId) setCurrentStep(3)
-  }, [isOpen, sale, initialData?.userId, initialData?.lotId, initialData?.reservationId])
+  }, [isOpen, sale, initialData?.userId, initialData?.lotId, initialData?.reservationId, initialData?.proposalId])
 
   const fetchUsers = async () => {
     try {
@@ -277,7 +311,25 @@ export default function SalesForm({
   const selectedReservation = selectedLot?.reservations.find(
     (reservation) => !reservation.cancelledAt && reservation.status !== 'cancelled' && reservation.user.id === formData.userId,
   )
-  const selectedProposal = selectedLot?.proposals.find((proposal) => proposal.user.id === formData.userId)
+  const latestProposal = selectedLot?.proposals.find((proposal) => proposal.user.id === formData.userId)
+  const selectedProposal = latestProposal?.status === 'approved' && (!formData.proposalId || latestProposal.id === formData.proposalId)
+    ? latestProposal
+    : undefined
+  const approvedTermsLocked = Boolean(sale?.proposalId || selectedProposal)
+  const proposalNeedsApproval = Boolean(
+    !sale && (
+      (latestProposal && latestProposal.status !== 'approved') ||
+      (
+        selectedLot?.saleEligibility?.userId === formData.userId &&
+        !selectedLot.saleEligibility.canConvert
+      )
+    )
+  )
+  const commercialSettings = selectedLot?.block.development?.settings
+  const minimumDownPayment = selectedLot
+    ? (selectedLot.price * (commercialSettings?.minDownPaymentPercentage ?? 10)) / 100
+    : 0
+  const maximumInstallments = commercialSettings?.maxInstallments ?? 120
   const missingDocumentFields = selectedUser
     ? REQUIRED_DOCUMENT_FIELDS.filter((field) => !selectedUser[field.key])
     : REQUIRED_DOCUMENT_FIELDS
@@ -321,43 +373,68 @@ export default function SalesForm({
   })
 
   useEffect(() => {
-    if (!selectedLot || formData.installmentCount <= 0) return
+    if (!selectedLot || sale) return
 
-    if (selectedProposal && !paymentTouched) {
+    if (selectedProposal) {
       setFormData((prev) => ({
         ...prev,
         reservationId: selectedReservation?.id ?? prev.reservationId,
+        proposalId: selectedProposal.id,
         downPayment: selectedProposal.downPayment,
         installmentCount: selectedProposal.installmentCount,
         installmentValue: selectedProposal.installmentValue,
         firstDueDate: toDateInputValue(selectedProposal.firstDueDate) || prev.firstDueDate,
+        annualAdjustment: selectedProposal.correctionIndex !== 'none',
         totalValue: selectedProposal.totalValue,
       }))
       return
     }
 
-    const remainingValue = selectedLot.price - formData.downPayment
-    const installmentValue = Math.round((remainingValue / formData.installmentCount) * 100) / 100
+    setFormData((prev) => {
+      const downPayment = paymentTouched ? prev.downPayment : minimumDownPayment
+      const installmentCount = paymentTouched ? prev.installmentCount : maximumInstallments
+      const remainingValue = Math.max(selectedLot.price - downPayment, 0)
+      const installmentValue = Math.round(calculateInstallment(
+        remainingValue,
+        installmentCount,
+        commercialSettings?.defaultInterestRate ?? 0,
+        commercialSettings?.interestCalculation ?? 'none',
+      ) * 100) / 100
 
-    setFormData((prev) => ({
-      ...prev,
-      reservationId: selectedReservation?.id ?? prev.reservationId,
-      totalValue: selectedLot.price,
-      installmentValue: Math.max(0, installmentValue),
-    }))
+      return {
+        ...prev,
+        proposalId: '',
+        reservationId: selectedReservation?.id ?? prev.reservationId,
+        downPayment,
+        installmentCount,
+        annualAdjustment: commercialSettings?.correctionIndex !== 'none',
+        totalValue: downPayment + installmentValue * installmentCount,
+        installmentValue,
+      }
+    })
   }, [
+    sale,
     selectedLot?.id,
     selectedProposal?.id,
     selectedReservation?.id,
     paymentTouched,
     formData.downPayment,
     formData.installmentCount,
+    minimumDownPayment,
+    maximumInstallments,
+    commercialSettings?.defaultInterestRate,
+    commercialSettings?.interestCalculation,
+    commercialSettings?.correctionIndex,
   ])
 
   const handleInputChange = (field: keyof SaleFormData, value: any) => {
     if (field === 'userId' || field === 'lotId') setPaymentTouched(false)
     if (field === 'downPayment' || field === 'installmentCount' || field === 'installmentValue' || field === 'firstDueDate') setPaymentTouched(true)
-    setFormData((prev) => ({ ...prev, [field]: value }))
+    setFormData((prev) => ({
+      ...prev,
+      ...(field === 'userId' || field === 'lotId' ? { proposalId: '' } : {}),
+      [field]: value,
+    }))
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: '' }))
   }
 
@@ -367,9 +444,18 @@ export default function SalesForm({
     if (step === 1 && !formData.userId) newErrors.userId = 'Selecione um cliente'
     if (step === 2 && !formData.lotId) newErrors.lotId = 'Selecione um lote'
     if (step === 3) {
+      if (proposalNeedsApproval) {
+        newErrors.proposal = 'A proposta mais recente precisa ser aprovada antes de gerar a venda.'
+      }
       if (formData.installmentCount < 1) newErrors.installmentCount = 'Minimo 1 parcela'
       if (formData.downPayment < 0) newErrors.downPayment = 'Entrada nao pode ser negativa'
       if (selectedLot && formData.downPayment > selectedLot.price) newErrors.downPayment = 'Entrada nao pode ser maior que o valor do lote'
+      if (!approvedTermsLocked && formData.downPayment < minimumDownPayment) {
+        newErrors.downPayment = `Entrada minima: ${formatCurrency(minimumDownPayment)}`
+      }
+      if (!approvedTermsLocked && formData.installmentCount > maximumInstallments) {
+        newErrors.installmentCount = `Maximo de ${maximumInstallments} parcelas`
+      }
       if (!formData.firstDueDate) newErrors.firstDueDate = 'Informe o primeiro vencimento'
     }
     if (step === 4 && missingDocumentFields.length > 0) {
@@ -648,8 +734,31 @@ export default function SalesForm({
                 <div className='space-y-5'>
                   <div>
                     <h3 className='text-base font-semibold text-foreground'>Pagamento</h3>
-                    <p className='mt-1 text-sm text-muted'>Ajuste entrada e parcelamento antes de confirmar.</p>
+                    <p className='mt-1 text-sm text-muted'>
+                      {approvedTermsLocked
+                        ? 'Condicoes bloqueadas conforme a proposta aprovada.'
+                        : 'Venda direta sujeita as regras comerciais do empreendimento.'}
+                    </p>
                   </div>
+                  {proposalNeedsApproval && (
+                    <div className='rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800'>
+                      A proposta mais recente ainda nao esta aprovada. A venda so pode continuar depois da aprovacao.
+                    </div>
+                  )}
+                  {approvedTermsLocked && (
+                    <div className='rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800'>
+                      Esta venda utiliza uma proposta aprovada. Para mudar valores, crie uma nova proposta e submeta novamente para aprovacao.
+                    </div>
+                  )}
+                  {!approvedTermsLocked && selectedLot && (
+                    <div className='rounded-2xl border border-border bg-surface-secondary px-5 py-4 text-sm text-muted'>
+                      Preco-base {formatCurrency(selectedLot.price)}
+                      {(commercialSettings?.defaultInterestRate ?? 0) > 0
+                        ? ` · Juros padrao de ${commercialSettings?.defaultInterestRate}% ao mes`
+                        : ' · Sem juros'}
+                    </div>
+                  )}
+                  {errors.proposal && <p className='text-sm font-medium text-red-600'>{errors.proposal}</p>}
                   <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
                     <div className='grid gap-4 md:grid-cols-2'>
                       <label className='block'>
@@ -661,8 +770,12 @@ export default function SalesForm({
                           max={selectedLot?.price || 0}
                           value={formData.downPayment}
                           onChange={(event) => handleInputChange('downPayment', parseFloat(event.target.value) || 0)}
-                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                          disabled={approvedTermsLocked}
+                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:bg-surface-secondary disabled:text-muted'
                         />
+                        {!approvedTermsLocked && (
+                          <p className='mt-2 text-xs font-semibold text-muted'>Minimo: {formatCurrency(minimumDownPayment)}</p>
+                        )}
                         {errors.downPayment && <p className='mt-2 text-sm font-medium text-red-600'>{errors.downPayment}</p>}
                       </label>
                       <label className='block'>
@@ -670,11 +783,15 @@ export default function SalesForm({
                         <input
                           type='number'
                           min='1'
-                          max='240'
+                          max={maximumInstallments}
                           value={formData.installmentCount}
                           onChange={(event) => handleInputChange('installmentCount', parseInt(event.target.value) || 1)}
-                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                          disabled={approvedTermsLocked}
+                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:bg-surface-secondary disabled:text-muted'
                         />
+                        {!approvedTermsLocked && (
+                          <p className='mt-2 text-xs font-semibold text-muted'>Maximo: {maximumInstallments} parcelas</p>
+                        )}
                         {errors.installmentCount && <p className='mt-2 text-sm font-medium text-red-600'>{errors.installmentCount}</p>}
                       </label>
                       <label className='block'>
@@ -683,7 +800,8 @@ export default function SalesForm({
                           type='date'
                           value={formData.firstDueDate}
                           onChange={(event) => handleInputChange('firstDueDate', event.target.value)}
-                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                          disabled={approvedTermsLocked}
+                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:bg-surface-secondary disabled:text-muted'
                         />
                         {errors.firstDueDate && <p className='mt-2 text-sm font-medium text-red-600'>{errors.firstDueDate}</p>}
                       </label>
@@ -694,6 +812,7 @@ export default function SalesForm({
                         type='checkbox'
                         checked={formData.annualAdjustment}
                         onChange={(event) => handleInputChange('annualAdjustment', event.target.checked)}
+                        disabled={approvedTermsLocked}
                         className='h-4 w-4 rounded border-border text-primary focus:ring-primary'
                       />
                       Reajuste anual das parcelas
@@ -894,10 +1013,16 @@ export default function SalesForm({
                   <button
                     type='button'
                     onClick={handleSubmit}
-                    disabled={loading}
+                    disabled={loading || proposalNeedsApproval}
                     className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
                   >
-                    {loading ? 'Salvando...' : sale ? 'Atualizar venda' : 'Finalizar venda'}
+                    {loading
+                      ? 'Salvando...'
+                      : proposalNeedsApproval
+                      ? 'Aguardando aprovacao'
+                      : sale
+                      ? 'Atualizar venda'
+                      : 'Finalizar venda'}
                   </button>
                 )}
               </div>

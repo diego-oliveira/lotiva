@@ -102,14 +102,19 @@ function SalesContent() {
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
   const [correctionSale, setCorrectionSale] = useState<Sale | null>(null)
   const [correctionReason, setCorrectionReason] = useState('')
-  const [initialSaleData, setInitialSaleData] = useState<{ userId?: string; lotId?: string; reservationId?: string } | null>(null)
+  const [initialSaleData, setInitialSaleData] = useState<{ userId?: string; lotId?: string; reservationId?: string; proposalId?: string } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [showContract, setShowContract] = useState(false)
   const [contractSaleId, setContractSaleId] = useState<string>('')
   const [receivablesSale, setReceivablesSale] = useState<Sale | null>(null)
+  const [canCorrectSales, setCanCorrectSales] = useState(false)
 
   useEffect(() => {
     fetchSales()
+    fetch('/api/me/permissions', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => setCanCorrectSales(Boolean(payload?.permissions?.admin)))
+      .catch(() => setCanCorrectSales(false))
 
     const params = new URLSearchParams(window.location.search)
     const lotId = params.get('lotId')
@@ -119,6 +124,7 @@ function SalesContent() {
         lotId,
         userId: params.get('userId') ?? undefined,
         reservationId: params.get('reservationId') ?? undefined,
+        proposalId: params.get('proposalId') ?? undefined,
       })
       setShowForm(true)
     }
@@ -440,14 +446,16 @@ function SalesContent() {
                         <button onClick={() => handleViewReceivables(sale)} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>
                           Parcelas
                         </button>
-                        <button
-                          onClick={() => handleEditSale(sale)}
-                          disabled={saleIsLocked(sale)}
-                          title={saleIsLocked(sale) ? 'Venda com contrato ou parcela paga nao pode ser corrigida diretamente' : 'Corrigir venda'}
-                          className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8 disabled:cursor-not-allowed disabled:text-muted disabled:hover:bg-transparent'
-                        >
-                          Corrigir
-                        </button>
+                        {canCorrectSales && (
+                          <button
+                            onClick={() => handleEditSale(sale)}
+                            disabled={saleIsLocked(sale)}
+                            title={saleIsLocked(sale) ? 'Venda com contrato ou parcela paga nao pode ser corrigida diretamente' : 'Corrigir venda'}
+                            className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8 disabled:cursor-not-allowed disabled:text-muted disabled:hover:bg-transparent'
+                          >
+                            Corrigir
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -81,6 +81,16 @@ export async function POST(req: Request) {
     }
 
     const existingReservation = lot.reservations[0]
+    if (
+      existingReservation &&
+      existingReservation.createdById !== currentUserId &&
+      !(await hasDevelopmentPermission(currentUserId, developmentId, 'admin'))
+    ) {
+      return NextResponse.json(
+        { error: 'Somente o responsavel pela reserva ou um administrador pode altera-la.' },
+        { status: 403 },
+      )
+    }
 
     const reservation = await prisma.$transaction(async (tx) => {
       const savedReservation = existingReservation
@@ -92,11 +102,13 @@ export async function POST(req: Request) {
               status: data.status || 'active',
               expiresAt,
               cancelledAt: null,
+              createdById: existingReservation.createdById ?? currentUserId,
             },
           })
         : await tx.reservation.create({
             data: {
               userId: data.userId,
+              createdById: currentUserId,
               lotId: data.lotId,
               proposal: data.proposal || '',
               status: data.status || 'active',

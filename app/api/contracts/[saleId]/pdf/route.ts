@@ -66,7 +66,7 @@ export async function GET(_: Request, { params }: Params) {
     console.error('Error generating PDF:', error);
     return NextResponse.json(
       {
-        error: 'Failed to generate PDF',
+        error: 'Nao foi possivel gerar o PDF do contrato.',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }

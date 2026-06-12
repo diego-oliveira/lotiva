@@ -47,6 +47,7 @@ interface LotReservation {
   updatedAt: string
   user: Person
   sale?: { id: string } | null
+  canManage?: boolean
 }
 
 interface LotSale {
@@ -110,6 +111,13 @@ interface Lot {
   proposals: LotProposal[]
   sale?: LotSale | null
   events: LotEvent[]
+  canReleaseHold?: boolean
+  saleEligibility?: {
+    userId: string
+    canConvert: boolean
+    requiresApproval: boolean
+    proposalId?: string | null
+  } | null
 }
 
 const statusMeta: Record<string, { label: string; tile: string; badge: string; dot: string }> = {
@@ -241,6 +249,7 @@ function LotsContent() {
   const [proposalNotice, setProposalNotice] = useState<string | null>(null)
   const [proposalError, setProposalError] = useState<string | null>(null)
   const [proposalSaving, setProposalSaving] = useState(false)
+  const [proposalOutcome, setProposalOutcome] = useState<{ id: string; status: string; clientName: string } | null>(null)
   const [proposalForm, setProposalForm] = useState({
     userId: '',
     notes: '',
@@ -444,6 +453,12 @@ function LotsContent() {
   )
   const selectedLotStatus = selectedLot ? getEffectiveLotStatus(selectedLot) : null
   const selectedDevelopmentSettings = selectedLot?.block.development?.settings ?? null
+  const selectedLotReservation = selectedLot ? getActiveReservation(selectedLot) : null
+  const selectedReservationProposal = selectedLot?.proposals.find(
+    (proposal) => proposal.user.id === selectedLotReservation?.user.id,
+  ) ?? null
+  const reservationCanConvert = selectedLot?.saleEligibility?.canConvert === true
+  const reservationProposalId = selectedLot?.saleEligibility?.proposalId ?? selectedReservationProposal?.id ?? null
 
   const simulation = useMemo(() => {
     const balance = Math.max(simulatorForm.salePrice - simulatorForm.downPayment, 0)
@@ -482,7 +497,20 @@ function LotsContent() {
     const allowCustomTerms = selectedDevelopmentSettings?.allowCustomTerms ?? true
     const belowMinimumDownPayment = simulatorForm.downPayment < minDownPayment
     const aboveMaxInstallments = simulatorForm.installmentCount > maxInstallments
-    const hasException = belowMinimumDownPayment || aboveMaxInstallments
+    const belowBasePrice = Boolean(selectedLot && simulatorForm.salePrice < selectedLot.price)
+    const interestRateChanged = simulatorForm.interestRate !== (selectedDevelopmentSettings?.defaultInterestRate ?? 0)
+    const interestCalculationChanged = simulatorForm.interestCalculation !== (selectedDevelopmentSettings?.interestCalculation ?? 'none')
+    const correctionIndexChanged = simulatorForm.correctionIndex !== (selectedDevelopmentSettings?.correctionIndex ?? 'none')
+    const correctionFrequencyChanged = simulatorForm.correctionFrequency !== (selectedDevelopmentSettings?.correctionFrequency ?? 'monthly')
+    const hasException = (
+      belowMinimumDownPayment ||
+      aboveMaxInstallments ||
+      belowBasePrice ||
+      interestRateChanged ||
+      interestCalculationChanged ||
+      correctionIndexChanged ||
+      correctionFrequencyChanged
+    )
 
     return {
       minDownPayment,
@@ -491,10 +519,15 @@ function LotsContent() {
       allowCustomTerms,
       belowMinimumDownPayment,
       aboveMaxInstallments,
+      belowBasePrice,
+      interestRateChanged,
+      interestCalculationChanged,
+      correctionIndexChanged,
+      correctionFrequencyChanged,
       hasException,
       canSave: !hasException || allowCustomTerms,
     }
-  }, [selectedDevelopmentSettings, simulatorForm.downPayment, simulatorForm.installmentCount, simulatorForm.salePrice])
+  }, [selectedDevelopmentSettings, selectedLot, simulatorForm])
 
   const proposalCanBeSaved = simulationIsValid && commercialRules.canSave && Boolean(proposalForm.userId) && !proposalSaving
 
@@ -740,7 +773,6 @@ function LotsContent() {
           lotId: selectedLot.id,
           userId: proposalForm.userId,
           reservationId,
-          status: 'draft',
           salePrice: simulatorForm.salePrice,
           downPayment: simulatorForm.downPayment,
           installmentCount: simulatorForm.installmentCount,
@@ -761,8 +793,14 @@ function LotsContent() {
         throw new Error(payload.error || 'Erro ao salvar proposta')
       }
 
+      const proposal = await response.json()
       await fetchLots()
-      setProposalNotice('Proposta salva e lote reservado para o cliente.')
+      setProposalOutcome({
+        id: proposal.id,
+        status: proposal.status,
+        clientName: proposal.user?.name ?? selectedProposalClient?.name ?? 'cliente',
+      })
+      setShowSimulator(false)
     } catch (err) {
       setProposalError(err instanceof Error ? err.message : 'Erro ao salvar proposta')
     } finally {
@@ -867,6 +905,52 @@ function LotsContent() {
           </div>
         </div>
       </div>
+
+      {proposalOutcome && (
+        <div className={`rounded-2xl border px-5 py-4 ${
+          proposalOutcome.status === 'approved'
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+            : 'border-amber-200 bg-amber-50 text-amber-800'
+        }`}>
+          <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
+            <div>
+              <p className='font-semibold'>
+                {proposalOutcome.status === 'approved'
+                  ? `Proposta de ${proposalOutcome.clientName} aprovada automaticamente.`
+                  : `Proposta de ${proposalOutcome.clientName} enviada para aprovacao.`}
+              </p>
+              <p className='mt-1 text-sm'>
+                {proposalOutcome.status === 'approved'
+                  ? 'As condicoes seguem as regras do empreendimento e a venda ja pode continuar.'
+                  : 'O lote permanece reservado enquanto um administrador revisa as condicoes excepcionais.'}
+              </p>
+            </div>
+            <div className='flex shrink-0 gap-2'>
+              <Link
+                href={`/proposals?proposalId=${proposalOutcome.id}`}
+                className='rounded-xl bg-surface px-4 py-3 text-sm font-semibold text-foreground shadow-sm'
+              >
+                Ver proposta
+              </Link>
+              {proposalOutcome.status === 'approved' && selectedLot && (
+                <Link
+                  href={`/sales?lotId=${selectedLot.id}&userId=${proposalForm.userId}&proposalId=${proposalOutcome.id}`}
+                  className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white'
+                >
+                  Continuar venda
+                </Link>
+              )}
+              <button
+                type='button'
+                onClick={() => setProposalOutcome(null)}
+                className='rounded-xl border border-current/20 px-4 py-3 text-sm font-semibold'
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <section className='grid gap-4 md:grid-cols-4'>
         <div className='metric-card px-5 py-4'>
@@ -1264,26 +1348,54 @@ function LotsContent() {
 
                     {selectedLotStatus === 'reserved' && (
                       <>
-                        <Link
-                          href={`/sales?lotId=${selectedLot.id}${getActiveReservation(selectedLot) ? `&userId=${getActiveReservation(selectedLot)!.user.id}&reservationId=${getActiveReservation(selectedLot)!.id}` : ''}`}
-                          className='block w-full rounded-xl bg-primary px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-primary-strong'
-                        >
-                          Converter em venda
-                        </Link>
+                        {reservationCanConvert ? (
+                          <Link
+                            href={`/sales?lotId=${selectedLot.id}${selectedLotReservation ? `&userId=${selectedLotReservation.user.id}&reservationId=${selectedLotReservation.id}` : ''}${reservationProposalId ? `&proposalId=${reservationProposalId}` : ''}`}
+                            className='block w-full rounded-xl bg-primary px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-primary-strong'
+                          >
+                            Converter em venda
+                          </Link>
+                        ) : (
+                          <>
+                            <button
+                              type='button'
+                              disabled
+                              title='A proposta precisa ser aprovada antes de converter o lote em venda'
+                              className='w-full cursor-not-allowed rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white opacity-45'
+                            >
+                              Converter em venda
+                            </button>
+                            <p className='text-sm font-semibold text-amber-700'>
+                              A proposta precisa ser aprovada antes da conversao.
+                            </p>
+                          </>
+                        )}
                         <button onClick={openSimulator} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
                           Simular nova condicao
                         </button>
-                        <button onClick={cancelReservation} disabled={reservationSaving} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background disabled:opacity-60'>
-                          Liberar lote
-                        </button>
+                        {selectedLotReservation?.canManage ? (
+                          <button onClick={cancelReservation} disabled={reservationSaving} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background disabled:opacity-60'>
+                            Liberar lote
+                          </button>
+                        ) : (
+                          <p className='rounded-xl border border-border bg-background px-4 py-3 text-center text-sm text-muted'>
+                            Somente o responsavel pela reserva ou um administrador pode liberar este lote.
+                          </p>
+                        )}
                       </>
                     )}
 
                     {selectedLotStatus === 'on_hold' && (
                       <>
-                        <button onClick={() => updateLotStatus('available')} disabled={reservationSaving} className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'>
-                          Liberar lote
-                        </button>
+                        {selectedLot.canReleaseHold ? (
+                          <button onClick={() => updateLotStatus('available')} disabled={reservationSaving} className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'>
+                            Liberar lote
+                          </button>
+                        ) : (
+                          <p className='rounded-xl border border-border bg-background px-4 py-3 text-center text-sm text-muted'>
+                            Somente quem bloqueou o lote ou um administrador pode libera-lo.
+                          </p>
+                        )}
                         <button onClick={openSimulator} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
                           Simular venda
                         </button>
@@ -1719,7 +1831,7 @@ function LotsContent() {
                           : 'border-red-200 bg-red-50 text-red-700'
                       }`}>
                         {commercialRules.allowCustomTerms
-                          ? 'Esta proposta esta fora dos padroes do empreendimento, mas condicoes customizadas estao permitidas.'
+                          ? 'Esta proposta possui condicoes excepcionais. Ao salvar, ela sera enviada para aprovacao administrativa.'
                           : 'Esta proposta esta fora dos padroes do empreendimento. Ajuste entrada ou parcelas para salvar.'}
                       </div>
                     )}

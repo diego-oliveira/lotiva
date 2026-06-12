@@ -4,6 +4,7 @@ import { forbiddenResponse, lotAccessWhere, proposalAccessWhere } from '@/lib/ac
 import { NextResponse } from 'next/server'
 import { createLotEvent } from '@/lib/lot-events'
 import { hasDevelopmentPermission } from '@/lib/permissions'
+import { calculateInstallment, evaluateProposalTerms } from '@/lib/proposal-rules'
 
 function toNumber(value: unknown) {
   const parsed = Number(value)
@@ -36,6 +37,8 @@ export async function GET() {
     where: proposalAccessWhere(currentUserId),
     include: {
       user: true,
+      createdBy: { select: { id: true, name: true, email: true } },
+      reviewedBy: { select: { id: true, name: true, email: true } },
       lot: {
         include: {
           block: { include: { development: true } },
@@ -46,7 +49,32 @@ export async function GET() {
     orderBy: { createdAt: 'desc' },
   })
 
-  return NextResponse.json(proposals)
+  const reviewMemberships = await prisma.developmentUser.findMany({
+    where: {
+      userId: currentUserId,
+      roles: {
+        some: {
+          role: {
+            name: {
+              in: ['owner', 'administrador', 'admin'],
+              mode: 'insensitive',
+            },
+          },
+        },
+      },
+    },
+    select: { developmentId: true },
+  })
+  const reviewDevelopmentIds = new Set(reviewMemberships.map((membership) => membership.developmentId))
+
+  return NextResponse.json(
+    proposals.map((proposal) => ({
+      ...proposal,
+      canReview: proposal.lot.block.development?.id
+        ? reviewDevelopmentIds.has(proposal.lot.block.development.id)
+        : false,
+    })),
+  )
 }
 
 export async function POST(req: Request) {
@@ -95,19 +123,58 @@ export async function POST(req: Request) {
     const salePrice = toNumber(data.salePrice)
     const downPayment = toNumber(data.downPayment)
     const installmentCount = toInt(data.installmentCount)
-    const installmentValue = toNumber(data.installmentValue)
-    const balance = toNumber(data.balance)
-    const totalValue = toNumber(data.totalValue)
     const interestRate = toNumber(data.interestRate)
+    const interestCalculation = data.interestCalculation || 'none'
+    const correctionIndex = data.correctionIndex || 'none'
+    const correctionFrequency = data.correctionFrequency || 'monthly'
+    const balance = Math.max(salePrice - downPayment, 0)
+    const installmentValue = calculateInstallment(balance, installmentCount, interestRate, interestCalculation)
+    const totalValue = downPayment + installmentValue * installmentCount
 
     if (salePrice <= 0 || downPayment < 0 || downPayment > salePrice || installmentCount <= 0 || installmentValue <= 0) {
       return NextResponse.json({ error: 'Revise a condicao comercial antes de salvar a proposta.' }, { status: 400 })
+    }
+
+    const settings = lot.block.development?.settings ?? {
+      minDownPaymentPercentage: 10,
+      maxInstallments: 120,
+      defaultInterestRate: 0,
+      interestCalculation: 'none',
+      correctionIndex: 'none',
+      correctionFrequency: 'monthly',
+      allowCustomTerms: true,
+    }
+    const evaluation = evaluateProposalTerms(settings, {
+      basePrice: lot.price,
+      salePrice,
+      downPayment,
+      installmentCount,
+      interestRate,
+      interestCalculation,
+      correctionIndex,
+      correctionFrequency,
+    })
+    if (!evaluation.canSubmit) {
+      return NextResponse.json(
+        { error: 'A proposta esta fora das regras comerciais e o empreendimento nao permite excecoes.' },
+        { status: 400 },
+      )
     }
 
     const existingReservation = lot.reservations[0] ?? null
     const reservationIsActive = existingReservation && !existingReservation.cancelledAt && existingReservation.status !== 'cancelled'
     if (reservationIsActive && existingReservation.userId !== data.userId) {
       return NextResponse.json({ error: 'Este lote ja esta reservado para outro cliente.' }, { status: 409 })
+    }
+    if (
+      reservationIsActive &&
+      existingReservation.createdById !== currentUserId &&
+      !(await hasDevelopmentPermission(currentUserId, lot.block.developmentId, 'admin'))
+    ) {
+      return NextResponse.json(
+        { error: 'Somente o responsavel pela reserva ou um administrador pode altera-la.' },
+        { status: 403 },
+      )
     }
 
     const fallbackDays = lot.block.development?.settings?.reservationValidityDays ?? 7
@@ -123,11 +190,15 @@ export async function POST(req: Request) {
               status: 'active',
               expiresAt: getDefaultExpiration(fallbackDays),
               cancelledAt: null,
+              createdById: reservationIsActive
+                ? existingReservation.createdById
+                : currentUserId,
             },
           })
         : await tx.reservation.create({
             data: {
               userId: data.userId,
+              createdById: currentUserId,
               lotId: data.lotId,
               proposal: reservationProposal,
               status: 'active',
@@ -144,8 +215,10 @@ export async function POST(req: Request) {
         data: {
           lotId: data.lotId,
           userId: data.userId,
+          createdById: currentUserId,
           reservationId: reservation.id,
-          status: data.status || 'draft',
+          status: evaluation.status,
+          exceptionReasons: evaluation.reasons.join('\n') || null,
           salePrice,
           downPayment,
           installmentCount,
@@ -153,14 +226,15 @@ export async function POST(req: Request) {
           balance,
           totalValue,
           interestRate,
-          interestCalculation: data.interestCalculation || 'none',
-          correctionIndex: data.correctionIndex || 'none',
-          correctionFrequency: data.correctionFrequency || 'monthly',
+          interestCalculation,
+          correctionIndex,
+          correctionFrequency,
           firstDueDate: parseDate(data.firstDueDate),
           notes: data.notes || null,
         },
         include: {
           user: true,
+          createdBy: { select: { id: true, name: true, email: true } },
           lot: { include: { block: { include: { development: true } } } },
           reservation: true,
         },
@@ -169,11 +243,45 @@ export async function POST(req: Request) {
       await createLotEvent(tx, {
         lotId: data.lotId,
         userId: currentUserId,
-        type: 'proposal_created',
-        title: 'Proposta registrada',
-        description: `Proposta de ${totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} para ${savedProposal.user.name}.`,
+        type: evaluation.status === 'approved' ? 'proposal_auto_approved' : 'proposal_pending_approval',
+        title: evaluation.status === 'approved' ? 'Proposta aprovada automaticamente' : 'Proposta aguardando aprovacao',
+        description: evaluation.status === 'approved'
+          ? `Proposta de ${totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} para ${savedProposal.user.name} dentro das regras comerciais.`
+          : `Proposta de ${totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} para ${savedProposal.user.name} enviada para aprovacao.`,
         notes: data.notes || null,
       })
+
+      if (evaluation.status === 'pending_approval') {
+        const administrators = await tx.developmentUser.findMany({
+          where: {
+            developmentId: lot.block.developmentId!,
+            roles: {
+              some: {
+                role: {
+                  name: {
+                    in: ['owner', 'administrador', 'admin'],
+                    mode: 'insensitive',
+                  },
+                },
+              },
+            },
+          },
+          select: { userId: true },
+        })
+
+        const recipients = administrators.filter((administrator) => administrator.userId !== currentUserId)
+        if (recipients.length > 0) {
+          await tx.notification.createMany({
+            data: recipients.map((administrator) => ({
+              userId: administrator.userId,
+              type: 'proposal_pending_approval',
+              title: 'Proposta aguardando aprovacao',
+              message: `${savedProposal.createdBy.name} enviou uma proposta com condicoes excepcionais para ${savedProposal.user.name}.`,
+              href: `/proposals?proposalId=${savedProposal.id}`,
+            })),
+          })
+        }
+      }
 
       return savedProposal
     })

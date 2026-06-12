@@ -55,7 +55,7 @@ export async function POST(req: Request, { params }: Params) {
 
     if (!emailSent) {
       return NextResponse.json(
-        { error: 'Failed to send email' },
+        { error: 'Nao foi possivel enviar o email. Verifique a configuracao SMTP.' },
         { status: 500 }
       );
     }
@@ -79,13 +79,16 @@ export async function POST(req: Request, { params }: Params) {
     });
 
     return NextResponse.json({
-      message: 'Contract sent successfully',
+      message: 'Contrato enviado com sucesso.',
       sentTo: contract.sale.user.email
     });
   } catch (error) {
     console.error('Error sending contract email:', error);
     return NextResponse.json(
-      { error: 'Failed to send contract email' },
+      {
+        error: 'Nao foi possivel enviar o contrato por email.',
+        details: error instanceof Error ? error.message : 'Erro desconhecido',
+      },
       { status: 500 }
     );
   }

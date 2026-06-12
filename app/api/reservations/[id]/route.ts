@@ -3,6 +3,7 @@ import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, lotAccessWhere, reservationAccessWhere, userAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 import { createLotEvent } from '@/lib/lot-events'
+import { hasDevelopmentPermission } from '@/lib/permissions'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -43,7 +44,13 @@ export async function PUT(req: Request, { params }: Params) {
           id,
           ...reservationAccessWhere(currentUserId),
         },
-        select: { id: true, lotId: true, status: true },
+        select: {
+          id: true,
+          lotId: true,
+          status: true,
+          createdById: true,
+          lot: { select: { block: { select: { developmentId: true } } } },
+        },
       }),
       prisma.lot.findFirst({
         where: {
@@ -61,6 +68,16 @@ export async function PUT(req: Request, { params }: Params) {
       }),
     ])
     if (!reservation || !lot || !user) return forbiddenResponse()
+    const developmentId = reservation.lot.block.developmentId
+    const canManage =
+      reservation.createdById === currentUserId ||
+      Boolean(developmentId && await hasDevelopmentPermission(currentUserId, developmentId, 'admin'))
+    if (!canManage) {
+      return NextResponse.json(
+        { error: 'Somente o responsavel pela reserva ou um administrador pode altera-la.' },
+        { status: 403 },
+      )
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
       const saved = await tx.reservation.update({
@@ -113,10 +130,24 @@ export async function DELETE(_: Request, { params }: Params) {
     },
     include: {
       sale: true,
-      lot: true,
+      lot: {
+        include: {
+          block: true,
+        },
+      },
     },
   })
   if (!reservation) return forbiddenResponse()
+  const developmentId = reservation.lot.block.developmentId
+  const canManage =
+    reservation.createdById === currentUserId ||
+    Boolean(developmentId && await hasDevelopmentPermission(currentUserId, developmentId, 'admin'))
+  if (!canManage) {
+    return NextResponse.json(
+      { error: 'Somente o responsavel pela reserva ou um administrador pode liberar o lote.' },
+      { status: 403 },
+    )
+  }
   if (reservation.sale) {
     return NextResponse.json({ error: 'Nao e possivel cancelar uma reserva convertida em venda.' }, { status: 400 })
   }

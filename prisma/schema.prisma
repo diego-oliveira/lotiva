@@ -32,10 +32,10 @@ model Development {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company      Company            @relation(fields: [companyId], references: [id])
-  blocks       Block[]
-  memberships  DevelopmentUser[]
-  settings     DevelopmentSettings?
+  company          Company                      @relation(fields: [companyId], references: [id])
+  blocks           Block[]
+  memberships      DevelopmentUser[]
+  settings         DevelopmentSettings?
   contractSettings DevelopmentContractSettings?
 }
 
@@ -76,10 +76,10 @@ model DevelopmentContractSettings {
 }
 
 model User {
-  id            String           @id @default(uuid())
+  id            String    @id @default(uuid())
   name          String
-  email         String           @unique
-  cpf           String?          @unique
+  email         String    @unique
+  cpf           String?   @unique
   address       String?
   birthDate     DateTime?
   rg            String?
@@ -88,16 +88,20 @@ model User {
   profession    String?
   birthplace    String?
   maritalStatus String?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  reservations Reservation[]
-  sales        Sale[]
-  proposals    Proposal[]
-  memberships  DevelopmentUser[]
-  accounts     Account[]
-  sessions     Session[]
-  lotEvents    LotEvent[]
+  reservations        Reservation[]
+  createdReservations Reservation[]     @relation("ReservationCreator")
+  sales               Sale[]
+  proposals           Proposal[]        @relation("ProposalBuyer")
+  createdProposals    Proposal[]        @relation("ProposalCreator")
+  reviewedProposals   Proposal[]        @relation("ProposalReviewer")
+  notifications       Notification[]
+  memberships         DevelopmentUser[]
+  accounts            Account[]
+  sessions            Session[]
+  lotEvents           LotEvent[]
 }
 
 model Account {
@@ -137,46 +141,46 @@ model VerificationToken {
 }
 
 model Role {
-  id          String               @id @default(uuid())
-  name        String               @unique
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   assignments DevelopmentUserRole[]
 }
 
 model DevelopmentUser {
-  id           String               @id @default(uuid())
+  id            String   @id @default(uuid())
   developmentId String
-  userId       String
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  userId        String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  development  Development          @relation(fields: [developmentId], references: [id])
-  user         User                 @relation(fields: [userId], references: [id])
-  roles        DevelopmentUserRole[]
+  development Development           @relation(fields: [developmentId], references: [id])
+  user        User                  @relation(fields: [userId], references: [id])
+  roles       DevelopmentUserRole[]
 
   @@unique([developmentId, userId])
 }
 
 model DevelopmentUserRole {
-  id               String         @id @default(uuid())
+  id                String   @id @default(uuid())
   developmentUserId String
-  roleId           String
-  createdAt        DateTime       @default(now())
+  roleId            String
+  createdAt         DateTime @default(now())
 
-  developmentUser  DevelopmentUser @relation(fields: [developmentUserId], references: [id])
-  role             Role            @relation(fields: [roleId], references: [id])
+  developmentUser DevelopmentUser @relation(fields: [developmentUserId], references: [id])
+  role            Role            @relation(fields: [roleId], references: [id])
 
   @@unique([developmentUserId, roleId])
 }
 
 model Block {
-  id           String      @id @default(uuid())
-  identifier   String
+  id            String   @id @default(uuid())
+  identifier    String
   developmentId String?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   development Development? @relation(fields: [developmentId], references: [id])
   lots        Lot[]
@@ -196,38 +200,46 @@ model Lot {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  block        Block    @relation(fields: [blockId], references: [id])
+  block        Block         @relation(fields: [blockId], references: [id])
   reservations Reservation[]
   proposals    Proposal[]
-  sale         Sale?    // 👈 one-to-one back relation
+  sale         Sale? // 👈 one-to-one back relation
   events       LotEvent[]
 }
 
 model Reservation {
-  id         String   @id @default(uuid())
-  userId     String
-  lotId      String
-  proposal   String
-  status     String
-  expiresAt  DateTime?
+  id          String    @id @default(uuid())
+  userId      String
+  createdById String?
+  lotId       String
+  proposal    String
+  status      String
+  expiresAt   DateTime?
   cancelledAt DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  user       User   @relation(fields: [userId], references: [id])
-  lot        Lot    @relation(fields: [lotId], references: [id])
-  proposals  Proposal[]
-  sale       Sale?  // 👈 if only one sale can reference a reservation
+  user      User       @relation(fields: [userId], references: [id])
+  createdBy User?      @relation("ReservationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  lot       Lot        @relation(fields: [lotId], references: [id])
+  proposals Proposal[]
+  sale      Sale? // 👈 if only one sale can reference a reservation
 
   @@unique([lotId]) // 👈 prevents multiple reservations for the same lot
+  @@index([createdById])
 }
 
 model Proposal {
   id                  String    @id @default(uuid())
   userId              String
+  createdById         String
+  reviewedById        String?
   lotId               String
   reservationId       String?
   status              String    @default("draft")
+  exceptionReasons    String?
+  reviewedAt          DateTime?
+  rejectionReason     String?
   salePrice           Float
   downPayment         Float
   installmentCount    Int
@@ -243,46 +255,55 @@ model Proposal {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  user        User         @relation(fields: [userId], references: [id])
+  user        User         @relation("ProposalBuyer", fields: [userId], references: [id])
+  createdBy   User         @relation("ProposalCreator", fields: [createdById], references: [id])
+  reviewedBy  User?        @relation("ProposalReviewer", fields: [reviewedById], references: [id])
   lot         Lot          @relation(fields: [lotId], references: [id])
   reservation Reservation? @relation(fields: [reservationId], references: [id])
+  sale        Sale?
+
+  @@index([createdById, status])
+  @@index([reviewedById])
+  @@index([status, createdAt])
 }
 
 model Sale {
-  id                String     @id @default(uuid())
-  userId            String
-  lotId             String     @unique
-  reservationId     String?    @unique
-  installmentCount  Int
-  installmentValue  Float
-  downPayment       Float
-  firstDueDate      DateTime?
-  annualAdjustment  Boolean    @default(true)
-  totalValue        Float
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  id               String    @id @default(uuid())
+  userId           String
+  lotId            String    @unique
+  reservationId    String?   @unique
+  proposalId       String?   @unique
+  installmentCount Int
+  installmentValue Float
+  downPayment      Float
+  firstDueDate     DateTime?
+  annualAdjustment Boolean   @default(true)
+  totalValue       Float
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   user        User         @relation(fields: [userId], references: [id])
   lot         Lot          @relation(fields: [lotId], references: [id])
   reservation Reservation? @relation(fields: [reservationId], references: [id])
+  proposal    Proposal?    @relation(fields: [proposalId], references: [id])
   contract    Contract?
   receivables Receivable[]
 }
 
 model Contract {
-  id           String    @id @default(uuid())
-  saleId       String    @unique
-  contractNumber String  @unique
-  content      String    @db.Text
-  status       String    @default("generated")
-  version      Int       @default(1)
+  id                     String    @id @default(uuid())
+  saleId                 String    @unique
+  contractNumber         String    @unique
+  content                String    @db.Text
+  status                 String    @default("generated")
+  version                Int       @default(1)
   lastRegenerationReason String?
-  emailSent    Boolean   @default(false)
-  emailSentAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  emailSent              Boolean   @default(false)
+  emailSentAt            DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
-  sale Sale @relation(fields: [saleId], references: [id])
+  sale   Sale            @relation(fields: [saleId], references: [id])
   events ContractEvent[]
 }
 
@@ -338,4 +359,19 @@ model LotEvent {
 
   @@index([lotId, createdAt])
   @@index([type])
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  message   String
+  href      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
 }

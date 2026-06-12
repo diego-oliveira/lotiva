@@ -27,6 +27,15 @@ type CurrentUser = {
   email: string
 }
 
+type Notification = {
+  id: string
+  title: string
+  message: string
+  href?: string | null
+  readAt?: string | null
+  createdAt: string
+}
+
 const navItems: NavItem[] = [
   {
     href: '/',
@@ -57,8 +66,8 @@ const navItems: NavItem[] = [
   },
   {
     href: '/clients',
-    label: 'Clientes',
-    description: 'Cadastros',
+    label: 'Pessoas',
+    description: 'Clientes e equipe',
     icon: 'user',
     permission: 'manageUsers',
   },
@@ -67,6 +76,13 @@ const navItems: NavItem[] = [
     label: 'Lotes',
     description: 'Estoque comercial',
     icon: 'lot',
+    permission: 'sales',
+  },
+  {
+    href: '/proposals',
+    label: 'Propostas',
+    description: 'Aprovacoes comerciais',
+    icon: 'sale',
     permission: 'sales',
   },
   {
@@ -144,8 +160,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [permissions, setPermissions] = useState<PermissionMap | null>(null)
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
+  const [notifications, setNotifications] = useState<Notification[]>([])
   const isAuthPage = pathname.startsWith('/signin') || pathname.startsWith('/auth')
 
   useEffect(() => {
@@ -163,8 +181,34 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [isAuthPage])
 
   useEffect(() => {
+    if (isAuthPage) return
+
+    const fetchNotifications = () => {
+      fetch('/api/notifications', { cache: 'no-store' })
+        .then((response) => (response.ok ? response.json() : []))
+        .then((payload) => setNotifications(Array.isArray(payload) ? payload : []))
+        .catch(() => setNotifications([]))
+    }
+
+    fetchNotifications()
+    const interval = window.setInterval(fetchNotifications, 60000)
+    return () => window.clearInterval(interval)
+  }, [isAuthPage, pathname])
+
+  useEffect(() => {
     setUserMenuOpen(false)
+    setNotificationsOpen(false)
   }, [pathname])
+
+  const unreadNotifications = notifications.filter((notification) => !notification.readAt).length
+
+  const markNotificationRead = async (notification: Notification) => {
+    if (notification.readAt) return
+    setNotifications((current) => current.map((item) => (
+      item.id === notification.id ? { ...item, readAt: new Date().toISOString() } : item
+    )))
+    await fetch(`/api/notifications/${notification.id}`, { method: 'PATCH' }).catch(() => undefined)
+  }
 
   const visibleNavItems = useMemo(() => {
     if (!permissions) return navItems
@@ -265,9 +309,81 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
               <div className='flex items-center gap-4'>
                 <div className='relative'>
+                  <button
+                    type='button'
+                    onClick={() => {
+                      setNotificationsOpen((current) => !current)
+                      setUserMenuOpen(false)
+                    }}
+                    className='relative rounded-xl border border-border bg-surface p-3 text-foreground shadow-sm transition hover:bg-surface-secondary'
+                    aria-label='Notificacoes'
+                    aria-expanded={notificationsOpen}
+                  >
+                    <svg className='h-5 w-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M14.857 17.082A23.85 23.85 0 0118 18c-1.5-1.75-2.25-4-2.25-6.75a3.75 3.75 0 10-7.5 0C8.25 14 7.5 16.25 6 18a23.85 23.85 0 013.143-.918M14.857 17.082a3 3 0 11-5.714 0' />
+                    </svg>
+                    {unreadNotifications > 0 && (
+                      <span className='absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white'>
+                        {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                      </span>
+                    )}
+                  </button>
+                  {notificationsOpen && (
+                    <div className='absolute right-0 mt-3 w-[min(90vw,380px)] overflow-hidden rounded-2xl border border-border bg-surface shadow-xl'>
+                      <div className='flex items-center justify-between border-b border-border px-4 py-3'>
+                        <p className='text-sm font-semibold text-foreground'>Notificacoes</p>
+                        <span className='text-xs font-semibold text-muted'>{unreadNotifications} nao lida(s)</span>
+                      </div>
+                      <div className='max-h-[420px] overflow-y-auto'>
+                        {notifications.length === 0 ? (
+                          <p className='px-4 py-8 text-center text-sm text-muted'>Nenhuma notificacao.</p>
+                        ) : (
+                          notifications.map((notification) => {
+                            const content = (
+                              <>
+                                <span className='block text-sm font-semibold text-foreground'>{notification.title}</span>
+                                <span className='mt-1 block text-xs leading-5 text-muted'>{notification.message}</span>
+                                <span className='mt-2 block text-[11px] font-semibold text-muted'>
+                                  {new Date(notification.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                                </span>
+                              </>
+                            )
+                            const className = `block w-full border-b border-border px-4 py-3 text-left transition last:border-b-0 hover:bg-surface-secondary ${
+                              notification.readAt ? 'bg-surface' : 'bg-primary/6'
+                            }`
+
+                            return notification.href ? (
+                              <Link
+                                key={notification.id}
+                                href={notification.href}
+                                onClick={() => void markNotificationRead(notification)}
+                                className={className}
+                              >
+                                {content}
+                              </Link>
+                            ) : (
+                              <button
+                                key={notification.id}
+                                type='button'
+                                onClick={() => void markNotificationRead(notification)}
+                                className={className}
+                              >
+                                {content}
+                              </button>
+                            )
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className='relative'>
                 <button
                   type='button'
-                  onClick={() => setUserMenuOpen((current) => !current)}
+                  onClick={() => {
+                    setUserMenuOpen((current) => !current)
+                    setNotificationsOpen(false)
+                  }}
                   className='flex items-center gap-3 rounded-2xl border border-border bg-surface px-3 py-2 text-left shadow-sm transition hover:bg-surface-secondary'
                   aria-expanded={userMenuOpen}
                 >

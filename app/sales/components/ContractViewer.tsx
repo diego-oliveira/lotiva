@@ -38,6 +38,7 @@ export default function ContractViewer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [emailSending, setEmailSending] = useState(false);
+  const [pdfDownloading, setPdfDownloading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
@@ -130,7 +131,8 @@ export default function ContractViewer({
 
   const handleDownloadPDF = async () => {
     try {
-      setError('');
+      setPdfDownloading(true);
+      setError(null);
       const response = await fetch(`/api/contracts/${saleId}/pdf`);
 
       if (!response.ok) {
@@ -152,11 +154,15 @@ export default function ContractViewer({
     } catch (err) {
       console.error('Erro ao baixar PDF:', err);
       setError(err instanceof Error ? err.message : 'Nao foi possivel baixar o PDF');
+    } finally {
+      setPdfDownloading(false);
     }
   };
 
   const handleSendEmail = async () => {
     setEmailSending(true);
+    setError(null);
+    setEmailSent(false);
 
     try {
       const response = await fetch(`/api/contracts/${saleId}/email`, {
@@ -168,7 +174,8 @@ export default function ContractViewer({
       });
 
       if (!response.ok) {
-        throw new Error('Nao foi possivel enviar o email');
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.details || payload.error || 'Nao foi possivel enviar o email');
       }
 
       setEmailSent(true);
@@ -238,7 +245,8 @@ export default function ContractViewer({
 
                 <button
                   onClick={handleDownloadPDF}
-                  className='inline-flex items-center rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'
+                  disabled={pdfDownloading}
+                  className='inline-flex items-center rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-60'
                   title='Baixar PDF'
                 >
                   <svg
@@ -254,7 +262,7 @@ export default function ContractViewer({
                       d='M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2z'
                     />
                   </svg>
-                  Baixar PDF
+                  {pdfDownloading ? 'Gerando PDF...' : 'Baixar PDF'}
                 </button>
 
                 <button

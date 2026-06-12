@@ -3,6 +3,7 @@ import { requireAuthenticatedUser } from '@/lib/auth'
 import { blockAccessWhere, forbiddenResponse, lotAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 import { createLotEvent } from '@/lib/lot-events'
+import { hasDevelopmentPermission } from '@/lib/permissions'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -41,9 +42,34 @@ export async function PUT(req: Request, { params }: Params) {
       id,
       ...lotAccessWhere(userId),
     },
-    select: { id: true, status: true, price: true },
+    select: {
+      id: true,
+      status: true,
+      price: true,
+      block: { select: { developmentId: true } },
+      events: {
+        where: { type: 'lot_blocked' },
+        select: { userId: true },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+    },
   })
   if (!lot) return forbiddenResponse()
+
+  if (lot.status === 'on_hold' && data.status === 'available') {
+    const developmentId = lot.block.developmentId
+    const blockedById = lot.events[0]?.userId
+    const canRelease =
+      blockedById === userId ||
+      Boolean(developmentId && await hasDevelopmentPermission(userId, developmentId, 'admin'))
+    if (!canRelease) {
+      return NextResponse.json(
+        { error: 'Somente quem bloqueou o lote ou um administrador pode libera-lo.' },
+        { status: 403 },
+      )
+    }
+  }
 
   const block = await prisma.block.findFirst({
     where: {

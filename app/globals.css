@@ -54,9 +54,11 @@ body {
   background-image: linear-gradient(180deg, #f7f9fc 0%, #eef4fb 100%);
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+@layer base {
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 }
 
 button {
