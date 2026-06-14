@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useMemo, useState } from 'react'
+import ImageUploadField from '@/app/components/ImageUploadField'
 
 type ChecklistStatus = 'complete' | 'action' | 'pending'
 
@@ -86,17 +87,13 @@ type CreatedSetup = {
   skippedInventoryCreation: boolean
 }
 
-type LogoFieldName = 'companyLogo' | 'developmentLogo'
-
-const defaultLogo = 'https://placehold.co/320x160/png?text=Lotiva'
-
 const initialForm: SetupForm = {
   companyId: null,
   companyName: '',
-  companyLogo: defaultLogo,
+  companyLogo: '',
   developmentId: null,
   developmentName: '',
-  developmentLogo: defaultLogo,
+  developmentLogo: '',
   blockCount: 4,
   lotsPerBlock: 12,
   lotArea: 250,
@@ -178,7 +175,6 @@ function OnboardingContent() {
   const [formData, setFormData] = useState<SetupForm>(initialForm)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [uploadingLogo, setUploadingLogo] = useState<LogoFieldName | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [createdSetup, setCreatedSetup] = useState<CreatedSetup | null>(null)
@@ -246,33 +242,6 @@ function OnboardingContent() {
     setFieldErrors((current) => ({ ...current, [name]: '' }))
   }
 
-  const uploadLogo = async (field: LogoFieldName, file: File | undefined) => {
-    if (!file) return
-
-    try {
-      setUploadingLogo(field)
-      setFieldErrors((current) => ({ ...current, [field]: '' }))
-      const payload = new FormData()
-      payload.append('file', file)
-
-      const response = await fetch('/api/uploads', {
-        method: 'POST',
-        body: payload,
-      })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Erro ao enviar imagem')
-
-      setFormData((current) => ({ ...current, [field]: data.url }))
-    } catch (err) {
-      setFieldErrors((current) => ({
-        ...current,
-        [field]: err instanceof Error ? err.message : 'Erro ao enviar imagem',
-      }))
-    } finally {
-      setUploadingLogo(null)
-    }
-  }
-
   const updateNumberField = (name: keyof SetupForm, value: number) => {
     setFormData((current) => ({ ...current, [name]: Number.isFinite(value) ? value : 0 }))
     setFieldErrors((current) => ({ ...current, [name]: '' }))
@@ -282,7 +251,9 @@ function OnboardingContent() {
     const errors: Record<string, string> = {}
 
     if (!formData.companyName.trim()) errors.companyName = 'Informe o nome da empresa.'
+    if (!formData.companyLogo) errors.companyLogo = 'Envie o logo da empresa.'
     if (!formData.developmentName.trim()) errors.developmentName = 'Informe o nome do empreendimento.'
+    if (!formData.developmentLogo) errors.developmentLogo = 'Envie o logo do empreendimento.'
 
     for (const [field, value] of [
       ['blockCount', formData.blockCount],
@@ -416,32 +387,18 @@ function OnboardingContent() {
                   />
                   {fieldErrors.companyName && <p className='mt-2 text-sm text-red-600'>{fieldErrors.companyName}</p>}
                 </label>
-                <div className='block'>
-                  <label htmlFor='companyLogo' className='mb-2 block text-sm font-semibold text-foreground'>Logo</label>
-                  <input
-                    id='companyLogo'
-                    name='companyLogo'
-                    value={formData.companyLogo}
-                    onChange={updateTextField}
-                    placeholder='https://example.com/logo.png ou /uploads/logo.png'
-                    className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
-                  />
-                  <label htmlFor='companyLogoFile' className='mt-3 flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
-                    {uploadingLogo === 'companyLogo' ? 'Enviando imagem...' : 'Enviar imagem'}
-                    <input
-                      id='companyLogoFile'
-                      type='file'
-                      accept='image/png,image/jpeg,image/webp'
-                      className='sr-only'
-                      disabled={uploadingLogo !== null}
-                      onChange={(event) => {
-                        void uploadLogo('companyLogo', event.target.files?.[0])
-                        event.target.value = ''
-                      }}
-                    />
-                  </label>
-                  {fieldErrors.companyLogo && <p className='mt-2 text-sm text-red-600'>{fieldErrors.companyLogo}</p>}
-                </div>
+                <ImageUploadField
+                  label='Logo'
+                  required
+                  previewAlt={formData.companyName || 'Logo da empresa'}
+                  value={formData.companyLogo}
+                  onChange={(companyLogo) => {
+                    setFormData((current) => ({ ...current, companyLogo }))
+                    setFieldErrors((current) => ({ ...current, companyLogo: '' }))
+                  }}
+                  error={fieldErrors.companyLogo}
+                  onError={(companyLogoError) => setFieldErrors((current) => ({ ...current, companyLogo: companyLogoError }))}
+                />
               </div>
             </section>
 
@@ -462,32 +419,18 @@ function OnboardingContent() {
                   />
                   {fieldErrors.developmentName && <p className='mt-2 text-sm text-red-600'>{fieldErrors.developmentName}</p>}
                 </label>
-                <div className='block'>
-                  <label htmlFor='developmentLogo' className='mb-2 block text-sm font-semibold text-foreground'>Logo</label>
-                  <input
-                    id='developmentLogo'
-                    name='developmentLogo'
-                    value={formData.developmentLogo}
-                    onChange={updateTextField}
-                    placeholder='https://example.com/logo.png ou /uploads/logo.png'
-                    className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
-                  />
-                  <label htmlFor='developmentLogoFile' className='mt-3 flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
-                    {uploadingLogo === 'developmentLogo' ? 'Enviando imagem...' : 'Enviar imagem'}
-                    <input
-                      id='developmentLogoFile'
-                      type='file'
-                      accept='image/png,image/jpeg,image/webp'
-                      className='sr-only'
-                      disabled={uploadingLogo !== null}
-                      onChange={(event) => {
-                        void uploadLogo('developmentLogo', event.target.files?.[0])
-                        event.target.value = ''
-                      }}
-                    />
-                  </label>
-                  {fieldErrors.developmentLogo && <p className='mt-2 text-sm text-red-600'>{fieldErrors.developmentLogo}</p>}
-                </div>
+                <ImageUploadField
+                  label='Logo'
+                  required
+                  previewAlt={formData.developmentName || 'Logo do empreendimento'}
+                  value={formData.developmentLogo}
+                  onChange={(developmentLogo) => {
+                    setFormData((current) => ({ ...current, developmentLogo }))
+                    setFieldErrors((current) => ({ ...current, developmentLogo: '' }))
+                  }}
+                  error={fieldErrors.developmentLogo}
+                  onError={(developmentLogoError) => setFieldErrors((current) => ({ ...current, developmentLogo: developmentLogoError }))}
+                />
               </div>
             </section>
 

@@ -31,6 +31,15 @@ export async function GET(req: Request, { params }: Params) {
                     development: {
                       include: {
                         contractSettings: true,
+                        documentTemplate: {
+                          include: {
+                            versions: {
+                              where: { status: 'published' },
+                              orderBy: { version: 'desc' },
+                              take: 1,
+                            },
+                          },
+                        },
                       },
                     },
                   },
@@ -42,6 +51,11 @@ export async function GET(req: Request, { params }: Params) {
         events: {
           orderBy: { createdAt: 'desc' },
         },
+        documentTemplateVersion: {
+          include: {
+            template: { select: { id: true, name: true } },
+          },
+        },
       }
     })
 
@@ -50,26 +64,6 @@ export async function GET(req: Request, { params }: Params) {
     }
 
     if (wantsMeta) {
-      const missingBuyerFields = [
-        ['cpf', 'CPF'],
-        ['rg', 'RG'],
-        ['address', 'Endereco'],
-        ['birthDate', 'Data de nascimento'],
-        ['profession', 'Profissao'],
-        ['birthplace', 'Naturalidade'],
-        ['maritalStatus', 'Estado civil'],
-      ].filter(([key]) => !String((contract.sale.user as any)[key] || '').trim()).map(([, label]) => label)
-
-      const settings = contract.sale.lot.block.development?.contractSettings
-      const missingSettings = [
-        ['sellerName', 'Nome do vendedor'],
-        ['sellerDocument', 'Documento do vendedor'],
-        ['sellerAddress', 'Endereco do vendedor'],
-        ['propertyDescription', 'Descricao do empreendimento'],
-        ['paymentInstructions', 'Instrucoes de pagamento'],
-        ['jurisdiction', 'Foro'],
-      ].filter(([key]) => !String((settings as any)?.[key] || '').trim()).map(([, label]) => label)
-
       return NextResponse.json({
         id: contract.id,
         saleId: contract.saleId,
@@ -81,10 +75,18 @@ export async function GET(req: Request, { params }: Params) {
         createdAt: contract.createdAt,
         updatedAt: contract.updatedAt,
         lastRegenerationReason: contract.lastRegenerationReason,
-        missingFields: [
-          ...missingBuyerFields.map((field) => `Cliente: ${field}`),
-          ...missingSettings.map((field) => `Contrato: ${field}`),
-        ],
+        currentDocumentTemplate: contract.sale.lot.block.development?.documentTemplate?.versions[0] ? {
+          id: contract.sale.lot.block.development.documentTemplate.id,
+          name: contract.sale.lot.block.development.documentTemplate.name,
+          version: contract.sale.lot.block.development.documentTemplate.versions[0].version,
+        } : null,
+        documentTemplate: contract.documentTemplateVersion ? {
+          id: contract.documentTemplateVersion.template.id,
+          name: contract.documentTemplateVersion.template.name,
+          version: contract.documentTemplateVersion.version,
+          currentPublishedVersion: contract.sale.lot.block.development?.documentTemplate?.versions[0]?.version ?? null,
+        } : null,
+        missingFields: [],
         sale: {
           id: contract.sale.id,
           totalValue: contract.sale.totalValue,

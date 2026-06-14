@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, membershipWhere } from '@/lib/access-control'
+import { isValidUploadedImagePath } from '@/lib/uploadStorage'
 import { NextResponse } from 'next/server'
 
 function normalizeSettings(settings: any = {}) {
@@ -46,6 +47,7 @@ export async function GET() {
       company: true,
       settings: true,
       contractSettings: true,
+      documentTemplate: true,
       _count: {
         select: {
           blocks: true,
@@ -64,6 +66,9 @@ export async function POST(req: Request) {
   const userId = auth.session.user.id
 
   const data = await req.json()
+  if (!isValidUploadedImagePath(String(data.logo || ''))) {
+    return NextResponse.json({ error: 'Envie uma imagem valida para o logo.' }, { status: 400 })
+  }
 
   const company = await prisma.company.findUnique({
     where: { id: data.companyId },
@@ -71,11 +76,30 @@ export async function POST(req: Request) {
   })
   if (!company) return forbiddenResponse()
 
+  const documentTemplateId = String(data.documentTemplateId || '').trim()
+  if (!documentTemplateId) {
+    return NextResponse.json({ error: 'Selecione um modelo de contrato publicado.' }, { status: 400 })
+  }
+  const template = await prisma.documentTemplate.findFirst({
+    where: {
+      id: documentTemplateId,
+      companyId: data.companyId,
+      purpose: 'sale_contract',
+      status: 'published',
+      versions: { some: { status: 'published' } },
+    },
+    select: { id: true },
+  })
+  if (!template) {
+    return NextResponse.json({ error: 'Selecione um modelo publicado da mesma empresa.' }, { status: 400 })
+  }
+
   const development = await prisma.development.create({
     data: {
       name: data.name,
       logo: data.logo,
         companyId: data.companyId,
+        documentTemplateId,
         settings: {
           create: normalizeSettings(data.settings),
         },

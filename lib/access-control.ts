@@ -80,7 +80,39 @@ export function lotEventAccessWhere(userId: string) {
 
 export function saleAccessWhere(userId: string) {
   return {
-    lot: lotAccessWhere(userId),
+    AND: [
+      {
+        lot: lotAccessWhere(userId),
+      },
+      {
+        OR: [
+          { createdById: userId },
+          {
+            lot: {
+              block: {
+                development: {
+                  memberships: {
+                    some: {
+                      userId,
+                      roles: {
+                        some: {
+                          role: {
+                            name: {
+                              in: ['owner', 'administrador', 'admin', 'gestor', 'manager', 'financeiro', 'finance'],
+                              mode: 'insensitive' as const,
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+    ],
   }
 }
 
@@ -147,6 +179,12 @@ export function companyAccessWhere(userId: string) {
     developments: {
       some: membershipWhere(userId),
     },
+  }
+}
+
+export function documentTemplateAccessWhere(userId: string) {
+  return {
+    company: companyAccessWhere(userId),
   }
 }
 

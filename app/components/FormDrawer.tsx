@@ -6,6 +6,7 @@ interface FormDrawerProps {
   description: string
   onClose: () => void
   children: React.ReactNode
+  widthClassName?: string
 }
 
 export default function FormDrawer({
@@ -14,6 +15,7 @@ export default function FormDrawer({
   description,
   onClose,
   children,
+  widthClassName = 'max-w-2xl',
 }: FormDrawerProps) {
   if (!isOpen) return null
 
@@ -25,12 +27,12 @@ export default function FormDrawer({
         className='fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-[1px] lg:left-[290px]'
         onClick={onClose}
       />
-      <aside className='fixed inset-y-0 right-0 z-50 w-full max-w-2xl border-l border-border bg-surface shadow-2xl'>
+      <aside className={`fixed inset-y-0 right-0 z-50 w-full border-l border-border bg-surface shadow-2xl ${widthClassName}`}>
         <div className='flex h-full flex-col'>
           <div className='border-b border-border px-6 py-5'>
             <div className='flex items-start justify-between gap-4'>
               <div>
-                <p className='text-xs font-semibold uppercase tracking-[0.2em] text-muted'>Entry editor</p>
+                <p className='text-xs font-semibold uppercase tracking-[0.2em] text-muted'>Editor</p>
                 <h2 className='mt-2 text-2xl font-bold text-foreground'>{title}</h2>
                 <p className='mt-2 text-sm leading-6 text-muted'>{description}</p>
               </div>

@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { saleAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
-import { generateContractNumber, generateContractHTML, getMissingBuyerFields, getMissingContractFields } from '@/lib/contractGenerator'
+import { generateContractNumber, renderDocumentTemplate } from '@/lib/document-templates'
 
 export async function POST(req: Request) {
   const auth = await requireAuthenticatedUser()
@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   const currentUserId = auth.session.user.id
 
   try {
-    const { saleId, force, reason } = await req.json()
+    const { saleId, force, reason, useOriginalTemplate } = await req.json()
 
     if (!saleId) {
       return NextResponse.json({ error: 'Sale ID is required' }, { status: 400 })
@@ -31,31 +31,38 @@ export async function POST(req: Request) {
                 development: {
                   include: {
                     contractSettings: true,
+                    company: {
+                      include: { documentVariables: true },
+                    },
+                    documentValues: {
+                      include: { variable: true },
+                    },
+                    documentTemplate: {
+                      include: {
+                        versions: {
+                          where: { status: 'published' },
+                          orderBy: { version: 'desc' },
+                          take: 1,
+                        },
+                      },
+                    },
                   },
                 },
               },
             },
           }
         },
-        contract: true
+        proposal: true,
+        contract: {
+          include: {
+            documentTemplateVersion: true,
+          },
+        },
       }
     })
 
     if (!sale) {
       return NextResponse.json({ error: 'Sale not found' }, { status: 404 })
-    }
-
-    const contractSettings = sale.lot.block.development?.contractSettings ?? null
-    const missingFields = [
-      ...getMissingBuyerFields(sale.user).map((field) => `Cliente: ${field}`),
-      ...getMissingContractFields(contractSettings).map((field) => `Contrato: ${field}`),
-    ]
-
-    if (missingFields.length > 0) {
-      return NextResponse.json({
-        error: 'Dados obrigatorios pendentes para gerar contrato',
-        missingFields,
-      }, { status: 422 })
     }
 
     if (sale.contract && !force) {
@@ -66,14 +73,34 @@ export async function POST(req: Request) {
     }
 
     const contractNumber = sale.contract?.contractNumber ?? generateContractNumber()
-    const contractData = {
-      contractNumber,
-      sale,
-      generatedAt: new Date(),
-      settings: contractSettings,
+    const generatedAt = new Date()
+    const selectedPublishedVersion = sale.lot.block.development?.documentTemplate?.versions[0] ?? null
+    const templateVersion = useOriginalTemplate && sale.contract?.documentTemplateVersion
+      ? sale.contract.documentTemplateVersion
+      : selectedPublishedVersion
+
+    if (!templateVersion) {
+      return NextResponse.json(
+        { error: 'O empreendimento nao possui um modelo de contrato publicado configurado.' },
+        { status: 409 },
+      )
     }
 
-    const contractHTML = generateContractHTML(contractData)
+    const rendered = renderDocumentTemplate({
+      content: templateVersion.content,
+      sale,
+      contractNumber,
+      generatedAt,
+    })
+    const contractHTML = rendered.html
+    const missingFields = rendered.missingVariables.map((variable) => `Variavel sem valor: {{${variable}}}`)
+
+    if (missingFields.length > 0) {
+      return NextResponse.json({
+        error: 'Dados obrigatorios pendentes para gerar contrato',
+        missingFields,
+      }, { status: 422 })
+    }
 
     const contract = await prisma.$transaction(async (tx) => {
       if (sale.contract) {
@@ -86,6 +113,7 @@ export async function POST(req: Request) {
             lastRegenerationReason: reason || null,
             emailSent: false,
             emailSentAt: null,
+            documentTemplateVersionId: templateVersion.id,
           },
         })
 
@@ -108,6 +136,7 @@ export async function POST(req: Request) {
           contractNumber,
           content: contractHTML,
           status: 'generated',
+          documentTemplateVersionId: templateVersion.id,
           events: {
             create: {
               userId: currentUserId,

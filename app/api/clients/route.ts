@@ -23,15 +23,31 @@ const membershipInclude = (userId: string) => ({
   },
 })
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const auth = await requireAuthenticatedUser()
     if (auth.response) return auth.response
     const currentUserId = auth.session.user.id
-    if (!(await canUseClientRecords(currentUserId))) return forbiddenResponse()
+    const operational = new URL(req.url).searchParams.get('scope') === 'operational'
+    const canManageUsers = await hasAnyDevelopmentPermission(currentUserId, 'manageUsers')
+    if (!canManageUsers && !(operational && await hasAnyDevelopmentPermission(currentUserId, 'sales'))) {
+      return forbiddenResponse()
+    }
 
     const clients = await prisma.user.findMany({
-      where: userAccessWhere(currentUserId),
+      where: {
+        AND: [
+          userAccessWhere(currentUserId),
+          ...(!canManageUsers && operational ? [{
+            memberships: {
+              some: {
+                development: membershipWhere(currentUserId),
+                roles: { none: {} },
+              },
+            },
+          }] : []),
+        ],
+      },
       include: membershipInclude(currentUserId),
       orderBy: { createdAt: 'desc' },
     })
@@ -60,6 +76,8 @@ export async function POST(req: Request) {
     }
 
     const memberships: { developmentId: string; roleId: string }[] = data.memberships ?? []
+    const canManageUsers = await hasAnyDevelopmentPermission(currentUserId, 'manageUsers')
+    if (!canManageUsers && memberships.some((membership) => membership.roleId)) return forbiddenResponse()
     if (memberships.length === 0) {
       return NextResponse.json({ error: 'Selecione pelo menos um empreendimento.' }, { status: 400 })
     }

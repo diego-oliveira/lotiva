@@ -34,12 +34,16 @@ const membershipInclude = (userId: string) => ({
   },
 })
 
-export async function GET(_: Request, { params }: Params) {
+export async function GET(req: Request, { params }: Params) {
   try {
     const auth = await requireAuthenticatedUser()
     if (auth.response) return auth.response
     const currentUserId = auth.session.user.id
-    if (!(await canUseClientRecords(currentUserId))) return forbiddenResponse()
+    const operational = new URL(req.url).searchParams.get('scope') === 'operational'
+    const canManageUsers = await hasAnyDevelopmentPermission(currentUserId, 'manageUsers')
+    if (!canManageUsers && !(operational && await hasAnyDevelopmentPermission(currentUserId, 'sales'))) {
+      return forbiddenResponse()
+    }
 
     const { id } = await params
     const client = await prisma.user.findFirst({
@@ -120,6 +124,8 @@ export async function PUT(req: Request, { params }: Params) {
     const { id } = await params
     const data = await req.json()
     const memberships: { developmentId: string; roleId: string }[] = data.memberships ?? []
+    const canManageUsers = await hasAnyDevelopmentPermission(currentUserId, 'manageUsers')
+    if (!canManageUsers && memberships.some((membership) => membership.roleId)) return forbiddenResponse()
     const canAccessClient = await prisma.user.findFirst({
       where: {
         id,

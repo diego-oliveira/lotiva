@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentSession } from '@/lib/auth'
 import { membershipWhere } from '@/lib/access-control'
 import { prisma } from '@/lib/prisma'
+import { getUserPermissions } from '@/lib/permissions'
 import DevelopmentSelector from './components/DevelopmentSelector'
 
 type HomeProps = {
@@ -61,6 +62,8 @@ function buildMonthlySeries() {
 export default async function Home({ searchParams }: HomeProps) {
   const session = await getCurrentSession()
   if (!session?.user?.id) redirect('/signin')
+  const access = await getUserPermissions(session.user.id)
+  if (!access.permissions.manageSettings && !access.permissions.finance) redirect('/lots')
 
   const params = await searchParams
   const developments = await prisma.development.findMany({

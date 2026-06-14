@@ -106,6 +106,29 @@ export async function hasDevelopmentPermission(userId: string, developmentId: st
   return hasPermissionFromRoles(membership.roles.map((assignment) => assignment.role.name), permission)
 }
 
+export async function hasCompanyPermission(userId: string, companyId: string, permission: AppPermission) {
+  const roleNames = permissionRoleNames[permission]
+  const membership = await prisma.developmentUser.findFirst({
+    where: {
+      userId,
+      development: { companyId },
+      roles: {
+        some: {
+          role: {
+            name: {
+              in: roleNames,
+              mode: 'insensitive',
+            },
+          },
+        },
+      },
+    },
+    select: { id: true },
+  })
+
+  return Boolean(membership)
+}
+
 export async function ensureBaseRoles() {
   const names = ['Administrador', 'Gestor', 'Vendedor', 'Financeiro']
 

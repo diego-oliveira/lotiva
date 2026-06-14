@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, lotAccessWhere, proposalAccessWhere, reservationAccessWhere, saleAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
-import { generateContractNumber, generateContractHTML } from '@/lib/contractGenerator'
+import { generateContractNumber, renderDocumentTemplate } from '@/lib/document-templates'
 import { createLotEvent } from '@/lib/lot-events'
 import { hasDevelopmentPermission } from '@/lib/permissions'
 import { calculateInstallment, evaluateDirectSaleTerms } from '@/lib/proposal-rules'
@@ -110,6 +110,22 @@ export async function POST(req: Request) {
             development: {
               include: {
                 settings: true,
+                contractSettings: true,
+                company: {
+                  include: { documentVariables: true },
+                },
+                documentValues: {
+                  include: { variable: true },
+                },
+                documentTemplate: {
+                  include: {
+                    versions: {
+                      where: { status: 'published' },
+                      orderBy: { version: 'desc' },
+                      take: 1,
+                    },
+                  },
+                },
               },
             },
           },
@@ -241,6 +257,7 @@ export async function POST(req: Request) {
       const sale = await prisma.sale.create({
         data: {
           userId: data.userId,
+          createdById: currentUserId,
           lotId: data.lotId,
           reservationId,
           proposalId: approvedProposal?.id ?? null,
@@ -303,19 +320,38 @@ export async function POST(req: Request) {
 
       // Auto-generate contract
       try {
+        const templateVersion = lot.block.development?.documentTemplate?.versions[0] ?? null
+        if (!templateVersion) {
+          throw new Error('O empreendimento nao possui um modelo de contrato publicado configurado.')
+        }
         const contractNumber = generateContractNumber()
+        const generatedAt = new Date()
         const contractData = {
           contractNumber,
-          sale,
-          generatedAt: new Date()
+          sale: {
+            ...sale,
+            lot,
+            proposal: approvedProposal,
+          },
+          generatedAt,
+          settings: lot.block.development?.contractSettings,
         }
-        const contractHTML = generateContractHTML(contractData)
+        const renderedTemplate = renderDocumentTemplate({
+          content: templateVersion.content,
+          sale: contractData.sale,
+          contractNumber,
+          generatedAt,
+        })
+        if (renderedTemplate.missingVariables.length) {
+          throw new Error(`Dados ausentes para o modelo: ${renderedTemplate.missingVariables.join(', ')}`)
+        }
 
         await prisma.contract.create({
           data: {
             saleId: sale.id,
             contractNumber,
-            content: contractHTML
+            content: renderedTemplate.html,
+            documentTemplateVersionId: templateVersion.id,
           }
         })
       } catch (contractError) {

@@ -281,6 +281,7 @@ function LotsContent() {
   const [searchTerm, setSearchTerm] = useState('')
   const [sortBy, setSortBy] = useState<SortField>('block')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [canManageUsers, setCanManageUsers] = useState(false)
 
   async function fetchLots() {
     try {
@@ -298,6 +299,10 @@ function LotsContent() {
 
   useEffect(() => {
     void fetchLots()
+    fetch('/api/me/permissions', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => setCanManageUsers(Boolean(payload?.permissions?.manageUsers)))
+      .catch(() => setCanManageUsers(false))
   }, [])
 
   useEffect(() => {
@@ -315,7 +320,7 @@ function LotsContent() {
   }, [searchParams])
 
   async function fetchClients() {
-    const response = await fetch('/api/clients', { cache: 'no-store' })
+    const response = await fetch('/api/clients?scope=operational', { cache: 'no-store' })
     if (!response.ok) throw new Error('Nao foi possivel carregar clientes')
     setClients(await response.json())
   }
@@ -801,6 +806,7 @@ function LotsContent() {
         clientName: proposal.user?.name ?? selectedProposalClient?.name ?? 'cliente',
       })
       setShowSimulator(false)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err) {
       setProposalError(err instanceof Error ? err.message : 'Erro ao salvar proposta')
     } finally {
@@ -1224,9 +1230,11 @@ function LotsContent() {
                     <p className='text-xs font-semibold uppercase text-muted'>{getLotContact(selectedLot)?.label}</p>
                     <p className='mt-2 text-base font-semibold text-foreground'>{getLotContact(selectedLot)?.person.name}</p>
                     <p className='mt-1 text-sm text-muted'>{getLotContact(selectedLot)?.person.email}</p>
-                    <Link href={`/clients`} className='mt-4 inline-flex rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-background'>
-                      Ver clientes
-                    </Link>
+                    {canManageUsers && (
+                      <Link href='/clients' className='mt-4 inline-flex rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-background'>
+                        Ver clientes
+                      </Link>
+                    )}
                   </div>
                 )}
 

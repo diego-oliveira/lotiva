@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import FormDrawer from '@/app/components/FormDrawer'
+import ImageUploadField from '@/app/components/ImageUploadField'
 
 interface Company {
   id: string
@@ -15,6 +16,16 @@ interface Development {
   companyId: string
   settings?: DevelopmentSettings | null
   contractSettings?: DevelopmentContractSettings | null
+  documentTemplateId?: string | null
+}
+
+type DocumentTemplateOption = {
+  id: string
+  name: string
+  purpose: string
+  status: string
+  company: { id: string }
+  versions: Array<{ status: string; version: number }>
 }
 
 type DevelopmentSettings = {
@@ -77,16 +88,6 @@ const defaultContractSettings: DevelopmentContractSettings = {
   additionalClauses: '',
 }
 
-function isValidLogoReference(value: string) {
-  if (value.startsWith('/uploads/')) return true
-  try {
-    new URL(value)
-    return true
-  } catch {
-    return false
-  }
-}
-
 export default function DevelopmentForm({
   development,
   companies,
@@ -97,15 +98,15 @@ export default function DevelopmentForm({
   const [formData, setFormData] = useState<Development>({ name: '', logo: '', companyId: '' })
   const [settingsData, setSettingsData] = useState<DevelopmentSettingsFormData>(defaultSettings)
   const [contractSettingsData, setContractSettingsData] = useState<DevelopmentContractSettings>(defaultContractSettings)
+  const [documentTemplates, setDocumentTemplates] = useState<DocumentTemplateOption[]>([])
   const [loading, setLoading] = useState(false)
-  const [uploadingLogo, setUploadingLogo] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
     setFormData(
       development
-        ? { id: development.id, name: development.name, logo: development.logo, companyId: development.companyId, settings: development.settings, contractSettings: development.contractSettings }
-        : { name: '', logo: '', companyId: companies[0]?.id ?? '' },
+        ? { id: development.id, name: development.name, logo: development.logo, companyId: development.companyId, settings: development.settings, contractSettings: development.contractSettings, documentTemplateId: development.documentTemplateId }
+        : { name: '', logo: '', companyId: companies[0]?.id ?? '', documentTemplateId: null },
     )
     setSettingsData(
       development?.settings
@@ -122,9 +123,21 @@ export default function DevelopmentForm({
     setErrors({})
   }, [development, isOpen, companies])
 
+  useEffect(() => {
+    if (!isOpen) return
+    fetch('/api/document-templates', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : [])
+      .then(setDocumentTemplates)
+      .catch(() => setDocumentTemplates([]))
+  }, [isOpen])
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+      ...(name === 'companyId' ? { documentTemplateId: null } : {}),
+    }))
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }))
   }
 
@@ -132,8 +145,8 @@ export default function DevelopmentForm({
     const newErrors: Record<string, string> = {}
     if (!formData.name.trim()) newErrors.name = 'Nome é obrigatório'
     if (!formData.companyId) newErrors.companyId = 'Selecione uma empresa'
+    if (!formData.documentTemplateId) newErrors.documentTemplateId = 'Selecione um modelo de contrato publicado'
     if (!formData.logo.trim()) newErrors.logo = 'Logo é obrigatória'
-    if (formData.logo && !isValidLogoReference(formData.logo)) newErrors.logo = 'Informe uma URL valida ou envie uma imagem'
     if (settingsData.reservationValidityDays < 1 || settingsData.reservationValidityDays > 180) newErrors.reservationValidityDays = 'Informe entre 1 e 180 dias.'
     if (settingsData.defaultInterestRate < 0 || settingsData.defaultInterestRate > 10) newErrors.defaultInterestRate = 'Informe entre 0% e 10% ao mes.'
     if (settingsData.minDownPaymentPercentage < 0 || settingsData.minDownPaymentPercentage > 100) newErrors.minDownPaymentPercentage = 'Informe entre 0% e 100%.'
@@ -168,35 +181,6 @@ export default function DevelopmentForm({
         : [...prev.paymentMethods, method],
     }))
     if (errors.paymentMethods) setErrors((prev) => ({ ...prev, paymentMethods: '' }))
-  }
-
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    try {
-      setUploadingLogo(true)
-      setErrors((prev) => ({ ...prev, logo: '', submit: '' }))
-      const payload = new FormData()
-      payload.append('file', file)
-
-      const response = await fetch('/api/uploads', {
-        method: 'POST',
-        body: payload,
-      })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Erro ao enviar imagem')
-
-      setFormData((prev) => ({ ...prev, logo: data.url }))
-    } catch (error) {
-      setErrors((prev) => ({
-        ...prev,
-        logo: error instanceof Error ? error.message : 'Erro ao enviar imagem',
-      }))
-    } finally {
-      setUploadingLogo(false)
-      e.target.value = ''
-    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -264,111 +248,6 @@ export default function DevelopmentForm({
           </div>
 
           <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
-            <div>
-              <h3 className='text-base font-semibold text-foreground'>Contrato</h3>
-              <p className='mt-1 text-sm text-muted'>Dados usados para gerar contratos deste empreendimento.</p>
-            </div>
-
-            <div className='mt-5 grid gap-4 md:grid-cols-2'>
-              <label className='block'>
-                <span className='mb-2 block text-sm font-semibold text-foreground'>Vendedor</span>
-                <input
-                  name='sellerName'
-                  value={contractSettingsData.sellerName}
-                  onChange={updateContractSetting}
-                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
-                  placeholder='Razao social ou nome do vendedor'
-                />
-              </label>
-              <label className='block'>
-                <span className='mb-2 block text-sm font-semibold text-foreground'>CPF/CNPJ do vendedor</span>
-                <input
-                  name='sellerDocument'
-                  value={contractSettingsData.sellerDocument}
-                  onChange={updateContractSetting}
-                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
-                  placeholder='00.000.000/0000-00'
-                />
-              </label>
-              <label className='block md:col-span-2'>
-                <span className='mb-2 block text-sm font-semibold text-foreground'>Endereco do vendedor</span>
-                <input
-                  name='sellerAddress'
-                  value={contractSettingsData.sellerAddress}
-                  onChange={updateContractSetting}
-                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
-                  placeholder='Endereco completo'
-                />
-              </label>
-              <label className='block md:col-span-2'>
-                <span className='mb-2 block text-sm font-semibold text-foreground'>Representantes</span>
-                <textarea
-                  name='sellerRepresentatives'
-                  rows={3}
-                  value={contractSettingsData.sellerRepresentatives}
-                  onChange={updateContractSetting}
-                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
-                  placeholder='Ex.: Por Diego Oliveira, socio administrador'
-                />
-              </label>
-              <label className='block md:col-span-2'>
-                <span className='mb-2 block text-sm font-semibold text-foreground'>Descricao do empreendimento</span>
-                <textarea
-                  name='propertyDescription'
-                  rows={4}
-                  value={contractSettingsData.propertyDescription}
-                  onChange={updateContractSetting}
-                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
-                  placeholder='Localizacao, area, matricula e demais informacoes do empreendimento'
-                />
-              </label>
-              <label className='block md:col-span-2'>
-                <span className='mb-2 block text-sm font-semibold text-foreground'>Origem/regularidade do imovel</span>
-                <textarea
-                  name='acquisitionDescription'
-                  rows={4}
-                  value={contractSettingsData.acquisitionDescription}
-                  onChange={updateContractSetting}
-                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
-                  placeholder='Historico de aquisicao, matricula e situacao juridica'
-                />
-              </label>
-              <label className='block md:col-span-2'>
-                <span className='mb-2 block text-sm font-semibold text-foreground'>Instrucoes de pagamento</span>
-                <textarea
-                  name='paymentInstructions'
-                  rows={4}
-                  value={contractSettingsData.paymentInstructions}
-                  onChange={updateContractSetting}
-                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
-                  placeholder='Banco, pix, boleto, regras de pagamento e observacoes'
-                />
-              </label>
-              <label className='block md:col-span-2'>
-                <span className='mb-2 block text-sm font-semibold text-foreground'>Foro</span>
-                <input
-                  name='jurisdiction'
-                  value={contractSettingsData.jurisdiction}
-                  onChange={updateContractSetting}
-                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
-                  placeholder='Comarca de ...'
-                />
-              </label>
-              <label className='block md:col-span-2'>
-                <span className='mb-2 block text-sm font-semibold text-foreground'>Clausulas adicionais</span>
-                <textarea
-                  name='additionalClauses'
-                  rows={5}
-                  value={contractSettingsData.additionalClauses}
-                  onChange={updateContractSetting}
-                  className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary'
-                  placeholder='Clausulas especificas deste empreendimento'
-                />
-              </label>
-            </div>
-          </div>
-
-          <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
             <label className='mb-2 block text-sm font-semibold text-foreground'>Nome do Empreendimento *</label>
             <input
               type='text'
@@ -384,38 +263,19 @@ export default function DevelopmentForm({
           </div>
 
           <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
-            <label className='mb-2 block text-sm font-semibold text-foreground'>Logo *</label>
-            <input
-              type='text'
-              name='logo'
+            <ImageUploadField
+              label='Logo'
               value={formData.logo}
-              onChange={handleInputChange}
-              className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary ${
-                errors.logo ? 'border-red-300' : 'border-border'
-              }`}
-              placeholder='https://example.com/logo.png ou /uploads/logo.png'
+              onChange={(logo) => {
+                setFormData((current) => ({ ...current, logo }))
+                setErrors((current) => ({ ...current, logo: '' }))
+              }}
+              error={errors.logo}
+              onError={(logoError) => setErrors((current) => ({ ...current, logo: logoError }))}
+              previewAlt={formData.name || 'Logo do empreendimento'}
+              required
             />
-            <label className='mt-3 flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
-              {uploadingLogo ? 'Enviando imagem...' : 'Enviar imagem'}
-              <input
-                type='file'
-                accept='image/png,image/jpeg,image/webp'
-                className='sr-only'
-                disabled={uploadingLogo}
-                onChange={handleLogoUpload}
-              />
-            </label>
-            {errors.logo && <p className='mt-2 text-sm text-red-600'>{errors.logo}</p>}
           </div>
-
-          {formData.logo && !errors.logo && (
-            <div className='rounded-2xl border border-border bg-surface p-5'>
-              <p className='text-sm font-semibold text-foreground'>Pre-visualizacao</p>
-              <div className='mt-4 rounded-2xl border border-dashed border-border bg-surface-secondary p-6'>
-                <img src={formData.logo} alt={formData.name || 'Logo do empreendimento'} className='h-20 max-w-full object-contain' />
-              </div>
-            </div>
-          )}
 
           <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
             <div>
@@ -552,6 +412,45 @@ export default function DevelopmentForm({
                 <span className='mt-1 block text-sm text-muted'>Quando ativo, a equipe pode ajustar condicoes na simulacao com criterio comercial.</span>
               </span>
             </label>
+          </div>
+
+          <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+            <div>
+              <h3 className='text-base font-semibold text-foreground'>Documentos da venda</h3>
+              <p className='mt-1 text-sm text-muted'>Defina o modelo de contrato usado nas vendas deste empreendimento.</p>
+            </div>
+
+            <div className='mt-5 grid gap-4'>
+              <label className='block'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Modelo de contrato</span>
+                <select
+                  name='documentTemplateId'
+                  value={formData.documentTemplateId ?? ''}
+                  onChange={handleInputChange}
+                  className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary ${
+                    errors.documentTemplateId ? 'border-red-300' : 'border-border'
+                  }`}
+                >
+                  <option value=''>Selecione um modelo publicado</option>
+                  {documentTemplates
+                    .filter((template) =>
+                      template.company.id === formData.companyId &&
+                      template.purpose === 'sale_contract' &&
+                      template.status === 'published' &&
+                      template.versions.some((version) => version.status === 'published'),
+                    )
+                    .map((template) => {
+                      const published = template.versions.find((version) => version.status === 'published')
+                      return <option key={template.id} value={template.id}>{template.name} (v{published?.version})</option>
+                    })}
+                </select>
+                {errors.documentTemplateId && <p className='mt-2 text-sm text-red-600'>{errors.documentTemplateId}</p>}
+                <p className='mt-2 text-xs text-muted'>Somente modelos publicados da empresa selecionada podem ser usados.</p>
+              </label>
+              <div className='rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted'>
+                O conteúdo, as variáveis e os dados do contrato são configurados em <strong className='text-foreground'>Modelos → Configurar uso</strong>. Aqui você apenas escolhe qual modelo será aplicado às vendas.
+              </div>
+            </div>
           </div>
         </div>
 

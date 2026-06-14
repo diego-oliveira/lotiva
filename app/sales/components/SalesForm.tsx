@@ -124,6 +124,16 @@ const REQUIRED_DOCUMENT_FIELDS: { key: keyof User; label: string }[] = [
   { key: 'maritalStatus', label: 'Estado civil' },
 ]
 
+const MARITAL_STATUS_OPTIONS = [
+  { value: '', label: 'Selecione...' },
+  { value: 'Solteiro', label: 'Solteiro(a)' },
+  { value: 'Casado', label: 'Casado(a)' },
+  { value: 'Uniao estavel', label: 'Uniao estavel' },
+  { value: 'Separado', label: 'Separado(a)' },
+  { value: 'Divorciado', label: 'Divorciado(a)' },
+  { value: 'Viuvo', label: 'Viuvo(a)' },
+]
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
@@ -285,7 +295,7 @@ export default function SalesForm({
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch('/api/clients')
+      const response = await fetch('/api/clients?scope=operational')
       if (response.ok) setUsers(await response.json())
     } catch (error) {
       console.error('Error fetching users:', error)
@@ -858,6 +868,16 @@ export default function SalesForm({
                   <h3 className='text-base font-semibold text-foreground'>Documentos</h3>
                   <p className='mt-1 text-sm text-muted'>Complete os dados contratuais sem sair do fluxo de venda.</p>
                 </div>
+                {documentNotice && (
+                  <div className='rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800'>
+                    {documentNotice}
+                  </div>
+                )}
+                {errors.documents && (
+                  <div className='rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700'>
+                    {errors.documents}
+                  </div>
+                )}
                 <div className='grid gap-4 md:grid-cols-2'>
                   <label className='block'>
                     <span className='mb-2 block text-sm font-semibold text-foreground'>CPF</span>
@@ -902,11 +922,15 @@ export default function SalesForm({
                   </label>
                   <label className='block'>
                     <span className='mb-2 block text-sm font-semibold text-foreground'>Estado civil</span>
-                    <input
+                    <select
                       value={documentForm.maritalStatus}
                       onChange={(event) => updateDocumentField('maritalStatus', event.target.value)}
                       className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
-                    />
+                    >
+                      {MARITAL_STATUS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
                   </label>
                   <label className='block md:col-span-2'>
                     <span className='mb-2 block text-sm font-semibold text-foreground'>Endereco</span>
@@ -931,16 +955,6 @@ export default function SalesForm({
                     <span className='pill bg-emerald-50 text-emerald-700'>Dados completos</span>
                   )}
                 </div>
-                {documentNotice && (
-                  <div className='rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800'>
-                    {documentNotice}
-                  </div>
-                )}
-                {errors.documents && (
-                  <div className='rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700'>
-                    {errors.documents}
-                  </div>
-                )}
               </section>
             )}
 

@@ -183,11 +183,3 @@ export async function generatePDFFromHTMLProduction(
     }
   }
 }
-
-export async function generateContractPDFProduction(
-  contractData: any
-): Promise<Buffer> {
-  const { generateContractPDFHTML } = await import('./contractGenerator')
-  const html = generateContractPDFHTML(contractData)
-  return generatePDFFromHTMLProduction(html)
-}

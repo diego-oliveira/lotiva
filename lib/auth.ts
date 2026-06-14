@@ -39,6 +39,11 @@ export async function isAdminEligibleEmail(email?: string | null) {
     select: {
       id: true,
       memberships: {
+        where: {
+          roles: {
+            some: {},
+          },
+        },
         select: { id: true },
         take: 1,
       },

@@ -19,6 +19,13 @@ function SignInFormContent() {
   const [error, setError] = useState<string | null>(null)
 
   const callbackUrl = searchParams.get('callbackUrl') ?? '/'
+  const accessError = searchParams.get('error')
+  const accessErrorMessage =
+    accessError === 'AccessDenied'
+      ? 'Este usuario nao possui uma funcao com acesso ao sistema.'
+      : accessError === 'SessionRequired'
+        ? 'Sua sessao expirou. Solicite um novo link de acesso.'
+        : null
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -60,9 +67,9 @@ function SignInFormContent() {
         />
       </div>
 
-      {error && (
+      {(error || accessErrorMessage) && (
         <div className='rounded-lg border border-danger/20 bg-danger/5 px-4 py-3 text-sm font-medium text-danger'>
-          {error}
+          {error ?? accessErrorMessage}
         </div>
       )}
 

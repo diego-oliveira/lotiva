@@ -31,5 +31,6 @@ export function getUploadFilePath(fileName: string) {
 }
 
 export function isValidUploadedImagePath(value: string) {
-  return value.startsWith(`${uploadPublicPath}/`)
+  if (!value.startsWith(`${uploadPublicPath}/`)) return false
+  return isSafeUploadFileName(value.slice(uploadPublicPath.length + 1))
 }

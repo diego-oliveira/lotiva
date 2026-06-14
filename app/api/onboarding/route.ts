@@ -34,19 +34,6 @@ function asPositiveInteger(value: unknown) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null
 }
 
-function validateUrl(value: string) {
-  try {
-    new URL(value)
-    return true
-  } catch {
-    return false
-  }
-}
-
-function validateLogoReference(value: string) {
-  return isValidUploadedImagePath(value) || validateUrl(value)
-}
-
 function getBlockIdentifier(index: number, prefix: string) {
   if (prefix === 'letter') {
     return String.fromCharCode(65 + index)
@@ -82,9 +69,9 @@ export async function POST(req: Request) {
   const lotPrice = asPositiveNumber(data.lotPrice)
 
   if (!companyName) errors.companyName = 'Informe o nome da empresa.'
-  if (!companyLogo || !validateLogoReference(companyLogo)) errors.companyLogo = 'Informe uma URL valida ou envie um logo para a empresa.'
+  if (!isValidUploadedImagePath(companyLogo)) errors.companyLogo = 'Envie um logo valido para a empresa.'
   if (!developmentName) errors.developmentName = 'Informe o nome do empreendimento.'
-  if (!developmentLogo || !validateLogoReference(developmentLogo)) errors.developmentLogo = 'Informe uma URL valida ou envie um logo para o empreendimento.'
+  if (!isValidUploadedImagePath(developmentLogo)) errors.developmentLogo = 'Envie um logo valido para o empreendimento.'
   if (!blockCount || blockCount > 80) errors.blockCount = 'Informe entre 1 e 80 quadras.'
   if (!lotsPerBlock || lotsPerBlock > 200) errors.lotsPerBlock = 'Informe entre 1 e 200 lotes por quadra.'
   if (!lotArea) errors.lotArea = 'Informe a area padrao do lote.'

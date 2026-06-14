@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, membershipWhere } from '@/lib/access-control'
+import { isValidUploadedImagePath } from '@/lib/uploadStorage'
 import { NextRequest, NextResponse } from 'next/server'
 
 type Params = { params: Promise<{ id: string }> }
@@ -53,6 +54,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       company: true,
       settings: true,
       contractSettings: true,
+      documentTemplate: true,
       _count: {
         select: {
           blocks: true,
@@ -75,6 +77,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
   const { id } = await params
   const data = await req.json()
+  if (!isValidUploadedImagePath(String(data.logo || ''))) {
+    return NextResponse.json({ error: 'Envie uma imagem valida para o logo.' }, { status: 400 })
+  }
 
   const canAccessDevelopment = await prisma.development.count({
     where: {
@@ -84,6 +89,24 @@ export async function PUT(req: NextRequest, { params }: Params) {
   })
   if (!canAccessDevelopment) return forbiddenResponse()
 
+  const documentTemplateId = String(data.documentTemplateId || '').trim()
+  if (!documentTemplateId) {
+    return NextResponse.json({ error: 'Selecione um modelo de contrato publicado.' }, { status: 400 })
+  }
+  const template = await prisma.documentTemplate.findFirst({
+    where: {
+      id: documentTemplateId,
+      companyId: data.companyId,
+      purpose: 'sale_contract',
+      status: 'published',
+      versions: { some: { status: 'published' } },
+    },
+    select: { id: true },
+  })
+  if (!template) {
+    return NextResponse.json({ error: 'Selecione um modelo publicado da mesma empresa.' }, { status: 400 })
+  }
+
   const updated = await prisma.$transaction(async (tx) => {
     const development = await tx.development.update({
       where: { id },
@@ -91,6 +114,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
         name: data.name,
         logo: data.logo,
         companyId: data.companyId,
+        documentTemplateId,
         updatedAt: new Date(),
       },
     })

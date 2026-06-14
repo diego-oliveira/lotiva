@@ -76,7 +76,7 @@ lotiva/
 │   ├── page.tsx                # Homepage
 │   └── globals.css             # Global styles
 ├── lib/                         # Utility libraries
-│   ├── contractGenerator.ts    # Contract HTML/PDF generation
+│   ├── document-templates.ts   # Templates, variaveis e renderizacao de contratos
 │   ├── emailService.ts         # Email functionality
 │   ├── pdfGenerator.ts         # PDF creation utilities
 │   └── prisma.ts              # Prisma client configuration

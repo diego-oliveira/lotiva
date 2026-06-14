@@ -9,7 +9,7 @@ type NavItem = {
   href: string
   label: string
   description: string
-  icon: 'dashboard' | 'setup' | 'company' | 'development' | 'user' | 'lot' | 'sale' | 'finance'
+  icon: 'dashboard' | 'setup' | 'company' | 'development' | 'document' | 'user' | 'lot' | 'sale' | 'finance'
   permission?: 'admin' | 'manageSettings' | 'manageUsers' | 'sales' | 'finance'
 }
 
@@ -62,6 +62,13 @@ const navItems: NavItem[] = [
     label: 'Empreendimentos',
     description: 'Loteamentos',
     icon: 'development',
+    permission: 'manageSettings',
+  },
+  {
+    href: '/document-templates',
+    label: 'Modelos',
+    description: 'Documentos e contratos',
+    icon: 'document',
     permission: 'manageSettings',
   },
   {
@@ -123,6 +130,12 @@ function NavIcon({ icon }: { icon: NavItem['icon'] }) {
           <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M3 20h18M6 20V10l6-4 6 4v10M9 20v-4h6v4' />
         </svg>
       )
+    case 'document':
+      return (
+        <svg className={className} fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M7 3.75h7l3 3V20.25H7zM14 3.75v3h3M9.5 11h5M9.5 14.5h5M9.5 18h3' />
+        </svg>
+      )
     case 'user':
       return (
         <svg className={className} fill='none' stroke='currentColor' viewBox='0 0 24 24'>
@@ -163,25 +176,46 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [permissions, setPermissions] = useState<PermissionMap | null>(null)
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
+  const [accessChecked, setAccessChecked] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const isAuthPage = pathname.startsWith('/signin') || pathname.startsWith('/auth')
 
   useEffect(() => {
-    if (isAuthPage) return
+    if (isAuthPage) {
+      setAccessChecked(true)
+      return
+    }
+
+    setAccessChecked(false)
     fetch('/api/me/permissions', { cache: 'no-store' })
-      .then((response) => (response.ok ? response.json() : null))
+      .then(async (response) => {
+        if (response.status === 403) {
+          await signOut({ callbackUrl: '/signin?error=AccessDenied' })
+          return null
+        }
+
+        if (!response.ok) {
+          window.location.replace('/signin?error=SessionRequired')
+          return null
+        }
+
+        return response.json()
+      })
       .then((payload) => {
+        if (!payload) return
         setPermissions(payload?.permissions ?? null)
         setCurrentUser(payload?.user ?? null)
+        setAccessChecked(true)
       })
       .catch(() => {
         setPermissions(null)
         setCurrentUser(null)
+        window.location.replace('/signin?error=SessionRequired')
       })
   }, [isAuthPage])
 
   useEffect(() => {
-    if (isAuthPage) return
+    if (isAuthPage || !accessChecked || !currentUser) return
 
     const fetchNotifications = () => {
       fetch('/api/notifications', { cache: 'no-store' })
@@ -193,7 +227,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     fetchNotifications()
     const interval = window.setInterval(fetchNotifications, 60000)
     return () => window.clearInterval(interval)
-  }, [isAuthPage, pathname])
+  }, [accessChecked, currentUser, isAuthPage, pathname])
 
   useEffect(() => {
     setUserMenuOpen(false)
@@ -212,11 +246,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const visibleNavItems = useMemo(() => {
     if (!permissions) return navItems
-    return navItems.filter((item) => !item.permission || permissions[item.permission])
+    const salesOnly =
+      permissions.sales &&
+      !permissions.admin &&
+      !permissions.manageSettings &&
+      !permissions.manageUsers &&
+      !permissions.finance
+    return navItems.filter((item) => {
+      if (salesOnly && item.href === '/') return false
+      return !item.permission || permissions[item.permission]
+    })
   }, [permissions])
 
   if (isAuthPage) {
     return <>{children}</>
+  }
+
+  if (!accessChecked || !currentUser || !permissions) {
+    return (
+      <main className='flex min-h-screen items-center justify-center bg-background'>
+        <p className='text-sm font-medium text-muted'>Validando acesso...</p>
+      </main>
+    )
   }
 
   return (

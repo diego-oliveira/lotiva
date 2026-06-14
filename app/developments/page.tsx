@@ -40,6 +40,7 @@ interface Development {
     jurisdiction: string
     additionalClauses: string
   } | null
+  documentTemplateId?: string | null
   _count?: {
     blocks: number
   }

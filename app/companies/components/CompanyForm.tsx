@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import FormDrawer from '@/app/components/FormDrawer'
+import ImageUploadField from '@/app/components/ImageUploadField'
 
 interface Company {
   id?: string
@@ -16,16 +17,6 @@ interface CompanyFormProps {
   onSave: (mode: 'create' | 'update') => void
 }
 
-function isValidLogoReference(value: string) {
-  if (value.startsWith('/uploads/')) return true
-  try {
-    new URL(value)
-    return true
-  } catch {
-    return false
-  }
-}
-
 export default function CompanyForm({
   company,
   isOpen,
@@ -34,7 +25,6 @@ export default function CompanyForm({
 }: CompanyFormProps) {
   const [formData, setFormData] = useState<Company>({ name: '', logo: '' })
   const [loading, setLoading] = useState(false)
-  const [uploadingLogo, setUploadingLogo] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -56,38 +46,8 @@ export default function CompanyForm({
     const newErrors: Record<string, string> = {}
     if (!formData.name.trim()) newErrors.name = 'Nome é obrigatório'
     if (!formData.logo.trim()) newErrors.logo = 'Logo é obrigatória'
-    if (formData.logo && !isValidLogoReference(formData.logo)) newErrors.logo = 'Informe uma URL valida ou envie uma imagem'
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
-  }
-
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    try {
-      setUploadingLogo(true)
-      setErrors((prev) => ({ ...prev, logo: '', submit: '' }))
-      const payload = new FormData()
-      payload.append('file', file)
-
-      const response = await fetch('/api/uploads', {
-        method: 'POST',
-        body: payload,
-      })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Erro ao enviar imagem')
-
-      setFormData((prev) => ({ ...prev, logo: data.url }))
-    } catch (error) {
-      setErrors((prev) => ({
-        ...prev,
-        logo: error instanceof Error ? error.message : 'Erro ao enviar imagem',
-      }))
-    } finally {
-      setUploadingLogo(false)
-      e.target.value = ''
-    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -148,38 +108,19 @@ export default function CompanyForm({
           </div>
 
           <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
-            <label className='mb-2 block text-sm font-semibold text-foreground'>Logo *</label>
-            <input
-              type='text'
-              name='logo'
+            <ImageUploadField
+              label='Logo'
               value={formData.logo}
-              onChange={handleInputChange}
-              className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary ${
-                errors.logo ? 'border-red-300' : 'border-border'
-              }`}
-              placeholder='https://example.com/logo.png ou /uploads/logo.png'
+              onChange={(logo) => {
+                setFormData((current) => ({ ...current, logo }))
+                setErrors((current) => ({ ...current, logo: '' }))
+              }}
+              error={errors.logo}
+              onError={(logoError) => setErrors((current) => ({ ...current, logo: logoError }))}
+              previewAlt={formData.name || 'Logo da empresa'}
+              required
             />
-            <label className='mt-3 flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
-              {uploadingLogo ? 'Enviando imagem...' : 'Enviar imagem'}
-              <input
-                type='file'
-                accept='image/png,image/jpeg,image/webp'
-                className='sr-only'
-                disabled={uploadingLogo}
-                onChange={handleLogoUpload}
-              />
-            </label>
-            {errors.logo && <p className='mt-2 text-sm text-red-600'>{errors.logo}</p>}
           </div>
-
-          {formData.logo && !errors.logo && (
-            <div className='rounded-2xl border border-border bg-surface p-5'>
-              <p className='text-sm font-semibold text-foreground'>Pre-visualizacao</p>
-              <div className='mt-4 rounded-2xl border border-dashed border-border bg-surface-secondary p-6'>
-                <img src={formData.logo} alt={formData.name || 'Logo da empresa'} className='h-20 max-w-full object-contain' />
-              </div>
-            </div>
-          )}
         </div>
 
         <div className='flex justify-end gap-3 border-t border-border pt-6'>

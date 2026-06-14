@@ -21,7 +21,9 @@ model Company {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  developments Development[]
+  developments      Development[]
+  documentTemplates DocumentTemplate[]
+  documentVariables DocumentVariable[]
 }
 
 model Development {
@@ -32,11 +34,16 @@ model Development {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company          Company                      @relation(fields: [companyId], references: [id])
-  blocks           Block[]
-  memberships      DevelopmentUser[]
-  settings         DevelopmentSettings?
-  contractSettings DevelopmentContractSettings?
+  company            Company                      @relation(fields: [companyId], references: [id])
+  blocks             Block[]
+  memberships        DevelopmentUser[]
+  settings           DevelopmentSettings?
+  contractSettings   DevelopmentContractSettings?
+  documentTemplateId String?
+  documentTemplate   DocumentTemplate?            @relation(fields: [documentTemplateId], references: [id], onDelete: SetNull)
+  documentValues     DevelopmentDocumentValue[]
+
+  @@index([documentTemplateId])
 }
 
 model DevelopmentSettings {
@@ -92,16 +99,19 @@ model User {
   updatedAt     DateTime  @updatedAt
 
   reservations        Reservation[]
-  createdReservations Reservation[]     @relation("ReservationCreator")
+  createdReservations Reservation[]             @relation("ReservationCreator")
   sales               Sale[]
-  proposals           Proposal[]        @relation("ProposalBuyer")
-  createdProposals    Proposal[]        @relation("ProposalCreator")
-  reviewedProposals   Proposal[]        @relation("ProposalReviewer")
+  createdSales        Sale[]                    @relation("SaleCreator")
+  proposals           Proposal[]                @relation("ProposalBuyer")
+  createdProposals    Proposal[]                @relation("ProposalCreator")
+  reviewedProposals   Proposal[]                @relation("ProposalReviewer")
   notifications       Notification[]
   memberships         DevelopmentUser[]
   accounts            Account[]
   sessions            Session[]
   lotEvents           LotEvent[]
+  documentTemplates   DocumentTemplate[]
+  templateVersions    DocumentTemplateVersion[]
 }
 
 model Account {
@@ -270,6 +280,7 @@ model Proposal {
 model Sale {
   id               String    @id @default(uuid())
   userId           String
+  createdById      String?
   lotId            String    @unique
   reservationId    String?   @unique
   proposalId       String?   @unique
@@ -283,28 +294,107 @@ model Sale {
   updatedAt        DateTime  @updatedAt
 
   user        User         @relation(fields: [userId], references: [id])
+  createdBy   User?        @relation("SaleCreator", fields: [createdById], references: [id], onDelete: SetNull)
   lot         Lot          @relation(fields: [lotId], references: [id])
   reservation Reservation? @relation(fields: [reservationId], references: [id])
   proposal    Proposal?    @relation(fields: [proposalId], references: [id])
   contract    Contract?
   receivables Receivable[]
+
+  @@index([createdById, createdAt])
 }
 
 model Contract {
-  id                     String    @id @default(uuid())
-  saleId                 String    @unique
-  contractNumber         String    @unique
-  content                String    @db.Text
-  status                 String    @default("generated")
-  version                Int       @default(1)
-  lastRegenerationReason String?
-  emailSent              Boolean   @default(false)
-  emailSentAt            DateTime?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  id                        String    @id @default(uuid())
+  saleId                    String    @unique
+  contractNumber            String    @unique
+  content                   String    @db.Text
+  status                    String    @default("generated")
+  version                   Int       @default(1)
+  lastRegenerationReason    String?
+  emailSent                 Boolean   @default(false)
+  emailSentAt               DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  documentTemplateVersionId String?
 
-  sale   Sale            @relation(fields: [saleId], references: [id])
-  events ContractEvent[]
+  sale                    Sale                     @relation(fields: [saleId], references: [id])
+  documentTemplateVersion DocumentTemplateVersion? @relation(fields: [documentTemplateVersionId], references: [id], onDelete: SetNull)
+  events                  ContractEvent[]
+
+  @@index([documentTemplateVersionId])
+}
+
+model DocumentTemplate {
+  id          String   @id @default(uuid())
+  companyId   String
+  createdById String
+  name        String
+  type        String   @default("contract")
+  purpose     String   @default("sale_contract")
+  description String?
+  status      String   @default("draft")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company      Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy    User                      @relation(fields: [createdById], references: [id])
+  versions     DocumentTemplateVersion[]
+  developments Development[]
+
+  @@index([companyId, type, purpose, status])
+}
+
+model DocumentTemplateVersion {
+  id          String    @id @default(uuid())
+  templateId  String
+  createdById String
+  version     Int
+  status      String    @default("draft")
+  content     String    @db.Text
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  template  DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  createdBy User             @relation(fields: [createdById], references: [id])
+  contracts Contract[]
+
+  @@unique([templateId, version])
+  @@index([templateId, status, version])
+}
+
+model DocumentVariable {
+  id           String   @id @default(uuid())
+  companyId    String
+  key          String
+  label        String
+  type         String   @default("text")
+  required     Boolean  @default(false)
+  defaultValue String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  values  DevelopmentDocumentValue[]
+
+  @@unique([companyId, key])
+  @@index([companyId])
+}
+
+model DevelopmentDocumentValue {
+  id            String   @id @default(uuid())
+  developmentId String
+  variableId    String
+  value         String   @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  development Development      @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  variable    DocumentVariable @relation(fields: [variableId], references: [id], onDelete: Cascade)
+
+  @@unique([developmentId, variableId])
+  @@index([variableId])
 }
 
 model ContractEvent {

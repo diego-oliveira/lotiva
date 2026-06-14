@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { membershipWhere } from '@/lib/access-control'
+import { isValidUploadedImagePath } from '@/lib/uploadStorage'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
@@ -35,6 +36,9 @@ export async function POST(req: Request) {
   if (auth.response) return auth.response
 
   const data = await req.json()
+  if (!isValidUploadedImagePath(String(data.logo || ''))) {
+    return NextResponse.json({ error: 'Envie uma imagem valida para o logo.' }, { status: 400 })
+  }
 
   const company = await prisma.company.create({
     data: {

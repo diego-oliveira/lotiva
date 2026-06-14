@@ -17,6 +17,17 @@ type ContractMeta = {
   createdAt: string
   updatedAt: string
   missingFields: string[]
+  currentDocumentTemplate?: {
+    id: string
+    name: string
+    version: number
+  } | null
+  documentTemplate?: {
+    id: string
+    name: string
+    version: number
+    currentPublishedVersion?: number | null
+  } | null
   sale: {
     totalValue: number
     downPayment: number
@@ -44,6 +55,7 @@ export default function ContractViewer({
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [customMessage, setCustomMessage] = useState('');
   const [regenerationReason, setRegenerationReason] = useState('');
+  const [useOriginalTemplate, setUseOriginalTemplate] = useState(false);
 
   useEffect(() => {
     if (isOpen && saleId) {
@@ -56,6 +68,12 @@ export default function ContractViewer({
     setError(null);
 
     try {
+      const metaResponse = await fetch(`/api/contracts/${saleId}?meta=1`, { cache: 'no-store' });
+      if (metaResponse.ok) {
+        const meta = await metaResponse.json() as ContractMeta;
+        setContractMeta(meta);
+      }
+
       const response = await fetch(`/api/contracts/${saleId}`);
 
       if (!response.ok) {
@@ -69,7 +87,7 @@ export default function ContractViewer({
 
       const html = await response.text();
       setContractHTML(html);
-      await fetchContractMeta();
+      if (!metaResponse.ok) await fetchContractMeta();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nao foi possivel carregar o contrato');
     } finally {
@@ -83,7 +101,7 @@ export default function ContractViewer({
     setContractMeta(await response.json());
   };
 
-  const generateContract = async (force = false, reason = '') => {
+  const generateContract = async (force = false, reason = '', keepOriginalTemplate = false) => {
     try {
       setLoading(true);
       const generateResponse = await fetch('/api/contracts/generate', {
@@ -91,7 +109,7 @@ export default function ContractViewer({
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ saleId, force, reason })
+        body: JSON.stringify({ saleId, force, reason, useOriginalTemplate: keepOriginalTemplate })
       });
 
       if (!generateResponse.ok) {
@@ -104,6 +122,7 @@ export default function ContractViewer({
 
       setShowRegenerateDialog(false);
       setRegenerationReason('');
+      setUseOriginalTemplate(false);
       await fetchContract();
     } catch (err) {
       setError(
@@ -209,6 +228,11 @@ export default function ContractViewer({
               <p className='text-xs font-semibold uppercase tracking-[0.18em] text-muted'>Contrato</p>
               <h3 className='mt-2 text-2xl font-bold text-foreground'>{contractMeta?.contractNumber ?? 'Contrato da venda'}</h3>
               <p className='mt-1 text-sm text-muted'>Revise pendencias, gere, regenere, baixe ou envie o documento.</p>
+              {contractMeta?.documentTemplate && (
+                <p className='mt-2 text-xs font-semibold text-primary'>
+                  {contractMeta.documentTemplate.name} · versao {contractMeta.documentTemplate.version}
+                </p>
+              )}
             </div>
 
           <div className='flex flex-wrap items-center gap-3'>
@@ -484,11 +508,28 @@ export default function ContractViewer({
                 placeholder='Ex.: cliente atualizou dados para contrato'
               />
             </label>
+            {contractMeta?.documentTemplate && (
+              <label className='mt-4 flex items-start gap-3 rounded-xl border border-border bg-background px-4 py-3'>
+                <input
+                  type='checkbox'
+                  checked={useOriginalTemplate}
+                  onChange={(event) => setUseOriginalTemplate(event.target.checked)}
+                  className='mt-1'
+                />
+                <span>
+                  <span className='block text-sm font-semibold text-foreground'>Manter a versao original do modelo</span>
+                  <span className='mt-1 block text-xs text-muted'>
+                    Versao usada: {contractMeta.documentTemplate.version}. Desmarcado, sera usada a versao publicada atual
+                    {contractMeta.documentTemplate.currentPublishedVersion ? ` (${contractMeta.documentTemplate.currentPublishedVersion})` : ''}.
+                  </span>
+                </span>
+              </label>
+            )}
             <div className='mt-6 flex justify-end gap-3'>
               <button onClick={() => setShowRegenerateDialog(false)} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
                 Cancelar
               </button>
-              <button onClick={() => generateContract(true, regenerationReason)} disabled={!regenerationReason.trim()} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'>
+              <button onClick={() => generateContract(true, regenerationReason, useOriginalTemplate)} disabled={!regenerationReason.trim()} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'>
                 Regenerar
               </button>
             </div>
