@@ -151,16 +151,81 @@ Não execute `docker compose down -v`: a opção `-v` remove os volumes persiste
 
 ## 9. Backups
 
-Backup do banco:
+O script `scripts/backup-database.sh` cria um `pg_dump` no formato custom,
+valida o arquivo com `pg_restore`, gera um checksum SHA-256 e remove backups
+mais antigos que 14 dias.
+
+### Executar manualmente
 
 ```bash
-docker exec lotiva_postgres_prod pg_dump -U lotiva_user lotiva > lotiva-backup-$(date +%Y%m%d-%H%M).sql
+cd /opt/lotiva
+sudo ./scripts/backup-database.sh
 ```
 
-Backup dos uploads:
+Os arquivos são armazenados por padrão em:
+
+```text
+/var/backups/lotiva/database
+```
+
+Para alterar diretório ou retenção:
 
 ```bash
-docker run --rm -v lotiva_uploads_data:/data -v "$PWD":/backup alpine tar czf /backup/lotiva-uploads-$(date +%Y%m%d-%H%M).tar.gz -C /data .
+sudo BACKUP_DIR=/mnt/backups/lotiva BACKUP_RETENTION_DAYS=30 \
+  ./scripts/backup-database.sh
+```
+
+### Agendar diariamente
+
+Edite o cron do usuário root:
+
+```bash
+sudo crontab -e
+```
+
+Adicione a linha abaixo para executar todos os dias às 03:00:
+
+```cron
+0 3 * * * cd /opt/lotiva && ./scripts/backup-database.sh 2>&1 | /usr/bin/logger -t lotiva-backup
+```
+
+Verifique a execução:
+
+```bash
+sudo journalctl -t lotiva-backup
+sudo ls -lh /var/backups/lotiva/database
+```
+
+### Restaurar
+
+A restauração substitui toda a base e deixa a aplicação indisponível durante
+o processo. O script cria automaticamente um backup de segurança do estado
+atual antes de iniciar:
+
+```bash
+cd /opt/lotiva
+sudo ./scripts/restore-database.sh \
+  /var/backups/lotiva/database/lotiva-AAAAmmddTHHMMSSZ.dump \
+  --yes
+```
+
+Faça um teste de restauração antes do lançamento e repita periodicamente.
+
+### Cópia externa
+
+Um backup salvo apenas na mesma VPS não protege contra perda do servidor,
+disco ou conta. Antes de produção, configure também uma cópia dos arquivos
+de `/var/backups/lotiva/database` para outro provedor, bucket ou máquina.
+
+Os contratos e uploads ficam em volumes separados e não estão incluídos
+neste backup do banco. Para uma segunda etapa, faça também backup dos volumes:
+
+```bash
+docker run --rm \
+  -v lotiva_uploads_data:/uploads:ro \
+  -v lotiva_documents_data:/documents:ro \
+  -v /var/backups/lotiva:/backup \
+  alpine sh -c 'tar czf /backup/files-$(date +%Y%m%dT%H%M%SZ).tar.gz /uploads /documents'
 ```
 
 ## 10. Pontos importantes
