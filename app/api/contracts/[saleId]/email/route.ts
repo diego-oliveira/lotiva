@@ -2,7 +2,8 @@ import { prisma } from '@/lib/prisma';
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { contractAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server';
-import { generatePDFFromHTMLProduction } from '@/lib/pdfGeneratorProduction';
+import { convertDocxToPdf } from '@/lib/docxDocuments'
+import { readDocumentFile, saveDocumentFile } from '@/lib/documentStorage'
 import { emailService } from '@/lib/emailService';
 
 type Params = { params: Promise<{ saleId: string }> };
@@ -42,7 +43,13 @@ export async function POST(req: Request, { params }: Params) {
       );
     }
 
-    const pdfBuffer = await generatePDFFromHTMLProduction(contract.content);
+    const pdfBuffer = contract.pdfPath
+      ? await readDocumentFile(contract.pdfPath)
+      : await convertDocxToPdf(await readDocumentFile(contract.docxPath))
+    if (!contract.pdfPath) {
+      const pdfPath = await saveDocumentFile(pdfBuffer, 'contracts', 'pdf')
+      await prisma.contract.update({ where: { id: contract.id }, data: { pdfPath } })
+    }
 
     // Send email
     const emailSent = await emailService.sendContractEmail(

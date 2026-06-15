@@ -44,7 +44,8 @@ export default function ContractViewer({
   isOpen,
   onClose
 }: ContractViewerProps) {
-  const [contractHTML, setContractHTML] = useState<string>('');
+  const [contractReady, setContractReady] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState('');
   const [contractMeta, setContractMeta] = useState<ContractMeta | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,8 +64,13 @@ export default function ContractViewer({
     }
   }, [isOpen, saleId]);
 
+  useEffect(() => () => {
+    if (previewUrl) window.URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
   const fetchContract = async () => {
     setLoading(true);
+    setContractReady(false);
     setError(null);
 
     try {
@@ -74,20 +80,22 @@ export default function ContractViewer({
         setContractMeta(meta);
       }
 
-      const response = await fetch(`/api/contracts/${saleId}`);
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          // Gera o contrato quando ele ainda nao existe.
-          await generateContract();
-          return;
-        }
-        throw new Error('Nao foi possivel carregar o contrato');
+      if (metaResponse.status === 404) {
+        await generateContract();
+        return;
       }
-
-      const html = await response.text();
-      setContractHTML(html);
-      if (!metaResponse.ok) await fetchContractMeta();
+      if (!metaResponse.ok) throw new Error('Nao foi possivel carregar o contrato');
+      const previewResponse = await fetch(`/api/contracts/${saleId}/pdf?inline=1`, { cache: 'no-store' });
+      if (!previewResponse.ok) {
+        const payload = await previewResponse.json().catch(() => ({}));
+        throw new Error(payload.details || payload.error || 'Nao foi possivel gerar a pre-visualizacao do contrato');
+      }
+      const nextPreviewUrl = window.URL.createObjectURL(await previewResponse.blob());
+      setPreviewUrl((current) => {
+        if (current) window.URL.revokeObjectURL(current);
+        return nextPreviewUrl;
+      });
+      setContractReady(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nao foi possivel carregar o contrato');
     } finally {
@@ -207,16 +215,6 @@ export default function ContractViewer({
     }
   };
 
-  const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(contractHTML);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
-    }
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -236,7 +234,7 @@ export default function ContractViewer({
             </div>
 
           <div className='flex flex-wrap items-center gap-3'>
-            {contractHTML && (
+            {contractReady && (
               <>
                 <button
                   onClick={() => setShowRegenerateDialog(true)}
@@ -246,26 +244,12 @@ export default function ContractViewer({
                   Regenerar
                 </button>
 
-                <button
-                  onClick={handlePrint}
+                <a
+                  href={`/api/contracts/${saleId}/docx`}
                   className='inline-flex items-center rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'
-                  title='Imprimir contrato'
                 >
-                  <svg
-                    className='mr-2 h-4 w-4'
-                    fill='none'
-                    stroke='currentColor'
-                    viewBox='0 0 24 24'
-                  >
-                    <path
-                      strokeLinecap='round'
-                      strokeLinejoin='round'
-                      strokeWidth='2'
-                      d='M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z'
-                    />
-                  </svg>
-                  Imprimir
-                </button>
+                  Baixar DOCX
+                </a>
 
                 <button
                   onClick={handleDownloadPDF}
@@ -414,9 +398,9 @@ export default function ContractViewer({
             <div className='flex h-full items-center justify-center'>
               <div className='h-12 w-12 animate-spin rounded-full border-b-2 border-primary'></div>
             </div>
-          ) : contractHTML ? (
+          ) : contractReady ? (
             <iframe
-              srcDoc={contractHTML}
+              src={previewUrl}
               className='h-full w-full border-none bg-white'
               title='Visualizacao do contrato'
             />

@@ -25,6 +25,8 @@
 *.pem
 /public/uploads/*
 !/public/uploads/.gitkeep
+/storage/documents/*
+!/storage/documents/.gitkeep
 
 # debug
 npm-debug.log*

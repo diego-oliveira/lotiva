@@ -2,7 +2,8 @@ import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { saleAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
-import { generateContractNumber, renderDocumentTemplate } from '@/lib/document-templates'
+import { generateContractNumber } from '@/lib/document-templates'
+import { generateContractDocuments } from '@/lib/contractDocuments'
 
 export async function POST(req: Request) {
   const auth = await requireAuthenticatedUser()
@@ -86,13 +87,12 @@ export async function POST(req: Request) {
       )
     }
 
-    const rendered = renderDocumentTemplate({
-      content: templateVersion.content,
+    const rendered = await generateContractDocuments({
+      templatePath: templateVersion.filePath,
       sale,
       contractNumber,
       generatedAt,
     })
-    const contractHTML = rendered.html
     const missingFields = rendered.missingVariables.map((variable) => `Variavel sem valor: {{${variable}}}`)
 
     if (missingFields.length > 0) {
@@ -101,13 +101,17 @@ export async function POST(req: Request) {
         missingFields,
       }, { status: 422 })
     }
+    if (!rendered.docxPath) {
+      return NextResponse.json({ error: 'Nao foi possivel gerar o arquivo DOCX.' }, { status: 500 })
+    }
 
     const contract = await prisma.$transaction(async (tx) => {
       if (sale.contract) {
         const updated = await tx.contract.update({
           where: { id: sale.contract.id },
           data: {
-            content: contractHTML,
+            docxPath: rendered.docxPath,
+            pdfPath: rendered.pdfPath,
             status: 'generated',
             version: { increment: 1 },
             lastRegenerationReason: reason || null,
@@ -134,7 +138,8 @@ export async function POST(req: Request) {
         data: {
           saleId,
           contractNumber,
-          content: contractHTML,
+          docxPath: rendered.docxPath,
+          pdfPath: rendered.pdfPath,
           status: 'generated',
           documentTemplateVersionId: templateVersion.id,
           events: {

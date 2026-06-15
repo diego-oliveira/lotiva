@@ -113,12 +113,7 @@ export async function GET(req: Request, { params }: Params) {
       })
     }
 
-    return new NextResponse(contract.content, {
-      headers: {
-        'Content-Type': 'text/html',
-        'Cache-Control': 'no-cache'
-      }
-    })
+    return NextResponse.redirect(new URL(`/api/contracts/${saleId}/pdf?inline=1`, req.url))
 
   } catch (error) {
     console.error('Erro ao buscar contrato:', error)

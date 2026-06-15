@@ -1,6 +1,5 @@
 import { documentTemplateAccessWhere, forbiddenResponse, membershipWhere } from '@/lib/access-control'
 import { requireAuthenticatedUser } from '@/lib/auth'
-import { getTemplateVariables } from '@/lib/document-templates'
 import { hasCompanyPermission } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'
@@ -63,7 +62,7 @@ export async function GET(_: Request, { params }: Params) {
     return NextResponse.json({ error: 'Publique o modelo antes de configurar o uso.' }, { status: 400 })
   }
 
-  const variables = getTemplateVariables(published.content)
+  const variables = Array.isArray(published.variables) ? published.variables.map(String) : []
   const configurableVariables = [...new Set(variables.filter((variable) => settingFields[variable]))]
   const customKeys = [...new Set(
     variables.filter((variable) => variable.startsWith('custom.')).map((variable) => variable.slice(7)),
@@ -151,7 +150,7 @@ export async function POST(req: Request, { params }: Params) {
   })
   if (developments.length !== selectedIds.length) return forbiddenResponse()
 
-  const variables = getTemplateVariables(template.versions[0].content)
+  const variables = Array.isArray(template.versions[0].variables) ? template.versions[0].variables.map(String) : []
   const configurableVariables = [...new Set(variables.filter((variable) => settingFields[variable]))]
   const customKeys = [...new Set(
     variables.filter((variable) => variable.startsWith('custom.')).map((variable) => variable.slice(7)),

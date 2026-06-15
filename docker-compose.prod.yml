@@ -46,8 +46,10 @@ services:
       SMTP_FROM: ${SMTP_FROM}
       UPLOAD_DIR: /app/uploads
       UPLOAD_PUBLIC_PATH: /uploads
+      DOCUMENT_STORAGE_DIR: /app/documents
     volumes:
       - uploads_data:/app/uploads
+      - documents_data:/app/documents
     ports:
       - '${APP_PORT:-3000}:3000'
     networks:
@@ -56,6 +58,7 @@ services:
 volumes:
   postgres_data:
   uploads_data:
+  documents_data:
 
 networks:
   lotiva:

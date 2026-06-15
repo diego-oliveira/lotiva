@@ -4,7 +4,7 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && apt-get install -y --no-install-recommends openssl ca-certificates libreoffice-writer fonts-crosextra-carlito fonts-liberation \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./

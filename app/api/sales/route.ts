@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, lotAccessWhere, proposalAccessWhere, reservationAccessWhere, saleAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
-import { generateContractNumber, renderDocumentTemplate } from '@/lib/document-templates'
+import { generateContractNumber } from '@/lib/document-templates'
+import { generateContractDocuments } from '@/lib/contractDocuments'
 import { createLotEvent } from '@/lib/lot-events'
 import { hasDevelopmentPermission } from '@/lib/permissions'
 import { calculateInstallment, evaluateDirectSaleTerms } from '@/lib/proposal-rules'
@@ -336,8 +337,8 @@ export async function POST(req: Request) {
           generatedAt,
           settings: lot.block.development?.contractSettings,
         }
-        const renderedTemplate = renderDocumentTemplate({
-          content: templateVersion.content,
+        const renderedTemplate = await generateContractDocuments({
+          templatePath: templateVersion.filePath,
           sale: contractData.sale,
           contractNumber,
           generatedAt,
@@ -345,12 +346,14 @@ export async function POST(req: Request) {
         if (renderedTemplate.missingVariables.length) {
           throw new Error(`Dados ausentes para o modelo: ${renderedTemplate.missingVariables.join(', ')}`)
         }
+        if (!renderedTemplate.docxPath) throw new Error('Nao foi possivel gerar o DOCX do contrato.')
 
         await prisma.contract.create({
           data: {
             saleId: sale.id,
             contractNumber,
-            content: renderedTemplate.html,
+            docxPath: renderedTemplate.docxPath,
+            pdfPath: renderedTemplate.pdfPath,
             documentTemplateVersionId: templateVersion.id,
           }
         })

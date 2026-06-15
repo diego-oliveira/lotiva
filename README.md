@@ -21,7 +21,7 @@ Lotiva is a Next.js-based real estate management system designed specifically fo
 ### Contract System
 
 - **ABNT Standard Margins**: Contracts follow Brazilian ABNT formatting standards (3cm top/left, 2cm bottom/right margins)
-- **PDF Generation**: High-quality PDF contracts using Puppeteer
+- **Document Generation**: Versioned DOCX templates with PDF conversion through LibreOffice
 - **Automated Email Distribution**: Contracts are automatically sent to customers via email
 - **Professional Templates**: Pre-formatted legal contract templates
 
@@ -51,7 +51,7 @@ Lotiva is a Next.js-based real estate management system designed specifically fo
 
 ### Additional Libraries
 
-- **Puppeteer**: PDF generation from HTML
+- **Docxtemplater + LibreOffice**: DOCX variable replacement and PDF conversion
 - **Nodemailer**: Email sending functionality
 - **Prisma Client**: Type-safe database client
 
@@ -137,6 +137,7 @@ lotiva/
 
 - Node.js 18+
 - Docker and Docker Compose
+- LibreOffice (required when running the Next.js app directly outside Docker)
 - SMTP email service (Gmail, etc.)
 
 ### Quick Setup (Recommended)
@@ -262,6 +263,7 @@ Recommended production environment:
 
 ```env
 UPLOAD_DIR="/var/www/lotiva/uploads"
+DOCUMENT_STORAGE_DIR="/var/www/lotiva/documents"
 UPLOAD_PUBLIC_PATH="/uploads"
 ```
 
@@ -334,7 +336,7 @@ Configure SMTP settings in environment variables for automatic contract distribu
 
 ### PDF Generation
 
-- Puppeteer-based PDF generation
+- Versioned DOCX contract generation with LibreOffice PDF conversion
 - ABNT standard margins (3cm top/left, 2cm bottom/right)
 - Professional contract formatting
 

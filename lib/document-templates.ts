@@ -122,10 +122,16 @@ export const documentVariableGroups = [
     label: 'Venda',
     variables: [
       ['venda.valor_total', 'Valor total'],
+      ['venda.valor_total_extenso', 'Valor total por extenso'],
       ['venda.entrada', 'Entrada'],
+      ['venda.entrada_extenso', 'Entrada por extenso'],
+      ['venda.entrada_percentual', 'Percentual da entrada'],
       ['venda.saldo', 'Saldo'],
+      ['venda.saldo_extenso', 'Saldo por extenso'],
       ['venda.numero_parcelas', 'Numero de parcelas'],
+      ['venda.numero_parcelas_extenso', 'Numero de parcelas por extenso'],
       ['venda.valor_parcela', 'Valor da parcela'],
+      ['venda.valor_parcela_extenso', 'Valor da parcela por extenso'],
       ['venda.primeiro_vencimento', 'Primeiro vencimento'],
       ['venda.reajuste', 'Regra de reajuste'],
       ['proposta.observacoes', 'Observacoes da proposta'],
@@ -142,58 +148,15 @@ const optionalVariables = new Set([
   'proposta.observacoes',
 ])
 
-export const defaultContractTemplate = `CONTRATO PARTICULAR DE PROMESSA DE COMPRA E VENDA DE IMOVEL
-
-Por este instrumento particular, as partes abaixo identificadas ajustam a promessa de compra e venda de lote integrante do empreendimento {{empreendimento.nome}}.
-
-PROMITENTE VENDEDOR
-{{vendedor.nome}}, documento {{vendedor.documento}}, com endereco em {{vendedor.endereco}}.
-{{vendedor.representantes}}
-
-PROMITENTE COMPRADOR
-{{cliente.nome}}, {{cliente.estado_civil}}, {{cliente.profissao}}, natural de {{cliente.naturalidade}}, RG {{cliente.rg}}, CPF {{cliente.cpf}}, residente em {{cliente.endereco}}, email {{cliente.email}}.
-
-1. DO EMPREENDIMENTO
-{{empreendimento.descricao}}
-
-2. DA ORIGEM E REGULARIDADE
-{{empreendimento.origem_imovel}}
-
-3. DO OBJETO
-O vendedor promete vender ao comprador o lote {{lote.numero}} da quadra {{lote.quadra}}, com area total de {{lote.area}}, frente de {{lote.frente}}, fundo de {{lote.fundo}}, lateral esquerda de {{lote.lateral_esquerda}} e lateral direita de {{lote.lateral_direita}}.
-
-4. DO PRECO E PAGAMENTO
-O valor total da venda e de {{venda.valor_total}}. O comprador pagara entrada de {{venda.entrada}} e o saldo de {{venda.saldo}} em {{venda.numero_parcelas}} parcela(s) de {{venda.valor_parcela}}, com primeiro vencimento em {{venda.primeiro_vencimento}}. {{venda.reajuste}}
-
-{{vendedor.instrucoes_pagamento}}
-
-5. CLAUSULAS ADICIONAIS
-{{vendedor.clausulas_adicionais}}
-
-6. DO FORO
-As partes elegem o foro de {{vendedor.foro}} para dirimir duvidas oriundas deste contrato, com renuncia a qualquer outro.
-
-{{vendedor.foro}}, {{contrato.data}}.
-
-
-____________________________________
-{{vendedor.nome}}
-{{vendedor.documento}}
-
-
-____________________________________
-{{cliente.nome}}
-CPF {{cliente.cpf}}
-
-
-____________________________________
-Testemunha 1
-
-
-____________________________________
-Testemunha 2
-
-Contrato numero {{contrato.numero}}`
+export function isOptionalDocumentVariable(variable: string, sale: TemplateSale) {
+  if (optionalVariables.has(variable)) return true
+  if (!variable.startsWith('custom.')) return false
+  const key = variable.slice(7)
+  return Boolean(
+    sale.lot.block.development?.company?.documentVariables
+      ?.some((item) => item.key === key && !item.required),
+  )
+}
 
 export function generateContractNumber() {
   const now = new Date()
@@ -222,6 +185,73 @@ function formatCurrency(value: number) {
   }).format(value)
 }
 
+function integerToWords(value: number): string {
+  const integer = Math.trunc(Math.abs(value))
+  if (integer === 0) return 'zero'
+
+  const units = ['', 'um', 'dois', 'tres', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove']
+  const teens = ['dez', 'onze', 'doze', 'treze', 'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove']
+  const tens = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa']
+  const hundreds = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos']
+
+  const underThousand = (part: number) => {
+    if (part === 100) return 'cem'
+    const words: string[] = []
+    const hundred = Math.trunc(part / 100)
+    const remainder = part % 100
+    if (hundred) words.push(hundreds[hundred])
+    if (remainder >= 10 && remainder <= 19) {
+      words.push(teens[remainder - 10])
+    } else {
+      const ten = Math.trunc(remainder / 10)
+      const unit = remainder % 10
+      if (ten) words.push(tens[ten])
+      if (unit) words.push(units[unit])
+    }
+    return words.join(' e ')
+  }
+
+  const groups = [
+    { size: 1_000_000_000, singular: 'bilhao', plural: 'bilhoes' },
+    { size: 1_000_000, singular: 'milhao', plural: 'milhoes' },
+    { size: 1_000, singular: 'mil', plural: 'mil' },
+  ]
+  let remainder = integer
+  const parts: string[] = []
+
+  for (const group of groups) {
+    const quantity = Math.trunc(remainder / group.size)
+    if (!quantity) continue
+    remainder %= group.size
+    if (group.size === 1_000 && quantity === 1) {
+      parts.push('mil')
+    } else {
+      parts.push(`${underThousand(quantity)} ${quantity === 1 ? group.singular : group.plural}`)
+    }
+  }
+  if (remainder) parts.push(underThousand(remainder))
+
+  return parts.join(remainder > 0 && remainder < 100 ? ' e ' : ', ')
+}
+
+function currencyToWords(value: number) {
+  const centsValue = Math.round(Math.abs(value) * 100)
+  const reais = Math.trunc(centsValue / 100)
+  const cents = centsValue % 100
+  const parts: string[] = []
+
+  if (reais > 0) {
+    const currencyName = reais === 1 ? 'real' : 'reais'
+    const separator = reais >= 1_000_000 && reais % 1_000_000 === 0 ? ' de ' : ' '
+    parts.push(`${integerToWords(reais)}${separator}${currencyName}`)
+  }
+  if (cents > 0) {
+    parts.push(`${integerToWords(cents)} ${cents === 1 ? 'centavo' : 'centavos'}`)
+  }
+
+  return parts.length > 0 ? parts.join(' e ') : 'zero reais'
+}
+
 function formatNumber(value: number, suffix = '') {
   return `${value.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}${suffix}`
 }
@@ -235,12 +265,7 @@ function escapeHtml(value: unknown) {
     .replace(/'/g, '&#039;')
 }
 
-export function getTemplateVariables(content: string) {
-  return [...content.matchAll(/{{\s*([^{}]+?)\s*}}/g)].map((match) => match[1].trim())
-}
-
-export function validateTemplateContent(content: string, customKeys: string[] = []) {
-  const variables = getTemplateVariables(content)
+export function validateDocumentVariables(variables: string[], customKeys: string[] = []) {
   const allowedCustomVariables = new Set(customKeys.map((key) => `custom.${key}`))
   return {
     variables: [...new Set(variables)],
@@ -251,7 +276,7 @@ export function validateTemplateContent(content: string, customKeys: string[] = 
   }
 }
 
-function buildValues(sale: TemplateSale, contractNumber: string, generatedAt: Date) {
+export function getDocumentValues(sale: TemplateSale, contractNumber: string, generatedAt: Date): Record<string, string> {
   const development = sale.lot.block.development
   const settings = development?.contractSettings
   const balance = Math.max(sale.totalValue - sale.downPayment, 0)
@@ -300,73 +325,22 @@ function buildValues(sale: TemplateSale, contractNumber: string, generatedAt: Da
     'lote.lateral_esquerda': formatNumber(sale.lot.leftSide, ' m'),
     'lote.lateral_direita': formatNumber(sale.lot.rightSide, ' m'),
     'venda.valor_total': formatCurrency(sale.totalValue),
+    'venda.valor_total_extenso': currencyToWords(sale.totalValue),
     'venda.entrada': formatCurrency(sale.downPayment),
+    'venda.entrada_extenso': currencyToWords(sale.downPayment),
+    'venda.entrada_percentual': sale.totalValue > 0
+      ? `${formatNumber((sale.downPayment / sale.totalValue) * 100)}%`
+      : '',
     'venda.saldo': formatCurrency(balance),
+    'venda.saldo_extenso': currencyToWords(balance),
     'venda.numero_parcelas': String(sale.installmentCount),
+    'venda.numero_parcelas_extenso': integerToWords(sale.installmentCount),
     'venda.valor_parcela': formatCurrency(sale.installmentValue),
+    'venda.valor_parcela_extenso': currencyToWords(sale.installmentValue),
     'venda.primeiro_vencimento': formatDate(sale.firstDueDate),
     'venda.reajuste': sale.annualAdjustment ? 'Com reajuste anual.' : 'Sem reajuste anual.',
     'proposta.observacoes': sale.proposal?.notes ?? '',
     ...customDefaults,
     ...customOverrides,
   } satisfies Record<string, string>
-}
-
-export function renderDocumentTemplate(input: {
-  content: string
-  sale: TemplateSale
-  contractNumber: string
-  generatedAt: Date
-}) {
-  const customKeys = [
-    ...(input.sale.lot.block.development?.company?.documentVariables ?? []).map((item) => item.key),
-    ...(input.sale.lot.block.development?.documentValues ?? []).map((item) => item.variable.key),
-  ]
-  const validation = validateTemplateContent(input.content, customKeys)
-  if (validation.unknownVariables.length > 0) {
-    throw new Error(`Variaveis desconhecidas: ${validation.unknownVariables.join(', ')}`)
-  }
-
-  const values = buildValues(input.sale, input.contractNumber, input.generatedAt)
-  const optionalCustomVariables = new Set(
-    (input.sale.lot.block.development?.company?.documentVariables ?? [])
-      .filter((variable) => !variable.required)
-      .map((variable) => `custom.${variable.key}`),
-  )
-  const missingVariables = validation.variables.filter(
-    (variable) =>
-      variable !== 'quebra_pagina' &&
-      !optionalVariables.has(variable) &&
-      !optionalCustomVariables.has(variable) &&
-      !String(values[variable as keyof typeof values] ?? '').trim(),
-  )
-  let rendered = input.content.replace(/{{\s*([^{}]+?)\s*}}/g, (_, rawVariable: string) => {
-    const variable = rawVariable.trim()
-    if (variable === 'quebra_pagina') return '\n[[PAGE_BREAK]]\n'
-    return String(values[variable as keyof typeof values] ?? '')
-  })
-
-  const sections = rendered.split('[[PAGE_BREAK]]')
-  const body = sections
-    .map((section) => `<section class="page">${escapeHtml(section.trim())}</section>`)
-    .join('')
-
-  return {
-    missingVariables: [...new Set(missingVariables)],
-    html: `<!doctype html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contrato ${escapeHtml(input.contractNumber)}</title>
-  <style>
-    body { margin: 0; background: #f3f4f6; color: #111827; font-family: Georgia, "Times New Roman", serif; }
-    .page { box-sizing: border-box; max-width: 860px; min-height: 1120px; margin: 24px auto; padding: 64px; background: #fff; white-space: pre-wrap; line-height: 1.7; text-align: justify; page-break-after: always; }
-    .page:last-child { page-break-after: auto; }
-    @media print { body { background: #fff; } .page { max-width: none; min-height: auto; margin: 0; padding: 0; } }
-  </style>
-</head>
-<body>${body}</body>
-</html>`,
-  }
 }

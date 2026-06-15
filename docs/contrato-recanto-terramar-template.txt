@@ -1,0 +1,130 @@
+CONTRATO PARTICULAR DE PROMESSA DE COMPRA E VENDA DE IMÓVEL
+
+Pelo presente Instrumento Particular de Promessa de Compra e Venda, nesta cidade de Camaçari, Estado da Bahia, as partes abaixo identificadas têm, entre si, justo e contratado o seguinte:
+
+PROMITENTE VENDEDOR: {{vendedor.nome}}, inscrito no CPF/CNPJ sob o nº {{vendedor.documento}}, com endereço em {{vendedor.endereco}}.
+
+PROMITENTE COMPRADOR: {{cliente.nome}}, {{cliente.estado_civil}}, {{cliente.profissao}}, portador(a) da Cédula de Identidade nº {{cliente.rg}}, inscrito(a) no CPF sob o nº {{cliente.cpf}}, residente e domiciliado(a) em {{cliente.endereco}}. Endereço eletrônico: {{cliente.email}}.
+
+As partes, de forma livre, consciente e sem qualquer coação ou induzimento, resolvem celebrar o presente CONTRATO PARTICULAR DE PROMESSA DE COMPRA E VENDA DE IMÓVEL, mediante as cláusulas e condições seguintes.
+
+CLÁUSULA PRIMEIRA: DO OBJETO
+
+Na melhor forma de direito, constitui objeto deste instrumento o imóvel integrante do empreendimento {{empreendimento.nome}}, assim descrito:
+
+{{empreendimento.descricao}}
+
+CLÁUSULA SEGUNDA: DA FORMA DE AQUISIÇÃO
+
+{{empreendimento.origem_imovel}}
+
+CLÁUSULA TERCEIRA: DA PROMESSA
+
+Por este instrumento e na melhor forma de direito, o PROMITENTE VENDEDOR promete vender ao PROMITENTE COMPRADOR, e este promete comprar, o lote nº {{lote.numero}}, da quadra {{lote.quadra}}, com área total de {{lote.area}}, de acordo com os termos, cláusulas, condições e demais estipulações deste contrato, que as partes, por si e por seus sucessores, comprometem-se a cumprir e respeitar integralmente.
+
+CLÁUSULA QUARTA: DOS LIMITES E CONFRONTAÇÕES
+
+FRENTE: {{lote.frente}};
+FUNDO: {{lote.fundo}};
+LADO DIREITO: {{lote.lateral_direita}};
+LADO ESQUERDO: {{lote.lateral_esquerda}}.
+
+CLÁUSULA QUINTA: DO VALOR E DA FORMA DE PAGAMENTO
+
+A presente transação é realizada pelo preço certo e ajustado de {{venda.valor_total}} ({{venda.valor_total_extenso}}), a ser pago da seguinte forma:
+
+I – pagamento da entrada no valor de {{venda.entrada}} ({{venda.entrada_extenso}}), paga no ato da assinatura deste contrato.
+
+O pagamento será realizado por meio de transferência bancária, PIX ou boleto bancário, conforme as seguintes instruções:
+
+{{vendedor.instrucoes_pagamento}}
+
+II – o valor remanescente de {{venda.saldo}} ({{venda.saldo_extenso}}), a ser pago em {{venda.numero_parcelas}} ({{venda.numero_parcelas_extenso}}) parcelas mensais e consecutivas de {{venda.valor_parcela}} ({{venda.valor_parcela_extenso}}), com vencimento da primeira parcela em {{venda.primeiro_vencimento}} e das demais nos meses subsequentes.
+
+As parcelas serão corrigidas anualmente pelo INCC (Índice Nacional de Custo da Construção) enquanto perdurar a execução das obras do loteamento e, após a conclusão das obras, pelo IPCA até a quitação integral do contrato.
+
+PARÁGRAFO PRIMEIRO: O PROMITENTE VENDEDOR declara, para todos os fins e efeitos de direito, que o pagamento da comissão de corretagem referente à negociação deste instrumento será de sua inteira responsabilidade, não arcando o PROMITENTE COMPRADOR com qualquer valor adicional. O PROMITENTE COMPRADOR declara ciência de que a comissão corresponde a 5% (cinco por cento) do valor total da venda e será paga à empresa corretora no ato do pagamento do sinal, razão pela qual, em caso de desistência por sua iniciativa, o valor correspondente à corretagem não será devolvido.
+
+PARÁGRAFO SEGUNDO: Caso ocorra, temporária ou definitivamente, por motivos alheios à vontade das partes, extinção, proibição ou restrição do indexador adotado neste contrato, por imposição governamental ou legislativa, os contratantes elegem como índice substituto aquele que melhor reflita a evolução dos preços no Brasil.
+
+PARÁGRAFO TERCEIRO: Considerando que o preço constante desta cláusula representa o valor atual do imóvel prometido à venda, não estará ele sujeito a índice ou tabela de deflação que venha a ser estabelecido pelo Governo Federal em decorrência de alteração da política econômica vigente, preservando-se o equilíbrio financeiro da operação imobiliária.
+
+CLÁUSULA SEXTA: DA ANTECIPAÇÃO DE PAGAMENTOS
+
+A antecipação de pagamento será realizada em ordem inversa ou cronológica à dos vencimentos das parcelas, a critério do PROMITENTE COMPRADOR. No caso de quitação antecipada e total do saldo devedor, quando ainda restarem 60 (sessenta) parcelas ou mais, será aplicado redutor de 10% (dez por cento). Quando restarem menos de 60 (sessenta) parcelas, o percentual de desconto será negociado de acordo com a quantidade de parcelas quitadas e seus respectivos vencimentos.
+
+CLÁUSULA SÉTIMA: DAS PENALIDADES
+
+O atraso no pagamento das parcelas acarretará multa de 10% (dez por cento) sobre a parcela vencida, acrescida de juros de mora de 1% (um por cento) ao mês e correção monetária.
+
+CLÁUSULA OITAVA: DA RESCISÃO CONTRATUAL
+
+O não pagamento de 3 (três) parcelas, consecutivas ou não, com seus respectivos encargos, e não sendo purgada a mora, acarretará a rescisão deste contrato, de pleno direito, independentemente de notificação ou interpelação judicial ou extrajudicial. Nessa hipótese, o PROMITENTE VENDEDOR devolverá ao PROMITENTE COMPRADOR, dentro de prazo equivalente ao período transcorrido entre a assinatura e a rescisão deste contrato, 50% (cinquenta por cento) do total pago em parcelas, excluído o sinal, permanecendo a parcela restante com o PROMITENTE VENDEDOR a título de ressarcimento por perdas, danos e lucros cessantes.
+
+PARÁGRAFO PRIMEIRO: Do valor a ser devolvido serão deduzidas as despesas relativas à publicidade e propaganda, correspondentes a 2% (dois por cento), à intermediação imobiliária, correspondentes a 5% (cinco por cento), bem como as vantagens de fruição e uso auferidas pelo PROMITENTE COMPRADOR, custas judiciais e extrajudiciais e encargos fiscais, tributários, previdenciários e trabalhistas, totalizando 10% (dez por cento), tudo calculado sobre o preço atualizado de venda do imóvel.
+
+PARÁGRAFO SEGUNDO: Rescindido o contrato, serão de responsabilidade do PROMITENTE COMPRADOR todas as taxas e despesas decorrentes deste contrato ou de seus anexos, podendo o PROMITENTE VENDEDOR compensar essas obrigações com eventuais créditos do PROMITENTE COMPRADOR.
+
+CLÁUSULA NONA: DA IRREVOGABILIDADE E IRRETRATABILIDADE
+
+O presente compromisso é celebrado em caráter irrevogável e irretratável, não comportando arrependimento e obrigando as partes, seus herdeiros e sucessores legais ao fiel cumprimento das disposições aqui estabelecidas.
+
+CLÁUSULA DÉCIMA: DA IMISSÃO NA POSSE
+
+O PROMITENTE COMPRADOR será imitido, neste ato e de forma precária, na posse, uso e gozo do imóvel prometido à venda, obrigando-se a zelar, proteger e defender sua posse contra terceiros. Poderá realizar as benfeitorias e melhorias que julgar necessárias, desde que cumpridas as obrigações previstas na cláusula quinta e observadas as exigências legais, da associação de compradores ou de eventual condomínio. O imóvel não poderá ser onerado ou alienado antes do pagamento da última prestação. A partir da imissão na posse, correrão por conta do PROMITENTE COMPRADOR todas as taxas, contribuições e demais despesas incidentes sobre o imóvel.
+
+CLÁUSULA DÉCIMA PRIMEIRA: DA DECLARAÇÃO DO PROMITENTE VENDEDOR
+
+O PROMITENTE VENDEDOR declara, sob as penas da lei, que nesta data não existem, em seu nome e relativamente ao imóvel transacionado, direta ou indiretamente, ações ou execuções de natureza real, pessoal ou reipersecutória perante a Justiça Federal ou a Justiça do Trabalho, em qualquer instância, nem gravames sobre o referido imóvel.
+
+CLÁUSULA DÉCIMA SEGUNDA: DA REGULARIZAÇÃO E OUTORGA DA ESCRITURA DEFINITIVA
+
+Após a regularização do imóvel e a quitação integral das parcelas mensais referentes ao preço ajustado neste contrato, será outorgada ao PROMITENTE COMPRADOR a competente escritura pública de compra e venda, com posterior registro na matrícula do imóvel.
+
+CLÁUSULA DÉCIMA TERCEIRA: DAS DESPESAS FUTURAS
+
+As despesas referentes à escritura, ao registro e aos documentos futuros que se façam necessários ficarão a cargo do PROMITENTE COMPRADOR.
+
+CLÁUSULA DÉCIMA QUARTA: DAS CONDIÇÕES ESPECIAIS
+
+O PROMITENTE COMPRADOR declara conhecer a planta do {{empreendimento.nome}}, bem como o estágio de sua implantação, aceitando-os formalmente e declarando estar de acordo com todas as cláusulas aqui pactuadas.
+
+CLÁUSULA DÉCIMA QUINTA: DO PRAZO DE ENTREGA
+
+As obras do {{empreendimento.nome}}, incluindo terraplanagem, rede de abastecimento de água potável, pavimentação das ruas, rede elétrica com postes, transformadores e iluminação externa, rede de drenagem, instalação de guias e meios-fios, demarcação individual dos lotes e implantação do clube e de suas áreas de lazer, ficarão a cargo do PROMITENTE VENDEDOR e terão prazo previsto de conclusão de 36 (trinta e seis) meses, com tolerância adicional de 180 (cento e oitenta) dias, contados da assinatura deste contrato, ressalvados os casos fortuitos e de força maior, podendo a conclusão ser antecipada.
+
+PARÁGRAFO ÚNICO: Caso o PROMITENTE VENDEDOR não conclua as obras no prazo pactuado, após o término do período de tolerância, sem que tenha ocorrido prorrogação por motivo de força maior ou caso fortuito, e descontados os dias de atraso do PROMITENTE COMPRADOR no pagamento das parcelas, pagará ao PROMITENTE COMPRADOR, a título de pena convencional, quantia equivalente a 0,1% (um décimo por cento) do valor atualizado do contrato por mês de atraso, calculada pro rata die e exigível até a conclusão das obras.
+
+CLÁUSULA DÉCIMA SEXTA: DA AUTORIZAÇÃO PARA PLANTÃO DE VENDAS
+
+O PROMITENTE COMPRADOR concorda que o PROMITENTE VENDEDOR, diretamente ou por terceiros contratados, mantenha, sem ônus, em local escolhido dentro do empreendimento, inclusive no clube e na área de lazer, até a venda total dos lotes, escritório de vendas ou estrutura destinada a atividades publicitárias, eventos e visitação pública, com livre acesso ao {{empreendimento.nome}} e ao clube.
+
+CLÁUSULA DÉCIMA SÉTIMA: DA MANUTENÇÃO
+
+O PROMITENTE COMPRADOR declara ter visitado previamente o local de implantação do {{empreendimento.nome}}, identificando e escolhendo a localização do lote e da quadra, e declara conhecer a situação do lote e suas características topográficas.
+
+CLÁUSULA DÉCIMA OITAVA: DO FORO
+
+As partes elegem o Foro da {{vendedor.foro}}, por ser o da situação do imóvel, como o único competente para dirimir dúvidas e litígios decorrentes deste contrato, com expressa renúncia a qualquer outro, por mais privilegiado que seja.
+
+E, por estarem justas e contratadas, as partes aceitam o presente contrato tal como redigido, obrigando-se por si e por seus sucessores, e o assinam em 2 (duas) vias de igual teor e forma, rubricando todas as páginas, na presença de 2 (duas) testemunhas, para que produza seus efeitos jurídicos e legais.
+
+Camaçari, Bahia, {{contrato.data}}.
+
+
+_____________________________________
+{{vendedor.nome}}
+CPF/CNPJ: {{vendedor.documento}}
+{{vendedor.representantes}}
+
+
+_____________________________________
+{{cliente.nome}}
+CPF: {{cliente.cpf}}
+
+
+______________________________              ______________________________
+Testemunha 1                                  Testemunha 2
+
+
+Contrato nº {{contrato.numero}}

@@ -308,7 +308,8 @@ model Contract {
   id                        String    @id @default(uuid())
   saleId                    String    @unique
   contractNumber            String    @unique
-  content                   String    @db.Text
+  docxPath                  String
+  pdfPath                   String?
   status                    String    @default("generated")
   version                   Int       @default(1)
   lastRegenerationReason    String?
@@ -351,7 +352,10 @@ model DocumentTemplateVersion {
   createdById String
   version     Int
   status      String    @default("draft")
-  content     String    @db.Text
+  filePath    String
+  fileName    String
+  fileHash    String
+  variables   Json
   publishedAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

@@ -118,14 +118,36 @@ sudo certbot renew --dry-run
 
 ## 8. Atualizar deploy
 
+O projeto possui um script que atualiza o codigo, reconstrói a imagem,
+substitui os containers e exibe o status:
+
 ```bash
 cd /opt/lotiva
-git pull
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
-docker image prune -f
+./deploy.sh
+```
+
+Para também remover imagens Docker antigas após o deploy:
+
+```bash
+./deploy.sh --prune
+```
+
+O script:
+
+1. Confere se `.env.production`, Git, Docker e Docker Compose estão disponíveis.
+2. Interrompe caso existam alterações locais ainda não commitadas na VPS.
+3. Executa `git pull --ff-only origin main`.
+4. Reconstrói e atualiza os containers sem remover os volumes.
+5. Exibe o status final dos serviços.
+
+Para acompanhar os logs:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml logs -f app
 ```
 
 As migrations Prisma rodam automaticamente quando o container da app sobe.
+Não execute `docker compose down -v`: a opção `-v` remove os volumes persistentes.
 
 ## 9. Backups
 
