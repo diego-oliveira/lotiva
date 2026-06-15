@@ -47,6 +47,7 @@ services:
       UPLOAD_DIR: /app/uploads
       UPLOAD_PUBLIC_PATH: /uploads
       DOCUMENT_STORAGE_DIR: /app/documents
+      PAYMENT_CREDENTIALS_KEY: ${PAYMENT_CREDENTIALS_KEY}
     volumes:
       - uploads_data:/app/uploads
       - documents_data:/app/documents

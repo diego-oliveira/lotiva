@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 interface Receivable {
   id: string
@@ -33,8 +33,36 @@ interface Sale {
 interface ReceivablesDrawerProps {
   sale: Sale | null
   isOpen: boolean
+  canManagePayments: boolean
   onClose: () => void
   onUpdated: () => Promise<void>
+}
+
+interface ExternalCharge {
+  id: string
+  providerChargeId: string
+  billingType: string
+  status: string
+  amount: number
+  dueDate: string
+  invoiceUrl: string | null
+  bankSlipUrl: string | null
+  pixPayload: string | null
+}
+
+interface BillingCycle {
+  id: string
+  cycleNumber: number
+  startSequence: number
+  endSequence: number
+  status: string
+  issuedAt: string | null
+  connection: {
+    provider: string
+    environment: string
+    status: string
+  }
+  externalCharges: ExternalCharge[]
 }
 
 function formatCurrency(value: number) {
@@ -74,9 +102,47 @@ function getStatusMeta(receivable: Receivable) {
   return { label: 'Em aberto', className: 'bg-amber-50 text-amber-700' }
 }
 
-export default function ReceivablesDrawer({ sale, isOpen, onClose, onUpdated }: ReceivablesDrawerProps) {
+export default function ReceivablesDrawer({
+  sale,
+  isOpen,
+  canManagePayments,
+  onClose,
+  onUpdated,
+}: ReceivablesDrawerProps) {
   const [savingId, setSavingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [cycles, setCycles] = useState<BillingCycle[]>([])
+  const [cyclesLoading, setCyclesLoading] = useState(false)
+  const [issuing, setIssuing] = useState(false)
+  const [cycleEnvironment, setCycleEnvironment] = useState<'sandbox' | 'production'>('sandbox')
+  const [cycleSuccess, setCycleSuccess] = useState<string | null>(null)
+
+  const loadCycles = async () => {
+    if (!sale || !canManagePayments) return
+
+    setCyclesLoading(true)
+    try {
+      const response = await fetch(`/api/sales/${sale.id}/billing-cycles`, { cache: 'no-store' })
+      const payload = await response.json().catch(() => [])
+      if (!response.ok) {
+        throw new Error(payload.error || 'Nao foi possivel carregar as cobrancas Asaas.')
+      }
+      setCycles(payload)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao foi possivel carregar as cobrancas Asaas.')
+    } finally {
+      setCyclesLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!isOpen || !sale) return
+    setError(null)
+    setCycleSuccess(null)
+    setCycleEnvironment('sandbox')
+    setCycles([])
+    void loadCycles()
+  }, [isOpen, sale?.id, canManagePayments])
 
   const receivables = sale?.receivables ?? []
   const summary = useMemo(() => {
@@ -93,6 +159,39 @@ export default function ReceivablesDrawer({ sale, isOpen, onClose, onUpdated }: 
   }, [receivables])
 
   if (!isOpen || !sale) return null
+
+  const issueBillingCycle = async () => {
+    setIssuing(true)
+    setError(null)
+    setCycleSuccess(null)
+    try {
+      const response = await fetch(`/api/sales/${sale.id}/billing-cycles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          environment: cycleEnvironment,
+          cycleSize: 12,
+          billingType: 'BOLETO',
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload.details || payload.error || 'Nao foi possivel emitir as cobrancas.')
+      }
+
+      setCycleSuccess(
+        payload.alreadyComplete
+          ? 'Este ciclo ja estava completamente emitido.'
+          : `${payload.charges?.length ?? 0} cobranca(s) emitida(s) com sucesso.`,
+      )
+      await loadCycles()
+      await onUpdated()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao foi possivel emitir as cobrancas.')
+    } finally {
+      setIssuing(false)
+    }
+  }
 
   const updateReceivable = async (receivable: Receivable, status: 'paid' | 'pending') => {
     setSavingId(receivable.id)
@@ -155,6 +254,11 @@ export default function ReceivablesDrawer({ sale, isOpen, onClose, onUpdated }: 
               {error}
             </div>
           )}
+          {cycleSuccess && (
+            <div className='mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700'>
+              {cycleSuccess}
+            </div>
+          )}
 
           <section className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
             <div className='metric-card min-w-0 px-4 py-4'>
@@ -174,6 +278,119 @@ export default function ReceivablesDrawer({ sale, isOpen, onClose, onUpdated }: 
               <p className={`mt-2 break-words text-2xl font-bold leading-8 ${summary.overdue > 0 ? 'text-red-700' : 'text-foreground'}`}>{summary.overdue}</p>
             </div>
           </section>
+
+          {canManagePayments && (
+            <section className='mt-6 overflow-hidden rounded-2xl border border-border bg-surface'>
+              <div className='border-b border-border bg-surface-secondary px-5 py-4'>
+                <div className='flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between'>
+                  <div>
+                    <h3 className='text-base font-semibold text-foreground'>Cobrancas Asaas</h3>
+                    <p className='mt-1 text-sm text-muted'>Emita no maximo as proximas 12 parcelas de cada vez.</p>
+                  </div>
+                  <div className='flex flex-col gap-2 sm:flex-row'>
+                    <select
+                      value={cycleEnvironment}
+                      onChange={(event) => setCycleEnvironment(event.target.value as 'sandbox' | 'production')}
+                      className='rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary'
+                    >
+                      <option value='sandbox'>Sandbox</option>
+                      <option value='production'>Producao</option>
+                    </select>
+                    <button
+                      type='button'
+                      onClick={issueBillingCycle}
+                      disabled={issuing}
+                      className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
+                    >
+                      {issuing ? 'Emitindo...' : 'Emitir proximas 12'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {cyclesLoading ? (
+                <div className='px-5 py-8 text-sm text-muted'>Carregando cobrancas...</div>
+              ) : cycles.length === 0 ? (
+                <div className='px-5 py-8 text-center text-sm text-muted'>
+                  Nenhum ciclo de cobrancas foi emitido para esta venda.
+                </div>
+              ) : (
+                <div className='divide-y divide-border'>
+                  {cycles.map((cycle) => (
+                    <details key={cycle.id} className='group px-5 py-4' open={cycles.length === 1}>
+                      <summary className='flex cursor-pointer list-none flex-wrap items-center justify-between gap-3'>
+                        <div>
+                          <div className='flex flex-wrap items-center gap-2'>
+                            <p className='text-sm font-semibold text-foreground'>Ciclo {cycle.cycleNumber}</p>
+                            <span className='pill bg-blue-50 text-blue-700'>
+                              {cycle.connection.environment === 'production' ? 'Producao' : 'Sandbox'}
+                            </span>
+                            <span className={`pill ${cycle.status === 'issued' ? 'bg-emerald-50 text-emerald-700' : cycle.status === 'failed' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                              {cycle.status === 'issued' ? 'Emitido' : cycle.status === 'failed' ? 'Falhou' : 'Em processamento'}
+                            </span>
+                          </div>
+                          <p className='mt-1 text-sm text-muted'>
+                            Parcelas {cycle.startSequence} a {cycle.endSequence} · {cycle.externalCharges.length} cobranca(s)
+                          </p>
+                        </div>
+                        <span className='text-sm font-semibold text-primary group-open:hidden'>Ver cobrancas</span>
+                        <span className='hidden text-sm font-semibold text-primary group-open:inline'>Ocultar</span>
+                      </summary>
+
+                      <div className='mt-4 divide-y divide-border rounded-xl border border-border'>
+                        {cycle.externalCharges.map((charge) => (
+                          <div key={charge.id} className='grid gap-3 px-4 py-3 md:grid-cols-[1fr_1fr_auto] md:items-center'>
+                            <div>
+                              <p className='text-sm font-semibold text-foreground'>{formatCurrency(charge.amount)}</p>
+                              <p className='mt-1 text-xs text-muted'>Vencimento em {formatDate(charge.dueDate)}</p>
+                            </div>
+                            <div>
+                              <span className='pill bg-slate-100 text-slate-700'>{charge.status}</span>
+                              <p className='mt-1 text-xs text-muted'>{charge.providerChargeId}</p>
+                            </div>
+                            <div className='flex flex-wrap gap-2 md:justify-end'>
+                              {charge.invoiceUrl && (
+                                <a
+                                  href={charge.invoiceUrl}
+                                  target='_blank'
+                                  rel='noreferrer'
+                                  className='rounded-lg px-3 py-2 text-xs font-semibold text-primary transition hover:bg-primary/8'
+                                >
+                                  Abrir cobranca
+                                </a>
+                              )}
+                              {charge.bankSlipUrl && (
+                                <a
+                                  href={charge.bankSlipUrl}
+                                  target='_blank'
+                                  rel='noreferrer'
+                                  className='rounded-lg px-3 py-2 text-xs font-semibold text-primary transition hover:bg-primary/8'
+                                >
+                                  Boleto
+                                </a>
+                              )}
+                              {charge.pixPayload && (
+                                <button
+                                  type='button'
+                                  onClick={async () => {
+                                    await navigator.clipboard.writeText(charge.pixPayload || '')
+                                    setCycleSuccess('Codigo PIX copiado.')
+                                  }}
+                                  className='rounded-lg px-3 py-2 text-xs font-semibold text-primary transition hover:bg-primary/8'
+                                >
+                                  Copiar PIX
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
 
           <section className='mt-6 overflow-hidden rounded-2xl border border-border bg-surface'>
             <div className='border-b border-border bg-surface-secondary px-5 py-4'>

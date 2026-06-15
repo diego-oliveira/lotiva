@@ -8,6 +8,7 @@ import { generateContractDocuments } from '@/lib/contractDocuments'
 import { createLotEvent } from '@/lib/lot-events'
 import { hasDevelopmentPermission } from '@/lib/permissions'
 import { calculateInstallment, evaluateDirectSaleTerms } from '@/lib/proposal-rules'
+import { addMoney, decimal, moneyToNumber, multiplyMoney, subtractMoney } from '@/lib/money'
 
 function addMonths(date: Date, months: number) {
   const next = new Date(date)
@@ -190,7 +191,7 @@ export async function POST(req: Request) {
     const requestedDownPayment = Number(data.downPayment)
     const requestedInstallmentCount = Math.trunc(Number(data.installmentCount))
     const directSaleEvaluation = evaluateDirectSaleTerms(settings, {
-      basePrice: lot.price,
+      basePrice: Number(lot.price),
       downPayment: requestedDownPayment,
       installmentCount: requestedInstallmentCount,
     })
@@ -238,17 +239,24 @@ export async function POST(req: Request) {
 
     // Start a transaction to ensure data consistency
     const firstDueDate = approvedProposal?.firstDueDate ?? parseDateOnly(data.firstDueDate) ?? addMonths(new Date(), 1)
-    const downPayment = approvedProposal?.downPayment ?? requestedDownPayment
+    const downPayment = approvedProposal ? Number(approvedProposal.downPayment) : requestedDownPayment
     const installmentCount = approvedProposal?.installmentCount ?? requestedInstallmentCount
-    const financedBalance = Math.max(lot.price - downPayment, 0)
+    const financedBalance = moneyToNumber(subtractMoney(lot.price, downPayment))
     const calculatedInstallmentValue = calculateInstallment(
       financedBalance,
       installmentCount,
       settings.defaultInterestRate,
       settings.interestCalculation,
     )
-    const installmentValue = approvedProposal?.installmentValue ?? Math.round(calculatedInstallmentValue * 100) / 100
-    const totalValue = approvedProposal?.totalValue ?? downPayment + installmentValue * installmentCount
+    const installmentValue = approvedProposal
+      ? Number(approvedProposal.installmentValue)
+      : moneyToNumber(decimal(calculatedInstallmentValue))
+    const totalValue = approvedProposal
+      ? Number(approvedProposal.totalValue)
+      : moneyToNumber(addMoney(
+          downPayment,
+          multiplyMoney(installmentValue, installmentCount),
+        ))
     const annualAdjustment = approvedProposal
       ? approvedProposal.correctionIndex !== 'none'
       : settings.correctionIndex !== 'none'
@@ -281,9 +289,9 @@ export async function POST(req: Request) {
       })
 
       const receivables = buildReceivables(sale.id, {
-        downPayment: sale.downPayment,
+        downPayment: Number(sale.downPayment),
         installmentCount: sale.installmentCount,
-        installmentValue: sale.installmentValue,
+        installmentValue: Number(sale.installmentValue),
         firstDueDate,
       })
 
@@ -316,7 +324,7 @@ export async function POST(req: Request) {
         userId: currentUserId,
         type: 'sale_created',
         title: 'Venda registrada',
-        description: `Venda para ${sale.user.name} no valor de ${sale.totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`,
+        description: `Venda para ${sale.user.name} no valor de ${Number(sale.totalValue).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`,
       })
 
       // Auto-generate contract

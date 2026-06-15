@@ -53,6 +53,7 @@ NEXTAUTH_URL
 NEXTAUTH_SECRET
 AUTH_URL
 AUTH_SECRET
+PAYMENT_CREDENTIALS_KEY
 SMTP_USER
 SMTP_PASSWORD
 SMTP_FROM
@@ -63,6 +64,10 @@ Gere segredos fortes:
 ```bash
 openssl rand -base64 32
 ```
+
+Use uma chave separada em `PAYMENT_CREDENTIALS_KEY` para criptografar as
+credenciais financeiras. Ela deve permanecer estável: perdê-la impede
+descriptografar conexões de pagamento já cadastradas.
 
 Use a URL final com HTTPS:
 

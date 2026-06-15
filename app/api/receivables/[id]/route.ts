@@ -49,12 +49,13 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 
   if (data.status === 'paid') {
-    const paidAmount = Number(data.paidAmount ?? receivable.amount)
+    const receivableAmount = Number(receivable.amount)
+    const paidAmount = Number(data.paidAmount ?? receivableAmount)
     if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
       return NextResponse.json({ error: 'Valor pago invalido.' }, { status: 400 })
     }
 
-    const balance = Math.max(receivable.amount - paidAmount, 0)
+    const balance = Math.max(receivableAmount - paidAmount, 0)
     const updated = await prisma.$transaction(async (tx) => {
       const saved = await tx.receivable.update({
         where: { id },

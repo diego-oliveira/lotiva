@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { createLotEvent } from '@/lib/lot-events'
 import { hasDevelopmentPermission } from '@/lib/permissions'
 import { calculateInstallment, evaluateProposalTerms } from '@/lib/proposal-rules'
+import { addMoney, decimal, moneyToNumber, multiplyMoney, subtractMoney } from '@/lib/money'
 
 function toNumber(value: unknown) {
   const parsed = Number(value)
@@ -127,9 +128,14 @@ export async function POST(req: Request) {
     const interestCalculation = data.interestCalculation || 'none'
     const correctionIndex = data.correctionIndex || 'none'
     const correctionFrequency = data.correctionFrequency || 'monthly'
-    const balance = Math.max(salePrice - downPayment, 0)
-    const installmentValue = calculateInstallment(balance, installmentCount, interestRate, interestCalculation)
-    const totalValue = downPayment + installmentValue * installmentCount
+    const balance = moneyToNumber(subtractMoney(salePrice, downPayment))
+    const installmentValue = moneyToNumber(decimal(
+      calculateInstallment(balance, installmentCount, interestRate, interestCalculation),
+    ))
+    const totalValue = moneyToNumber(addMoney(
+      downPayment,
+      multiplyMoney(installmentValue, installmentCount),
+    ))
 
     if (salePrice <= 0 || downPayment < 0 || downPayment > salePrice || installmentCount <= 0 || installmentValue <= 0) {
       return NextResponse.json({ error: 'Revise a condicao comercial antes de salvar a proposta.' }, { status: 400 })
@@ -145,7 +151,7 @@ export async function POST(req: Request) {
       allowCustomTerms: true,
     }
     const evaluation = evaluateProposalTerms(settings, {
-      basePrice: lot.price,
+      basePrice: Number(lot.price),
       salePrice,
       downPayment,
       installmentCount,

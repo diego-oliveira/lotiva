@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { createLotEvent } from '@/lib/lot-events'
 import { hasDevelopmentPermission } from '@/lib/permissions'
 import { calculateInstallment, evaluateDirectSaleTerms } from '@/lib/proposal-rules'
+import { addMoney, decimal, moneyToNumber, multiplyMoney, subtractMoney } from '@/lib/money'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -202,10 +203,10 @@ export async function PUT(req: Request, { params }: Params) {
         data.userId !== existingSale.userId ||
         data.lotId !== existingSale.lotId ||
         (data.reservationId || null) !== existingSale.reservationId ||
-        requestedDownPayment !== existingSale.downPayment ||
+        requestedDownPayment !== Number(existingSale.downPayment) ||
         requestedInstallmentCount !== existingSale.installmentCount ||
-        Number(data.installmentValue) !== existingSale.installmentValue ||
-        Number(data.totalValue) !== existingSale.totalValue ||
+        Number(data.installmentValue) !== Number(existingSale.installmentValue) ||
+        Number(data.totalValue) !== Number(existingSale.totalValue) ||
         toDateKey(requestedFirstDueDate) !== toDateKey(existingSale.firstDueDate) ||
         Boolean(data.annualAdjustment) !== existingSale.annualAdjustment
       )
@@ -225,7 +226,7 @@ export async function PUT(req: Request, { params }: Params) {
       correctionIndex: 'none',
     }
     const directSaleEvaluation = evaluateDirectSaleTerms(settings, {
-      basePrice: lot.price,
+      basePrice: Number(lot.price),
       downPayment: requestedDownPayment,
       installmentCount: requestedInstallmentCount,
     })
@@ -237,19 +238,22 @@ export async function PUT(req: Request, { params }: Params) {
     }
 
     const installmentCount = existingSale.proposalId ? existingSale.installmentCount : requestedInstallmentCount
-    const downPayment = existingSale.proposalId ? existingSale.downPayment : requestedDownPayment
-    const financedBalance = Math.max(lot.price - downPayment, 0)
+    const downPayment = existingSale.proposalId ? Number(existingSale.downPayment) : requestedDownPayment
+    const financedBalance = moneyToNumber(subtractMoney(lot.price, downPayment))
     const installmentValue = existingSale.proposalId
-      ? existingSale.installmentValue
-      : Math.round(calculateInstallment(
+      ? Number(existingSale.installmentValue)
+      : moneyToNumber(decimal(calculateInstallment(
           financedBalance,
           installmentCount,
           settings.defaultInterestRate,
           settings.interestCalculation,
-        ) * 100) / 100
+        )))
     const totalValue = existingSale.proposalId
-      ? existingSale.totalValue
-      : downPayment + installmentValue * installmentCount
+      ? Number(existingSale.totalValue)
+      : moneyToNumber(addMoney(
+          downPayment,
+          multiplyMoney(installmentValue, installmentCount),
+        ))
     const firstDueDate = existingSale.proposalId ? existingSale.firstDueDate : requestedFirstDueDate
     const annualAdjustment = existingSale.proposalId
       ? existingSale.annualAdjustment
@@ -289,9 +293,9 @@ export async function PUT(req: Request, { params }: Params) {
 
       await tx.receivable.deleteMany({ where: { saleId: sale.id } })
       const receivables = buildReceivables(sale.id, {
-        downPayment: sale.downPayment,
+        downPayment: Number(sale.downPayment),
         installmentCount: sale.installmentCount,
-        installmentValue: sale.installmentValue,
+        installmentValue: Number(sale.installmentValue),
         firstDueDate: sale.firstDueDate,
       })
       if (receivables.length > 0) {

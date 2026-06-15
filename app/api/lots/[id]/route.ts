@@ -114,7 +114,7 @@ export async function PUT(req: Request, { params }: Params) {
         userId,
         type: 'lot_price_changed',
         title: 'Valor do lote alterado',
-        description: `Valor alterado de ${lot.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} para ${updatedLot.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`,
+        description: `Valor alterado de ${Number(lot.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} para ${Number(updatedLot.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`,
       })
     }
 

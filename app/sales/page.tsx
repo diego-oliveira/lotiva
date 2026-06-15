@@ -108,13 +108,20 @@ function SalesContent() {
   const [contractSaleId, setContractSaleId] = useState<string>('')
   const [receivablesSale, setReceivablesSale] = useState<Sale | null>(null)
   const [canCorrectSales, setCanCorrectSales] = useState(false)
+  const [canManageFinance, setCanManageFinance] = useState(false)
 
   useEffect(() => {
     fetchSales()
     fetch('/api/me/permissions', { cache: 'no-store' })
       .then((response) => response.ok ? response.json() : null)
-      .then((payload) => setCanCorrectSales(Boolean(payload?.permissions?.admin)))
-      .catch(() => setCanCorrectSales(false))
+      .then((payload) => {
+        setCanCorrectSales(Boolean(payload?.permissions?.admin))
+        setCanManageFinance(Boolean(payload?.permissions?.finance))
+      })
+      .catch(() => {
+        setCanCorrectSales(false)
+        setCanManageFinance(false)
+      })
 
     const params = new URLSearchParams(window.location.search)
     const lotId = params.get('lotId')
@@ -525,6 +532,7 @@ function SalesContent() {
       <ReceivablesDrawer
         sale={receivablesSale}
         isOpen={Boolean(receivablesSale)}
+        canManagePayments={canManageFinance}
         onClose={() => setReceivablesSale(null)}
         onUpdated={handleReceivablesUpdated}
       />

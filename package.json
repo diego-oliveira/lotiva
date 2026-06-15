@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "prisma generate && prisma migrate deploy && next build",
+    "test": "tsx --test tests/**/*.test.ts",
+    "test:payments:integration": "tsx scripts/test-billing-cycle-integration.ts",
+    "poc:asaas": "tsx scripts/asaas-sandbox-poc.ts",
     "start": "next start",
     "lint": "next lint",
     "postinstall": "prisma generate"
@@ -29,6 +32,7 @@
     "@types/react-dom": "^19",
     "prisma": "^6.10.1",
     "tailwindcss": "^4",
+    "tsx": "^4.22.4",
     "typescript": "^5"
   }
 }

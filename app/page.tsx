@@ -153,7 +153,7 @@ export default async function Home({ searchParams }: HomeProps) {
   const lotMetrics = lots.reduce(
     (acc, lot) => {
       acc.total += 1
-      acc.vgv += lot.price
+      acc.vgv += Number(lot.price)
       if (lot.status === 'sold') acc.sold += 1
       else if (lot.status === 'reserved') acc.reserved += 1
       else if (lot.status === 'on_hold') acc.blocked += 1
@@ -165,11 +165,11 @@ export default async function Home({ searchParams }: HomeProps) {
 
   const financialMetrics = receivables.reduce(
     (acc, receivable) => {
-      acc.expected += receivable.amount
-      acc.received += receivable.paidAmount
-      if (receivable.status !== 'paid') acc.open += receivable.balance
+      acc.expected += Number(receivable.amount)
+      acc.received += Number(receivable.paidAmount)
+      if (receivable.status !== 'paid') acc.open += Number(receivable.balance)
       if (receivable.status !== 'paid' && receivable.dueDate < today) {
-        acc.overdueAmount += receivable.balance
+        acc.overdueAmount += Number(receivable.balance)
         acc.overdueCount += 1
       }
       return acc
@@ -177,7 +177,7 @@ export default async function Home({ searchParams }: HomeProps) {
     { expected: 0, received: 0, open: 0, overdueAmount: 0, overdueCount: 0 },
   )
 
-  const soldValue = sales.reduce((sum, sale) => sum + sale.totalValue, 0)
+  const soldValue = sales.reduce((sum, sale) => sum + Number(sale.totalValue), 0)
   const conversionRate = lotMetrics.total > 0 ? lotMetrics.sold / lotMetrics.total : 0
   const defaultRate = financialMetrics.open > 0 ? financialMetrics.overdueAmount / financialMetrics.open : 0
   const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1)
@@ -194,13 +194,13 @@ export default async function Home({ searchParams }: HomeProps) {
 
   sales.forEach((sale) => {
     const point = monthlyByKey.get(getMonthKey(sale.createdAt))
-    if (point) point.sales += sale.totalValue
+    if (point) point.sales += Number(sale.totalValue)
   })
 
   receivables.forEach((receivable) => {
     if (!receivable.paidAt) return
     const point = monthlyByKey.get(getMonthKey(receivable.paidAt))
-    if (point) point.received += receivable.paidAmount
+    if (point) point.received += Number(receivable.paidAmount)
   })
 
   const maxMonthlyValue = Math.max(1, ...monthlySeries.flatMap((point) => [point.sales, point.received]))
@@ -451,7 +451,7 @@ export default async function Home({ searchParams }: HomeProps) {
                         Quadra {receivable.sale.lot.block.identifier}, Lote {receivable.sale.lot.identifier}
                       </p>
                     </div>
-                    <span className='pill bg-red-50 text-red-700'>{formatCurrency(receivable.balance)}</span>
+                    <span className='pill bg-red-50 text-red-700'>{formatCurrency(Number(receivable.balance))}</span>
                   </div>
                   <p className='mt-2 text-xs text-muted'>Vencimento em {formatDate(receivable.dueDate)}</p>
                 </div>
@@ -489,7 +489,7 @@ export default async function Home({ searchParams }: HomeProps) {
                   <tr key={sale.id} className='transition hover:bg-surface-secondary/70'>
                     <td className='px-6 py-4 text-sm font-semibold text-foreground'>{sale.user.name}</td>
                     <td className='px-6 py-4 text-sm text-muted'>Quadra {sale.lot.block.identifier}, Lote {sale.lot.identifier}</td>
-                    <td className='px-6 py-4 text-sm font-semibold text-foreground'>{formatCurrency(sale.totalValue)}</td>
+                    <td className='px-6 py-4 text-sm font-semibold text-foreground'>{formatCurrency(Number(sale.totalValue))}</td>
                     <td className='px-6 py-4 text-sm text-muted'>{formatDate(sale.createdAt)}</td>
                   </tr>
                 ))}

@@ -1,8 +1,11 @@
+import type { MoneyInput } from './money'
+import { moneyToNumber } from './money'
+
 type TemplateSale = {
-  totalValue: number
-  downPayment: number
+  totalValue: MoneyInput
+  downPayment: MoneyInput
   installmentCount: number
-  installmentValue: number
+  installmentValue: MoneyInput
   firstDueDate?: Date | string | null
   annualAdjustment: boolean
   user: {
@@ -279,7 +282,10 @@ export function validateDocumentVariables(variables: string[], customKeys: strin
 export function getDocumentValues(sale: TemplateSale, contractNumber: string, generatedAt: Date): Record<string, string> {
   const development = sale.lot.block.development
   const settings = development?.contractSettings
-  const balance = Math.max(sale.totalValue - sale.downPayment, 0)
+  const totalValue = moneyToNumber(sale.totalValue)
+  const downPayment = moneyToNumber(sale.downPayment)
+  const installmentValue = moneyToNumber(sale.installmentValue)
+  const balance = Math.max(totalValue - downPayment, 0)
 
   const customDefaults = Object.fromEntries(
     (development?.company?.documentVariables ?? []).map((variable) => [
@@ -324,19 +330,19 @@ export function getDocumentValues(sale: TemplateSale, contractNumber: string, ge
     'lote.fundo': formatNumber(sale.lot.back, ' m'),
     'lote.lateral_esquerda': formatNumber(sale.lot.leftSide, ' m'),
     'lote.lateral_direita': formatNumber(sale.lot.rightSide, ' m'),
-    'venda.valor_total': formatCurrency(sale.totalValue),
-    'venda.valor_total_extenso': currencyToWords(sale.totalValue),
-    'venda.entrada': formatCurrency(sale.downPayment),
-    'venda.entrada_extenso': currencyToWords(sale.downPayment),
-    'venda.entrada_percentual': sale.totalValue > 0
-      ? `${formatNumber((sale.downPayment / sale.totalValue) * 100)}%`
+    'venda.valor_total': formatCurrency(totalValue),
+    'venda.valor_total_extenso': currencyToWords(totalValue),
+    'venda.entrada': formatCurrency(downPayment),
+    'venda.entrada_extenso': currencyToWords(downPayment),
+    'venda.entrada_percentual': totalValue > 0
+      ? `${formatNumber((downPayment / totalValue) * 100)}%`
       : '',
     'venda.saldo': formatCurrency(balance),
     'venda.saldo_extenso': currencyToWords(balance),
     'venda.numero_parcelas': String(sale.installmentCount),
     'venda.numero_parcelas_extenso': integerToWords(sale.installmentCount),
-    'venda.valor_parcela': formatCurrency(sale.installmentValue),
-    'venda.valor_parcela_extenso': currencyToWords(sale.installmentValue),
+    'venda.valor_parcela': formatCurrency(installmentValue),
+    'venda.valor_parcela_extenso': currencyToWords(installmentValue),
     'venda.primeiro_vencimento': formatDate(sale.firstDueDate),
     'venda.reajuste': sale.annualAdjustment ? 'Com reajuste anual.' : 'Sem reajuste anual.',
     'proposta.observacoes': sale.proposal?.notes ?? '',

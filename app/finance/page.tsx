@@ -177,11 +177,11 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
 
   const summary = receivables.reduce(
     (acc, receivable) => {
-      acc.expected += receivable.amount
-      acc.received += receivable.paidAmount
-      if (receivable.status !== 'paid') acc.open += receivable.balance
+      acc.expected += Number(receivable.amount)
+      acc.received += Number(receivable.paidAmount)
+      if (receivable.status !== 'paid') acc.open += Number(receivable.balance)
       if (receivable.status !== 'paid' && receivable.dueDate < today) {
-        acc.overdue += receivable.balance
+        acc.overdue += Number(receivable.balance)
         acc.overdueCount += 1
       }
       if (receivable.status === 'paid') acc.paidCount += 1
@@ -339,9 +339,9 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                       </td>
                       <td className='whitespace-nowrap px-6 py-4 text-sm text-muted'>{formatDate(receivable.dueDate)}</td>
                       <td className='whitespace-nowrap px-6 py-4'>
-                        <p className='text-sm font-semibold text-foreground'>{formatCurrency(receivable.amount)}</p>
-                        {receivable.paidAmount > 0 && (
-                          <p className='mt-1 text-xs text-muted'>Pago {formatCurrency(receivable.paidAmount)}</p>
+                        <p className='text-sm font-semibold text-foreground'>{formatCurrency(Number(receivable.amount))}</p>
+                        {Number(receivable.paidAmount) > 0 && (
+                          <p className='mt-1 text-xs text-muted'>Pago {formatCurrency(Number(receivable.paidAmount))}</p>
                         )}
                       </td>
                       <td className='whitespace-nowrap px-6 py-4'>
@@ -352,9 +352,9 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                         <ReceivableActions
                           receivable={{
                             id: receivable.id,
-                            amount: receivable.amount,
-                            balance: receivable.balance,
-                            paidAmount: receivable.paidAmount,
+                            amount: Number(receivable.amount),
+                            balance: Number(receivable.balance),
+                            paidAmount: Number(receivable.paidAmount),
                             status: receivable.status,
                             notes: receivable.notes,
                           }}

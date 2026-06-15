@@ -24,6 +24,7 @@ model Company {
   developments      Development[]
   documentTemplates DocumentTemplate[]
   documentVariables DocumentVariable[]
+  paymentConnections PaymentProviderConnection[]
 }
 
 model Development {
@@ -112,6 +113,7 @@ model User {
   lotEvents           LotEvent[]
   documentTemplates   DocumentTemplate[]
   templateVersions    DocumentTemplateVersion[]
+  externalCustomers   ExternalCustomer[]
 }
 
 model Account {
@@ -205,7 +207,7 @@ model Lot {
   leftSide   Float
   rightSide  Float
   totalArea  Float
-  price      Float
+  price      Decimal  @db.Decimal(15, 2)
   status     String   @default("available")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -250,12 +252,12 @@ model Proposal {
   exceptionReasons    String?
   reviewedAt          DateTime?
   rejectionReason     String?
-  salePrice           Float
-  downPayment         Float
+  salePrice           Decimal   @db.Decimal(15, 2)
+  downPayment         Decimal   @db.Decimal(15, 2)
   installmentCount    Int
-  installmentValue    Float
-  balance             Float
-  totalValue          Float
+  installmentValue    Decimal   @db.Decimal(15, 2)
+  balance             Decimal   @db.Decimal(15, 2)
+  totalValue          Decimal   @db.Decimal(15, 2)
   interestRate        Float     @default(0)
   interestCalculation String    @default("none")
   correctionIndex     String    @default("none")
@@ -285,11 +287,11 @@ model Sale {
   reservationId    String?   @unique
   proposalId       String?   @unique
   installmentCount Int
-  installmentValue Float
-  downPayment      Float
+  installmentValue Decimal   @db.Decimal(15, 2)
+  downPayment      Decimal   @db.Decimal(15, 2)
   firstDueDate     DateTime?
   annualAdjustment Boolean   @default(true)
-  totalValue       Float
+  totalValue       Decimal   @db.Decimal(15, 2)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -300,6 +302,7 @@ model Sale {
   proposal    Proposal?    @relation(fields: [proposalId], references: [id])
   contract    Contract?
   receivables Receivable[]
+  billingCycles BillingCycle[]
 
   @@index([createdById, createdAt])
 }
@@ -422,20 +425,132 @@ model Receivable {
   kind       String    @default("installment")
   sequence   Int
   dueDate    DateTime
-  amount     Float
-  paidAmount Float     @default(0)
-  balance    Float
+  amount     Decimal   @db.Decimal(15, 2)
+  paidAmount Decimal   @default(0) @db.Decimal(15, 2)
+  balance    Decimal   @db.Decimal(15, 2)
   status     String    @default("pending")
   paidAt     DateTime?
   notes      String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  sale            Sale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  externalCharges ExternalCharge[]
 
   @@unique([saleId, kind, sequence])
   @@index([dueDate])
   @@index([status])
+}
+
+model PaymentProviderConnection {
+  id                   String   @id @default(uuid())
+  companyId            String
+  provider             String
+  environment          String   @default("sandbox")
+  status               String   @default("inactive")
+  credentialCiphertext String?  @db.Text
+  credentialHint       String?
+  lastValidatedAt      DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  company           Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  externalCustomers ExternalCustomer[]
+  externalCharges   ExternalCharge[]
+  webhookEvents     PaymentWebhookEvent[]
+  billingCycles     BillingCycle[]
+
+  @@unique([companyId, provider, environment])
+  @@index([companyId, status])
+}
+
+model ExternalCustomer {
+  id                   String   @id @default(uuid())
+  connectionId         String
+  userId               String
+  providerCustomerId   String
+  externalReference    String
+  status               String   @default("active")
+  lastSynchronizedAt   DateTime @default(now())
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  connection PaymentProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  user       User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, userId])
+  @@unique([connectionId, providerCustomerId])
+  @@unique([connectionId, externalReference])
+}
+
+model BillingCycle {
+  id             String    @id @default(uuid())
+  connectionId   String
+  saleId         String
+  cycleNumber    Int
+  startSequence  Int
+  endSequence    Int
+  status         String    @default("draft")
+  issuedAt       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  connection      PaymentProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+  sale            Sale                      @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  externalCharges ExternalCharge[]
+
+  @@unique([saleId, cycleNumber])
+  @@index([connectionId, status])
+}
+
+model ExternalCharge {
+  id                    String    @id @default(uuid())
+  connectionId          String
+  billingCycleId        String?
+  receivableId          String
+  providerChargeId      String
+  externalReference     String
+  billingType           String
+  status                String
+  amount                Decimal   @db.Decimal(15, 2)
+  dueDate               DateTime
+  invoiceUrl             String?
+  bankSlipUrl            String?
+  pixPayload             String?   @db.Text
+  pixEncodedImage        String?   @db.Text
+  providerPayload        Json?
+  cancelledAt            DateTime?
+  lastSynchronizedAt     DateTime  @default(now())
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  connection   PaymentProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+  billingCycle BillingCycle?             @relation(fields: [billingCycleId], references: [id], onDelete: SetNull)
+  receivable   Receivable                @relation(fields: [receivableId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, providerChargeId])
+  @@unique([connectionId, externalReference])
+  @@index([receivableId, status])
+  @@index([billingCycleId])
+}
+
+model PaymentWebhookEvent {
+  id              String    @id @default(uuid())
+  connectionId    String
+  providerEventId String
+  eventType       String
+  status          String    @default("pending")
+  payload         Json
+  attempts        Int       @default(0)
+  errorMessage    String?   @db.Text
+  processedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  connection PaymentProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, providerEventId])
+  @@index([status, createdAt])
 }
 
 model LotEvent {

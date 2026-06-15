@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import CompanyForm from './components/CompanyForm'
+import PaymentProviderDrawer from './components/PaymentProviderDrawer'
 import InlineAlert from '@/app/components/InlineAlert'
 
 interface Company {
@@ -22,9 +23,15 @@ export default function CompaniesPage() {
   const [editingCompany, setEditingCompany] = useState<Company | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [paymentCompany, setPaymentCompany] = useState<Company | null>(null)
+  const [canManageSettings, setCanManageSettings] = useState(false)
 
   useEffect(() => {
     fetchCompanies()
+    fetch('/api/me/permissions', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => setCanManageSettings(Boolean(payload?.permissions?.manageSettings)))
+      .catch(() => setCanManageSettings(false))
   }, [])
 
   useEffect(() => {
@@ -119,7 +126,16 @@ export default function CompaniesPage() {
                     </td>
                     <td className='px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground'><span className='rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700'>{company._count?.developments ?? 0}</span></td>
                     <td className='px-6 py-4 whitespace-nowrap text-sm text-muted'>{formatDate(company.createdAt)}</td>
-                    <td className='px-6 py-4 whitespace-nowrap text-right text-sm font-semibold'><button onClick={() => { setEditingCompany(company); setShowForm(true) }} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>Editar</button></td>
+                    <td className='px-6 py-4 whitespace-nowrap text-right text-sm font-semibold'>
+                      <div className='flex items-center justify-end gap-2'>
+                        {canManageSettings && (
+                          <button onClick={() => setPaymentCompany(company)} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>
+                            Asaas
+                          </button>
+                        )}
+                        <button onClick={() => { setEditingCompany(company); setShowForm(true) }} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>Editar</button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -158,6 +174,11 @@ export default function CompaniesPage() {
               : 'A empresa foi atualizada com sucesso.',
           )
         }}
+      />
+      <PaymentProviderDrawer
+        company={paymentCompany}
+        isOpen={Boolean(paymentCompany)}
+        onClose={() => setPaymentCompany(null)}
       />
     </div>
   )
