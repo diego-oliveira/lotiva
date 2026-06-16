@@ -30,7 +30,7 @@ export default function CompaniesPage() {
     fetchCompanies()
     fetch('/api/me/permissions', { cache: 'no-store' })
       .then((response) => response.ok ? response.json() : null)
-      .then((payload) => setCanManageSettings(Boolean(payload?.permissions?.manageSettings)))
+      .then((payload) => setCanManageSettings(Boolean(payload?.permissions?.connectPayments)))
       .catch(() => setCanManageSettings(false))
   }, [])
 

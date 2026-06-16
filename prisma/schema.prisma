@@ -25,6 +25,7 @@ model Company {
   documentTemplates DocumentTemplate[]
   documentVariables DocumentVariable[]
   paymentConnections PaymentProviderConnection[]
+  financialAuditLogs FinancialAuditLog[]
 }
 
 model Development {
@@ -114,6 +115,9 @@ model User {
   documentTemplates   DocumentTemplate[]
   templateVersions    DocumentTemplateVersion[]
   externalCustomers   ExternalCustomer[]
+  adjustmentReviewsCreated  AdjustmentReview[] @relation("AdjustmentReviewCreator")
+  adjustmentReviewsReviewed AdjustmentReview[] @relation("AdjustmentReviewReviewer")
+  financialAuditLogs        FinancialAuditLog[]
 }
 
 model Account {
@@ -303,6 +307,7 @@ model Sale {
   contract    Contract?
   receivables Receivable[]
   billingCycles BillingCycle[]
+  adjustmentReviews AdjustmentReview[]
 
   @@index([createdById, createdAt])
 }
@@ -436,6 +441,7 @@ model Receivable {
 
   sale            Sale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
   externalCharges ExternalCharge[]
+  adjustmentItems AdjustmentReviewItem[]
 
   @@unique([saleId, kind, sequence])
   @@index([dueDate])
@@ -451,6 +457,12 @@ model PaymentProviderConnection {
   credentialCiphertext String?  @db.Text
   credentialHint       String?
   lastValidatedAt      DateTime?
+  webhookId             String?
+  webhookUrl            String?
+  webhookStatus         String?  @default("not_configured")
+  webhookAuthCiphertext String?  @db.Text
+  webhookAuthHint       String?
+  lastWebhookAt         DateTime?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -459,6 +471,8 @@ model PaymentProviderConnection {
   externalCharges   ExternalCharge[]
   webhookEvents     PaymentWebhookEvent[]
   billingCycles     BillingCycle[]
+  reconciliationRuns ReconciliationRun[]
+  adjustmentReviews  AdjustmentReview[]
 
   @@unique([companyId, provider, environment])
   @@index([companyId, status])
@@ -492,15 +506,18 @@ model BillingCycle {
   endSequence    Int
   status         String    @default("draft")
   issuedAt       DateTime?
+  adjustmentReviewId String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   connection      PaymentProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Restrict)
   sale            Sale                      @relation(fields: [saleId], references: [id], onDelete: Cascade)
   externalCharges ExternalCharge[]
+  adjustmentReview AdjustmentReview?         @relation(fields: [adjustmentReviewId], references: [id], onDelete: SetNull)
 
-  @@unique([saleId, cycleNumber])
+  @@unique([connectionId, saleId, cycleNumber])
   @@index([connectionId, status])
+  @@index([adjustmentReviewId])
 }
 
 model ExternalCharge {
@@ -510,6 +527,7 @@ model ExternalCharge {
   receivableId          String
   providerChargeId      String
   externalReference     String
+  version               Int       @default(1)
   billingType           String
   status                String
   amount                Decimal   @db.Decimal(15, 2)
@@ -519,7 +537,15 @@ model ExternalCharge {
   pixPayload             String?   @db.Text
   pixEncodedImage        String?   @db.Text
   providerPayload        Json?
+  grossPaidAmount        Decimal?  @db.Decimal(15, 2)
+  netPaidAmount          Decimal?  @db.Decimal(15, 2)
+  feeAmount              Decimal?  @db.Decimal(15, 2)
+  providerPaymentDate    DateTime?
+  providerCreditDate     DateTime?
+  lastEventAt            DateTime?
   cancelledAt            DateTime?
+  cancellationReason     String?   @db.Text
+  cancelledById          String?
   lastSynchronizedAt     DateTime  @default(now())
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
@@ -544,6 +570,7 @@ model PaymentWebhookEvent {
   attempts        Int       @default(0)
   errorMessage    String?   @db.Text
   processedAt     DateTime?
+  nextAttemptAt   DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -551,6 +578,111 @@ model PaymentWebhookEvent {
 
   @@unique([connectionId, providerEventId])
   @@index([status, createdAt])
+  @@index([status, nextAttemptAt])
+}
+
+model AdjustmentReview {
+  id              String    @id @default(uuid())
+  connectionId    String
+  saleId          String
+  cycleNumber     Int
+  indexName       String
+  percentage      Decimal   @db.Decimal(8, 4)
+  source          String
+  reason          String    @db.Text
+  status          String    @default("pending")
+  createdById     String
+  reviewedById    String?
+  reviewedAt      DateTime?
+  appliedAt       DateTime?
+  rejectionReason String?   @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  connection    PaymentProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+  sale          Sale                      @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  createdBy     User                      @relation("AdjustmentReviewCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  reviewedBy    User?                     @relation("AdjustmentReviewReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  items         AdjustmentReviewItem[]
+  billingCycles BillingCycle[]
+
+  @@unique([connectionId, saleId, cycleNumber])
+  @@index([status, createdAt])
+}
+
+model AdjustmentReviewItem {
+  id                 String   @id @default(uuid())
+  adjustmentReviewId String
+  receivableId       String
+  previousAmount     Decimal  @db.Decimal(15, 2)
+  adjustedAmount     Decimal  @db.Decimal(15, 2)
+  createdAt          DateTime @default(now())
+
+  adjustmentReview AdjustmentReview @relation(fields: [adjustmentReviewId], references: [id], onDelete: Cascade)
+  receivable       Receivable       @relation(fields: [receivableId], references: [id], onDelete: Cascade)
+
+  @@unique([adjustmentReviewId, receivableId])
+  @@index([receivableId])
+}
+
+model ReconciliationRun {
+  id              String    @id @default(uuid())
+  connectionId    String
+  status          String    @default("running")
+  trigger         String    @default("scheduled")
+  checkedCount    Int       @default(0)
+  divergenceCount Int       @default(0)
+  resolvedCount   Int       @default(0)
+  errorMessage    String?   @db.Text
+  startedAt       DateTime  @default(now())
+  finishedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  connection  PaymentProviderConnection   @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  divergences ReconciliationDivergence[]
+
+  @@index([connectionId, startedAt])
+  @@index([status, startedAt])
+}
+
+model ReconciliationDivergence {
+  id                      String    @id @default(uuid())
+  reconciliationRunId     String
+  externalChargeId        String?
+  type                    String
+  status                  String    @default("detected")
+  localValue              Json?
+  providerValue           Json?
+  resolution              String?   @db.Text
+  resolvedAt              DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  reconciliationRun ReconciliationRun @relation(fields: [reconciliationRunId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([externalChargeId])
+}
+
+model FinancialAuditLog {
+  id               String   @id @default(uuid())
+  companyId        String
+  actorId          String?
+  action           String
+  entityType       String
+  entityId         String
+  saleId           String?
+  receivableId     String?
+  externalChargeId String?
+  metadata         Json?
+  createdAt        DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  actor   User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([entityType, entityId])
+  @@index([saleId, createdAt])
 }
 
 model LotEvent {
@@ -577,6 +709,7 @@ model Notification {
   title     String
   message   String
   href      String?
+  deduplicationKey String? @unique
   readAt    DateTime?
   createdAt DateTime  @default(now())
 

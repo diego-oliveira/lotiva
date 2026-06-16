@@ -48,6 +48,8 @@ services:
       UPLOAD_PUBLIC_PATH: /uploads
       DOCUMENT_STORAGE_DIR: /app/documents
       PAYMENT_CREDENTIALS_KEY: ${PAYMENT_CREDENTIALS_KEY}
+      PAYMENT_WEBHOOK_BASE_URL: ${PAYMENT_WEBHOOK_BASE_URL}
+      CRON_SECRET: ${CRON_SECRET}
     volumes:
       - uploads_data:/app/uploads
       - documents_data:/app/documents

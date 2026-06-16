@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { PrismaClient } from '../app/generated/prisma'
 import { issueNextBillingCycle } from '../lib/payments/billing-cycle'
 import { FakePaymentProvider } from '../lib/payments/fake-provider'
+import { createAdjustmentReview } from '../lib/payments/adjustments'
 
 const prisma = new PrismaClient()
 const rollbackMarker = new Error('ROLLBACK_TEST_TRANSACTION')
@@ -53,7 +54,7 @@ async function main() {
         data: {
           userId: user.id,
           lotId: lot.id,
-          installmentCount: 12,
+          installmentCount: 24,
           installmentValue: '600.00',
           downPayment: '8000.00',
           firstDueDate: new Date(Date.UTC(2026, 6, 20)),
@@ -61,7 +62,7 @@ async function main() {
         },
       })
       await tx.receivable.createMany({
-        data: Array.from({ length: 12 }, (_, index) => ({
+        data: Array.from({ length: 24 }, (_, index) => ({
           saleId: sale.id,
           kind: 'installment',
           sequence: index + 1,
@@ -89,6 +90,47 @@ async function main() {
       assert.equal(first.charges.length, 12)
       assert.equal(first.cycle?.status, 'issued')
 
+      await assert.rejects(
+        () => issueNextBillingCycle({
+          connectionId: connection.id,
+          saleId: sale.id,
+          provider,
+          db: tx,
+        }),
+        /reajuste anual precisa ser aprovado/,
+      )
+
+      const adjustment = await createAdjustmentReview({
+        connectionId: connection.id,
+        saleId: sale.id,
+        indexName: 'INCC',
+        percentage: '5',
+        source: 'FGV teste',
+        reason: 'Teste do segundo ciclo',
+        createdById: user.id,
+        db: tx,
+      })
+      for (const item of adjustment.items) {
+        await tx.receivable.update({
+          where: { id: item.receivableId },
+          data: { amount: item.adjustedAmount, balance: item.adjustedAmount },
+        })
+      }
+      await tx.adjustmentReview.update({
+        where: { id: adjustment.id },
+        data: { status: 'applied', reviewedById: user.id, reviewedAt: new Date(), appliedAt: new Date() },
+      })
+
+      const second = await issueNextBillingCycle({
+        connectionId: connection.id,
+        saleId: sale.id,
+        provider,
+        db: tx,
+      })
+      assert.equal(second.charges.length, 12)
+      assert.equal(second.cycle?.cycleNumber, 2)
+      assert.equal(second.charges[0].amount.toString(), '630')
+
       const repeated = await issueNextBillingCycle({
         connectionId: connection.id,
         saleId: sale.id,
@@ -96,8 +138,8 @@ async function main() {
         db: tx,
       })
       assert.equal(repeated.alreadyComplete, true)
-      assert.equal(await tx.billingCycle.count({ where: { saleId: sale.id } }), 1)
-      assert.equal(await tx.externalCharge.count({ where: { receivable: { saleId: sale.id } } }), 12)
+      assert.equal(await tx.billingCycle.count({ where: { saleId: sale.id } }), 2)
+      assert.equal(await tx.externalCharge.count({ where: { receivable: { saleId: sale.id } } }), 24)
 
       throw rollbackMarker
     })
@@ -107,7 +149,7 @@ async function main() {
     await prisma.$disconnect()
   }
 
-  console.log('Integracao de ciclo validada: 1 ciclo e 12 cobrancas sem duplicidade.')
+  console.log('Integracao validada: 2 ciclos, reajuste obrigatorio e 24 cobrancas sem duplicidade.')
 }
 
 main().catch((error) => {

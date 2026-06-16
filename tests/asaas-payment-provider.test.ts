@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { AsaasPaymentProvider } from '../lib/payments/asaas-provider'
+import {
+  AsaasPaymentProvider,
+  mapAsaasPayment,
+  normalizeWebhookEmail,
+} from '../lib/payments/asaas-provider'
 
 test('envia autenticacao e mapeia uma cobranca Asaas', async () => {
   const calls: Array<{ url: string; init?: RequestInit }> = []
@@ -47,4 +51,29 @@ test('apresenta os erros retornados pela API Asaas', async () => {
     () => provider.getCharge('pay_invalid'),
     /Asaas 400: Valor invalido/,
   )
+})
+
+test('normaliza email de remetente para configurar webhook', () => {
+  assert.equal(normalizeWebhookEmail('Lotiva <financeiro@example.com>'), 'financeiro@example.com')
+  assert.equal(normalizeWebhookEmail('financeiro@example.com'), 'financeiro@example.com')
+  assert.equal(normalizeWebhookEmail('Lotiva'), undefined)
+})
+
+test('ignora valores monetarios opcionais invalidos vindos do Asaas', () => {
+  const charge = mapAsaasPayment({
+    id: 'pay_cancelled',
+    customer: 'cus_123',
+    value: 600,
+    netValue: Number.NaN,
+    dueDate: '2026-07-20',
+    billingType: 'BOLETO',
+    externalReference: 'receivable-1',
+    status: 'DELETED',
+    deleted: true,
+  })
+
+  assert.equal(charge.status, 'cancelled')
+  assert.equal(charge.amount, '600.00')
+  assert.equal(charge.netAmount, undefined)
+  assert.equal(charge.paidAmount, undefined)
 })

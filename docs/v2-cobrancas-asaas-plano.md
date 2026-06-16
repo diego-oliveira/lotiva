@@ -454,3 +454,12 @@ credenciais. As respostas obtidas na POC podem alterar esses contratos.
 - [x] Criptografar credenciais do provedor com AES-256-GCM.
 - [x] Criar API de conexao Asaas por empresa.
 - [x] Criar API financeira para emitir e consultar ciclos por venda.
+- [x] Criar endpoint autenticado e idempotente para webhooks Asaas.
+- [x] Processar pagamentos, vencimentos, cancelamentos, restauracoes e estornos.
+- [x] Implementar conciliacao diaria e painel de divergencias.
+- [x] Implementar cancelamento e reemissao versionada.
+- [x] Bloquear novo ciclo sem reajuste anual aprovado.
+- [x] Criar revisao, simulacao e aprovacao de reajuste.
+- [x] Criar alertas de 60, 30 e 15 dias.
+- [x] Separar permissoes financeiras e adicionar trilha de auditoria.
+- [x] Adicionar jobs, retry exponencial e documentacao operacional.

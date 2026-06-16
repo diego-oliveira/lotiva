@@ -17,6 +17,7 @@ interface Receivable {
 interface Sale {
   id: string
   totalValue: number
+  annualAdjustment: boolean
   user: {
     name: string
     email: string
@@ -34,6 +35,8 @@ interface ReceivablesDrawerProps {
   sale: Sale | null
   isOpen: boolean
   canManagePayments: boolean
+  canCancelPayments: boolean
+  canApproveAdjustments: boolean
   onClose: () => void
   onUpdated: () => Promise<void>
 }
@@ -48,6 +51,33 @@ interface ExternalCharge {
   invoiceUrl: string | null
   bankSlipUrl: string | null
   pixPayload: string | null
+  version: number
+  cancellationReason: string | null
+  grossPaidAmount: number | null
+  netPaidAmount: number | null
+  feeAmount: number | null
+  providerPaymentDate: string | null
+}
+
+interface AdjustmentReview {
+  id: string
+  cycleNumber: number
+  indexName: string
+  percentage: number
+  source: string
+  reason: string
+  status: string
+  rejectionReason: string | null
+  createdAt: string
+  createdBy: { name: string }
+  reviewedBy: { name: string } | null
+  connection: { environment: string; provider: string }
+  items: Array<{
+    id: string
+    previousAmount: number
+    adjustedAmount: number
+    receivable: { sequence: number; dueDate: string }
+  }>
 }
 
 interface BillingCycle {
@@ -106,6 +136,8 @@ export default function ReceivablesDrawer({
   sale,
   isOpen,
   canManagePayments,
+  canCancelPayments,
+  canApproveAdjustments,
   onClose,
   onUpdated,
 }: ReceivablesDrawerProps) {
@@ -116,6 +148,16 @@ export default function ReceivablesDrawer({
   const [issuing, setIssuing] = useState(false)
   const [cycleEnvironment, setCycleEnvironment] = useState<'sandbox' | 'production'>('sandbox')
   const [cycleSuccess, setCycleSuccess] = useState<string | null>(null)
+  const [adjustments, setAdjustments] = useState<AdjustmentReview[]>([])
+  const [adjustmentsLoading, setAdjustmentsLoading] = useState(false)
+  const [adjustmentSaving, setAdjustmentSaving] = useState(false)
+  const [adjustmentForm, setAdjustmentForm] = useState({
+    indexName: 'INCC',
+    percentage: '',
+    source: '',
+    reason: '',
+  })
+  const [chargeActionId, setChargeActionId] = useState<string | null>(null)
 
   const loadCycles = async () => {
     if (!sale || !canManagePayments) return
@@ -135,13 +177,30 @@ export default function ReceivablesDrawer({
     }
   }
 
+  const loadAdjustments = async () => {
+    if (!sale || !canManagePayments) return
+    setAdjustmentsLoading(true)
+    try {
+      const response = await fetch(`/api/sales/${sale.id}/adjustments`, { cache: 'no-store' })
+      const payload = await response.json().catch(() => [])
+      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel carregar os reajustes.')
+      setAdjustments(payload)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao foi possivel carregar os reajustes.')
+    } finally {
+      setAdjustmentsLoading(false)
+    }
+  }
+
   useEffect(() => {
     if (!isOpen || !sale) return
     setError(null)
     setCycleSuccess(null)
     setCycleEnvironment('sandbox')
     setCycles([])
+    setAdjustments([])
     void loadCycles()
+    void loadAdjustments()
   }, [isOpen, sale?.id, canManagePayments])
 
   const receivables = sale?.receivables ?? []
@@ -190,6 +249,81 @@ export default function ReceivablesDrawer({
       setError(err instanceof Error ? err.message : 'Nao foi possivel emitir as cobrancas.')
     } finally {
       setIssuing(false)
+    }
+  }
+
+  const createAdjustment = async () => {
+    setAdjustmentSaving(true)
+    setError(null)
+    setCycleSuccess(null)
+    try {
+      const response = await fetch(`/api/sales/${sale.id}/adjustments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...adjustmentForm, environment: cycleEnvironment }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel criar o reajuste.')
+      setAdjustmentForm({ indexName: 'INCC', percentage: '', source: '', reason: '' })
+      setCycleSuccess('Reajuste enviado para aprovacao.')
+      await loadAdjustments()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao foi possivel criar o reajuste.')
+    } finally {
+      setAdjustmentSaving(false)
+    }
+  }
+
+  const reviewAdjustment = async (reviewId: string, action: 'approve' | 'reject') => {
+    const rejectionReason = action === 'reject'
+      ? window.prompt('Informe o motivo da rejeicao:')
+      : null
+    if (action === 'reject' && !rejectionReason?.trim()) return
+
+    setAdjustmentSaving(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/sales/${sale.id}/adjustments/${reviewId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, rejectionReason }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel analisar o reajuste.')
+      setCycleSuccess(action === 'approve' ? 'Reajuste aprovado e aplicado.' : 'Reajuste rejeitado.')
+      await loadAdjustments()
+      await onUpdated()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao foi possivel analisar o reajuste.')
+    } finally {
+      setAdjustmentSaving(false)
+    }
+  }
+
+  const runChargeAction = async (charge: ExternalCharge, action: 'cancel' | 'reissue') => {
+    const reason = window.prompt(
+      action === 'cancel'
+        ? 'Informe o motivo do cancelamento:'
+        : 'Informe o motivo da reemissao:',
+    )
+    if (!reason?.trim()) return
+
+    setChargeActionId(charge.id)
+    setError(null)
+    try {
+      const response = await fetch(`/api/external-charges/${charge.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, reason }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel alterar a cobranca.')
+      setCycleSuccess(action === 'cancel' ? 'Cobranca cancelada.' : 'Cobranca reemitida.')
+      await loadCycles()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao foi possivel alterar a cobranca.')
+    } finally {
+      setChargeActionId(null)
     }
   }
 
@@ -347,6 +481,16 @@ export default function ReceivablesDrawer({
                             <div>
                               <span className='pill bg-slate-100 text-slate-700'>{charge.status}</span>
                               <p className='mt-1 text-xs text-muted'>{charge.providerChargeId}</p>
+                              {charge.version > 1 && <p className='mt-1 text-xs text-muted'>Reemissao v{charge.version}</p>}
+                              {charge.grossPaidAmount !== null && (
+                                <p className='mt-1 text-xs text-muted'>
+                                  Bruto {formatCurrency(charge.grossPaidAmount)}
+                                  {charge.feeAmount !== null ? ` · tarifa ${formatCurrency(charge.feeAmount)}` : ''}
+                                </p>
+                              )}
+                              {charge.cancellationReason && (
+                                <p className='mt-1 text-xs text-red-600'>Motivo: {charge.cancellationReason}</p>
+                              )}
                             </div>
                             <div className='flex flex-wrap gap-2 md:justify-end'>
                               {charge.invoiceUrl && (
@@ -381,11 +525,135 @@ export default function ReceivablesDrawer({
                                   Copiar PIX
                                 </button>
                               )}
+                              {canCancelPayments && !['confirmed', 'received'].includes(charge.status) && (
+                                <button
+                                  type='button'
+                                  disabled={chargeActionId === charge.id}
+                                  onClick={() => runChargeAction(
+                                    charge,
+                                    ['cancelled', 'refunded'].includes(charge.status) ? 'reissue' : 'cancel',
+                                  )}
+                                  className='rounded-lg px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-60'
+                                >
+                                  {chargeActionId === charge.id
+                                    ? 'Processando...'
+                                    : ['cancelled', 'refunded'].includes(charge.status)
+                                      ? 'Reemitir'
+                                      : 'Cancelar'}
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))}
                       </div>
                     </details>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {canManagePayments && sale.annualAdjustment && cycles.length > 0 && (
+            <section className='mt-6 overflow-hidden rounded-2xl border border-border bg-surface'>
+              <div className='border-b border-border bg-surface-secondary px-5 py-4'>
+                <h3 className='text-base font-semibold text-foreground'>Reajuste anual</h3>
+                <p className='mt-1 text-sm text-muted'>O proximo ciclo so pode ser emitido depois da aprovacao.</p>
+              </div>
+
+              <div className='grid gap-4 border-b border-border px-5 py-5 md:grid-cols-2'>
+                <label>
+                  <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Indice</span>
+                  <input
+                    value={adjustmentForm.indexName}
+                    onChange={(event) => setAdjustmentForm((current) => ({ ...current, indexName: event.target.value }))}
+                    className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm'
+                  />
+                </label>
+                <label>
+                  <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Percentual (%)</span>
+                  <input
+                    type='number'
+                    min='0.0001'
+                    step='0.0001'
+                    value={adjustmentForm.percentage}
+                    onChange={(event) => setAdjustmentForm((current) => ({ ...current, percentage: event.target.value }))}
+                    className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm'
+                  />
+                </label>
+                <label>
+                  <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Fonte</span>
+                  <input
+                    value={adjustmentForm.source}
+                    onChange={(event) => setAdjustmentForm((current) => ({ ...current, source: event.target.value }))}
+                    placeholder='Ex.: FGV, competencia maio/2027'
+                    className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm'
+                  />
+                </label>
+                <label>
+                  <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Justificativa</span>
+                  <input
+                    value={adjustmentForm.reason}
+                    onChange={(event) => setAdjustmentForm((current) => ({ ...current, reason: event.target.value }))}
+                    placeholder='Motivo e referencia do reajuste'
+                    className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm'
+                  />
+                </label>
+                <div className='md:col-span-2 flex justify-end'>
+                  <button
+                    type='button'
+                    onClick={createAdjustment}
+                    disabled={adjustmentSaving || !adjustmentForm.percentage || !adjustmentForm.source.trim() || !adjustmentForm.reason.trim()}
+                    className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-60'
+                  >
+                    {adjustmentSaving ? 'Salvando...' : 'Simular e enviar para aprovacao'}
+                  </button>
+                </div>
+              </div>
+
+              {adjustmentsLoading ? (
+                <div className='px-5 py-6 text-sm text-muted'>Carregando reajustes...</div>
+              ) : adjustments.length === 0 ? (
+                <div className='px-5 py-6 text-sm text-muted'>Nenhum reajuste registrado.</div>
+              ) : (
+                <div className='divide-y divide-border'>
+                  {adjustments.map((review) => (
+                    <div key={review.id} className='px-5 py-4'>
+                      <div className='flex flex-wrap items-start justify-between gap-3'>
+                        <div>
+                          <div className='flex flex-wrap items-center gap-2'>
+                            <p className='text-sm font-semibold text-foreground'>Ciclo {review.cycleNumber} · {review.indexName} {review.percentage}%</p>
+                            <span className={`pill ${review.status === 'applied' ? 'bg-emerald-50 text-emerald-700' : review.status === 'rejected' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                              {review.status === 'applied' ? 'Aplicado' : review.status === 'rejected' ? 'Rejeitado' : 'Aguardando aprovacao'}
+                            </span>
+                          </div>
+                          <p className='mt-1 text-xs text-muted'>{review.source} · solicitado por {review.createdBy.name}</p>
+                          <p className='mt-2 text-sm text-muted'>{review.reason}</p>
+                          <p className='mt-2 text-xs text-muted'>
+                            {review.items.length} parcela(s), de {formatCurrency(review.items[0]?.previousAmount || 0)} para {formatCurrency(review.items[0]?.adjustedAmount || 0)}
+                          </p>
+                        </div>
+                        {review.status === 'pending' && canApproveAdjustments && (
+                          <div className='flex gap-2'>
+                            <button
+                              type='button'
+                              disabled={adjustmentSaving}
+                              onClick={() => reviewAdjustment(review.id, 'reject')}
+                              className='rounded-xl border border-red-200 px-3 py-2 text-xs font-semibold text-red-700'
+                            >
+                              Rejeitar
+                            </button>
+                            <button
+                              type='button'
+                              disabled={adjustmentSaving}
+                              onClick={() => reviewAdjustment(review.id, 'approve')}
+                              className='rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-white'
+                            >
+                              Aprovar e aplicar
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}

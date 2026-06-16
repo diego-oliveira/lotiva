@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 
-const publicPathPrefixes = ['/signin', '/auth', '/api/auth']
+const publicPathPrefixes = ['/signin', '/auth', '/api/auth', '/api/webhooks/asaas', '/api/jobs/payments']
 
 function hasSessionCookie(request: NextRequest) {
   return (

@@ -4,6 +4,7 @@ import type {
   ListChargesResult,
   PaymentCharge,
   PaymentChargeInput,
+  PaymentChargeUpdateInput,
   PaymentCustomer,
   PaymentCustomerInput,
   PixQrCode,
@@ -46,6 +47,13 @@ export class FakePaymentProvider implements PaymentProvider {
     }
     this.charges.set(charge.id, charge)
     return charge
+  }
+
+  async updateCharge(chargeId: string, input: PaymentChargeUpdateInput) {
+    const current = await this.getCharge(chargeId)
+    const updated = { ...current, ...input, id: current.id }
+    this.charges.set(chargeId, updated)
+    return updated
   }
 
   async getCharge(chargeId: string) {

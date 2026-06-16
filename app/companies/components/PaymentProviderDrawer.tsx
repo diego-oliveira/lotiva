@@ -15,6 +15,10 @@ interface PaymentProviderConnection {
   status: string
   credentialHint: string | null
   lastValidatedAt: string | null
+  webhookUrl: string | null
+  webhookStatus: string | null
+  webhookAuthHint: string | null
+  lastWebhookAt: string | null
 }
 
 interface PaymentProviderDrawerProps {
@@ -92,7 +96,11 @@ export default function PaymentProviderDrawer({
       }
 
       setApiKey('')
-      setSuccess(`Conexao ${environmentLabel(environment)} validada e salva.`)
+      setSuccess(
+        payload.webhookWarning
+          ? `Conexao salva. Webhook pendente: ${payload.webhookWarning}`
+          : `Conexao ${environmentLabel(environment)} validada e salva.`,
+      )
       await loadConnections()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nao foi possivel conectar ao Asaas.')
@@ -172,6 +180,18 @@ export default function PaymentProviderDrawer({
                           ? `Chave ${connection.credentialHint || 'protegida'}${connection.lastValidatedAt ? `, validada em ${new Date(connection.lastValidatedAt).toLocaleString('pt-BR')}` : ''}`
                           : 'Nenhuma credencial ativa para este ambiente.'}
                       </p>
+                      {connection && (
+                        <p className='mt-1 text-xs text-muted'>
+                          Webhook: {connection.webhookStatus === 'active'
+                            ? 'ativo'
+                            : connection.webhookStatus === 'awaiting_public_url'
+                              ? 'aguardando URL publica'
+                              : connection.webhookStatus || 'nao configurado'}
+                          {connection.lastWebhookAt
+                            ? ` · ultimo evento em ${new Date(connection.lastWebhookAt).toLocaleString('pt-BR')}`
+                            : ''}
+                        </p>
+                      )}
                     </div>
                     {connection && (
                       <button

@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient } from '@/app/generated/prisma'
 import { prisma } from '@/lib/prisma'
 import type { PaymentProvider } from './provider'
 import type { BillingType } from './types'
+import { createFinancialAuditLog } from './audit'
 
 type ReceivableCandidate = {
   id: string
@@ -171,6 +172,7 @@ export async function issueNextBillingCycle(input: {
   interestPercentage?: string
   finePercentage?: string
   db?: PaymentDatabase
+  actorId?: string | null
 }) {
   const db = input.db ?? prisma
   const cycleSize = input.cycleSize ?? 12
@@ -240,6 +242,22 @@ export async function issueNextBillingCycle(input: {
     return { cycle: null, charges: [], alreadyComplete: true }
   }
 
+  const nextCycleNumber = retryingCycle?.cycleNumber ?? (previousCycle?.cycleNumber ?? 0) + 1
+  const adjustmentReview = sale.annualAdjustment && nextCycleNumber > 1
+    ? await db.adjustmentReview.findUnique({
+        where: {
+          connectionId_saleId_cycleNumber: {
+            connectionId: connection.id,
+            saleId: sale.id,
+            cycleNumber: nextCycleNumber,
+          },
+        },
+      })
+    : null
+  if (sale.annualAdjustment && nextCycleNumber > 1 && adjustmentReview?.status !== 'applied') {
+    throw new Error('O reajuste anual precisa ser aprovado e aplicado antes do proximo ciclo.')
+  }
+
   const cycle = retryingCycle
     ? await db.billingCycle.update({
         where: { id: retryingCycle.id },
@@ -253,6 +271,7 @@ export async function issueNextBillingCycle(input: {
           startSequence: cycleReceivables[0].sequence,
           endSequence: cycleReceivables[cycleReceivables.length - 1].sequence,
           status: 'issuing',
+          adjustmentReviewId: adjustmentReview?.id,
         },
       })
   const customer = await findOrCreateExternalCustomer({
@@ -293,6 +312,23 @@ export async function issueNextBillingCycle(input: {
     data: {
       status: 'issued',
       issuedAt: new Date(),
+    },
+  })
+
+  await createFinancialAuditLog(db, {
+    companyId: connection.companyId,
+    actorId: input.actorId,
+    action: 'billing_cycle_issued',
+    entityType: 'billing_cycle',
+    entityId: issuedCycle.id,
+    saleId: sale.id,
+    metadata: {
+      cycleNumber: issuedCycle.cycleNumber,
+      startSequence: issuedCycle.startSequence,
+      endSequence: issuedCycle.endSequence,
+      charges: charges.length,
+      provider: connection.provider,
+      environment: connection.environment,
     },
   })
 

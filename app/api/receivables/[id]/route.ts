@@ -4,6 +4,7 @@ import { forbiddenResponse, receivableAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 import { createLotEvent } from '@/lib/lot-events'
 import { hasDevelopmentPermission } from '@/lib/permissions'
+import { createFinancialAuditLog } from '@/lib/payments/audit'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -33,11 +34,12 @@ export async function PATCH(req: Request, { params }: Params) {
           user: true,
           lot: {
             include: {
-              block: true,
+              block: { include: { development: true } },
             },
           },
         },
       },
+      externalCharges: true,
     },
   })
 
@@ -49,6 +51,14 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 
   if (data.status === 'paid') {
+    const activeCharge = receivable.externalCharges.find(
+      (charge) => !['cancelled', 'refunded'].includes(charge.status),
+    )
+    if (activeCharge) {
+      return NextResponse.json({
+        error: 'Cancele a cobranca externa antes de registrar uma baixa manual.',
+      }, { status: 409 })
+    }
     const receivableAmount = Number(receivable.amount)
     const paidAmount = Number(data.paidAmount ?? receivableAmount)
     if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
@@ -76,6 +86,19 @@ export async function PATCH(req: Request, { params }: Params) {
         description: `${receivable.kind === 'down_payment' ? 'Entrada' : `Parcela ${receivable.sequence}`} de ${receivable.sale.user.name}: ${paidAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`,
         notes: typeof data.notes === 'string' ? data.notes.trim() || null : null,
       })
+      const companyId = receivable.sale.lot.block.development?.companyId
+      if (companyId) {
+        await createFinancialAuditLog(tx, {
+          companyId,
+          actorId: currentUserId,
+          action: 'receivable_paid_manually',
+          entityType: 'receivable',
+          entityId: receivable.id,
+          saleId: receivable.saleId,
+          receivableId: receivable.id,
+          metadata: { paidAmount, paidAt: data.paidAt, notes: data.notes },
+        })
+      }
 
       return saved
     })
@@ -84,6 +107,11 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 
   if (data.status === 'pending') {
+    if (receivable.externalCharges.some((charge) => ['confirmed', 'received'].includes(charge.status))) {
+      return NextResponse.json({
+        error: 'A cobranca continua paga no provedor. Concilie ou estorne no Asaas antes de reabrir.',
+      }, { status: 409 })
+    }
     const updated = await prisma.$transaction(async (tx) => {
       const saved = await tx.receivable.update({
         where: { id },
@@ -103,6 +131,18 @@ export async function PATCH(req: Request, { params }: Params) {
         title: 'Pagamento reaberto',
         description: `${receivable.kind === 'down_payment' ? 'Entrada' : `Parcela ${receivable.sequence}`} voltou para em aberto.`,
       })
+      const companyId = receivable.sale.lot.block.development?.companyId
+      if (companyId) {
+        await createFinancialAuditLog(tx, {
+          companyId,
+          actorId: currentUserId,
+          action: 'receivable_reopened_manually',
+          entityType: 'receivable',
+          entityId: receivable.id,
+          saleId: receivable.saleId,
+          receivableId: receivable.id,
+        })
+      }
 
       return saved
     })

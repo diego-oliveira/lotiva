@@ -109,6 +109,8 @@ function SalesContent() {
   const [receivablesSale, setReceivablesSale] = useState<Sale | null>(null)
   const [canCorrectSales, setCanCorrectSales] = useState(false)
   const [canManageFinance, setCanManageFinance] = useState(false)
+  const [canCancelPayments, setCanCancelPayments] = useState(false)
+  const [canApproveAdjustments, setCanApproveAdjustments] = useState(false)
 
   useEffect(() => {
     fetchSales()
@@ -116,11 +118,15 @@ function SalesContent() {
       .then((response) => response.ok ? response.json() : null)
       .then((payload) => {
         setCanCorrectSales(Boolean(payload?.permissions?.admin))
-        setCanManageFinance(Boolean(payload?.permissions?.finance))
+        setCanManageFinance(Boolean(payload?.permissions?.issuePayments))
+        setCanCancelPayments(Boolean(payload?.permissions?.cancelPayments))
+        setCanApproveAdjustments(Boolean(payload?.permissions?.approveAdjustments))
       })
       .catch(() => {
         setCanCorrectSales(false)
         setCanManageFinance(false)
+        setCanCancelPayments(false)
+        setCanApproveAdjustments(false)
       })
 
     const params = new URLSearchParams(window.location.search)
@@ -533,6 +539,8 @@ function SalesContent() {
         sale={receivablesSale}
         isOpen={Boolean(receivablesSale)}
         canManagePayments={canManageFinance}
+        canCancelPayments={canCancelPayments}
+        canApproveAdjustments={canApproveAdjustments}
         onClose={() => setReceivablesSale(null)}
         onUpdated={handleReceivablesUpdated}
       />

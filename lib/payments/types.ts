@@ -45,7 +45,13 @@ export type PaymentCharge = PaymentChargeInput & {
   invoiceUrl?: string
   bankSlipUrl?: string
   deleted?: boolean
+  paidAmount?: string
+  netAmount?: string
+  paymentDate?: string
+  creditDate?: string
 }
+
+export type PaymentChargeUpdateInput = Omit<PaymentChargeInput, 'customerId'>
 
 export type PixQrCode = {
   encodedImage: string
@@ -65,4 +71,12 @@ export type ListChargesResult = {
   charges: PaymentCharge[]
   hasMore: boolean
   totalCount: number
+}
+
+export type PaymentWebhookConfig = {
+  id: string
+  name: string
+  url: string
+  enabled: boolean
+  interrupted: boolean
 }

@@ -7,6 +7,8 @@ import type { Prisma } from '@/app/generated/prisma'
 import { hasAnyDevelopmentPermission, hasDevelopmentPermission } from '@/lib/permissions'
 import ReceivableActions from './components/ReceivableActions'
 import FinanceDevelopmentSelect from './components/FinanceDevelopmentSelect'
+import PaymentOperationsPanel from './components/PaymentOperationsPanel'
+import { hasCompanyPermission } from '@/lib/permissions'
 
 type FinancePageProps = {
   searchParams?: Promise<{
@@ -168,6 +170,10 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
           lot: { include: { block: true } },
         },
       },
+      externalCharges: {
+        orderBy: { version: 'desc' },
+        take: 1,
+      },
     },
     orderBy: [
       { dueDate: 'asc' },
@@ -189,6 +195,61 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
     },
     { expected: 0, received: 0, open: 0, overdue: 0, overdueCount: 0, paidCount: 0 },
   )
+
+  const [
+    connections,
+    failedWebhooks,
+    pendingDivergences,
+    canReconcile,
+    failedEvents,
+    divergences,
+  ] = await Promise.all([
+    prisma.paymentProviderConnection.findMany({
+      where: { companyId: selectedDevelopment.companyId, status: 'active' },
+      include: {
+        reconciliationRuns: {
+          orderBy: { startedAt: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: { environment: 'asc' },
+    }),
+    prisma.paymentWebhookEvent.count({
+      where: {
+        connection: { companyId: selectedDevelopment.companyId },
+        status: 'failed',
+      },
+    }),
+    prisma.reconciliationDivergence.count({
+      where: {
+        reconciliationRun: {
+          connection: { companyId: selectedDevelopment.companyId },
+        },
+        status: 'pending',
+      },
+    }),
+    hasCompanyPermission(session.user.id, selectedDevelopment.companyId, 'reconcilePayments'),
+    prisma.paymentWebhookEvent.findMany({
+      where: {
+        connection: { companyId: selectedDevelopment.companyId },
+        status: 'failed',
+      },
+      select: { id: true, eventType: true, errorMessage: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    }),
+    prisma.reconciliationDivergence.findMany({
+      where: {
+        reconciliationRun: {
+          connection: { companyId: selectedDevelopment.companyId },
+        },
+        status: 'pending',
+      },
+      select: { id: true, type: true, resolution: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    }),
+  ])
 
   return (
     <div className='space-y-6'>
@@ -239,6 +300,36 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
           <p className={`metric-value ${summary.overdueCount > 0 ? 'text-red-700' : ''}`}>{summary.overdueCount}</p>
         </div>
       </section>
+
+      <PaymentOperationsPanel
+        connections={connections.map((connection) => ({
+          id: connection.id,
+          environment: connection.environment,
+          status: connection.status,
+          webhookStatus: connection.webhookStatus,
+          lastWebhookAt: connection.lastWebhookAt?.toISOString() ?? null,
+          lastRun: connection.reconciliationRuns[0]
+            ? {
+                status: connection.reconciliationRuns[0].status,
+                checkedCount: connection.reconciliationRuns[0].checkedCount,
+                divergenceCount: connection.reconciliationRuns[0].divergenceCount,
+                resolvedCount: connection.reconciliationRuns[0].resolvedCount,
+                startedAt: connection.reconciliationRuns[0].startedAt.toISOString(),
+              }
+            : null,
+        }))}
+        failedWebhooks={failedWebhooks}
+        pendingDivergences={pendingDivergences}
+        canReconcile={canReconcile}
+        failedEvents={failedEvents.map((event) => ({
+          ...event,
+          createdAt: event.createdAt.toISOString(),
+        }))}
+        divergences={divergences.map((divergence) => ({
+          ...divergence,
+          createdAt: divergence.createdAt.toISOString(),
+        }))}
+      />
 
       <section className='panel overflow-hidden'>
         <form action='/finance' className='panel-header grid gap-4 px-6 py-5 lg:grid-cols-[1fr_180px_150px_150px_auto] lg:items-end'>
@@ -346,6 +437,12 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                       </td>
                       <td className='whitespace-nowrap px-6 py-4'>
                         <span className={`pill ${statusMeta.className}`}>{statusMeta.label}</span>
+                        {receivable.externalCharges[0] && (
+                          <p className='mt-2 text-xs text-muted'>
+                            Asaas: {receivable.externalCharges[0].status}
+                            {receivable.externalCharges[0].version > 1 ? ` · v${receivable.externalCharges[0].version}` : ''}
+                          </p>
+                        )}
                         {receivable.notes && <p className='mt-2 max-w-xs truncate text-xs text-muted'>{receivable.notes}</p>}
                       </td>
                       <td className='whitespace-nowrap px-6 py-4 text-right'>

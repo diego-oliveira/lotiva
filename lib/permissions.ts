@@ -1,17 +1,27 @@
 import { prisma } from './prisma'
 
-export type AppPermission = 'admin' | 'manageSettings' | 'manageUsers' | 'sales' | 'finance'
+export type AppPermission =
+  | 'admin'
+  | 'manageSettings'
+  | 'manageUsers'
+  | 'sales'
+  | 'finance'
+  | 'connectPayments'
+  | 'issuePayments'
+  | 'cancelPayments'
+  | 'approveAdjustments'
+  | 'reconcilePayments'
 
 const roleAliases: Record<string, AppPermission[]> = {
-  owner: ['admin', 'manageSettings', 'manageUsers', 'sales', 'finance'],
-  administrador: ['admin', 'manageSettings', 'manageUsers', 'sales', 'finance'],
-  admin: ['admin', 'manageSettings', 'manageUsers', 'sales', 'finance'],
-  gestor: ['manageSettings', 'manageUsers', 'sales', 'finance'],
-  manager: ['manageSettings', 'manageUsers', 'sales', 'finance'],
+  owner: ['admin', 'manageSettings', 'manageUsers', 'sales', 'finance', 'connectPayments', 'issuePayments', 'cancelPayments', 'approveAdjustments', 'reconcilePayments'],
+  administrador: ['admin', 'manageSettings', 'manageUsers', 'sales', 'finance', 'connectPayments', 'issuePayments', 'cancelPayments', 'approveAdjustments', 'reconcilePayments'],
+  admin: ['admin', 'manageSettings', 'manageUsers', 'sales', 'finance', 'connectPayments', 'issuePayments', 'cancelPayments', 'approveAdjustments', 'reconcilePayments'],
+  gestor: ['manageSettings', 'manageUsers', 'sales', 'finance', 'connectPayments', 'issuePayments', 'cancelPayments', 'approveAdjustments', 'reconcilePayments'],
+  manager: ['manageSettings', 'manageUsers', 'sales', 'finance', 'connectPayments', 'issuePayments', 'cancelPayments', 'approveAdjustments', 'reconcilePayments'],
   vendedor: ['sales'],
   sales: ['sales'],
-  financeiro: ['finance'],
-  finance: ['finance'],
+  financeiro: ['finance', 'issuePayments', 'cancelPayments', 'reconcilePayments'],
+  finance: ['finance', 'issuePayments', 'cancelPayments', 'reconcilePayments'],
 }
 
 const permissionRoleNames: Record<AppPermission, string[]> = {
@@ -20,6 +30,11 @@ const permissionRoleNames: Record<AppPermission, string[]> = {
   manageUsers: ['owner', 'administrador', 'admin', 'gestor', 'manager'],
   sales: ['owner', 'administrador', 'admin', 'gestor', 'manager', 'vendedor', 'sales'],
   finance: ['owner', 'administrador', 'admin', 'gestor', 'manager', 'financeiro', 'finance'],
+  connectPayments: ['owner', 'administrador', 'admin', 'gestor', 'manager'],
+  issuePayments: ['owner', 'administrador', 'admin', 'gestor', 'manager', 'financeiro', 'finance'],
+  cancelPayments: ['owner', 'administrador', 'admin', 'gestor', 'manager', 'financeiro', 'finance'],
+  approveAdjustments: ['owner', 'administrador', 'admin', 'gestor', 'manager'],
+  reconcilePayments: ['owner', 'administrador', 'admin', 'gestor', 'manager', 'financeiro', 'finance'],
 }
 
 function normalizeRoleName(name: string) {
@@ -60,6 +75,11 @@ export async function getUserPermissions(userId: string) {
       manageUsers: permissions.has('manageUsers'),
       sales: permissions.has('sales'),
       finance: permissions.has('finance'),
+      connectPayments: permissions.has('connectPayments'),
+      issuePayments: permissions.has('issuePayments'),
+      cancelPayments: permissions.has('cancelPayments'),
+      approveAdjustments: permissions.has('approveAdjustments'),
+      reconcilePayments: permissions.has('reconcilePayments'),
     },
   }
 }

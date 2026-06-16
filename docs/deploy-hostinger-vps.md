@@ -54,6 +54,8 @@ NEXTAUTH_SECRET
 AUTH_URL
 AUTH_SECRET
 PAYMENT_CREDENTIALS_KEY
+PAYMENT_WEBHOOK_BASE_URL
+CRON_SECRET
 SMTP_USER
 SMTP_PASSWORD
 SMTP_FROM
@@ -74,6 +76,7 @@ Use a URL final com HTTPS:
 ```text
 NEXTAUTH_URL="https://app.seudominio.com"
 AUTH_URL="https://app.seudominio.com"
+PAYMENT_WEBHOOK_BASE_URL="https://app.seudominio.com"
 ```
 
 ## 5. Subir a aplicacao
@@ -200,6 +203,29 @@ Verifique a execução:
 sudo journalctl -t lotiva-backup
 sudo ls -lh /var/backups/lotiva/database
 ```
+
+### Agendar cobrancas e conciliacao
+
+O processamento de webhooks deve rodar a cada minuto. A conciliacao e os
+alertas de reajuste devem rodar diariamente:
+
+```cron
+* * * * * cd /opt/lotiva && ./scripts/run-payment-jobs.sh events 2>&1 | /usr/bin/logger -t lotiva-payments
+15 2 * * * cd /opt/lotiva && ./scripts/run-payment-jobs.sh daily 2>&1 | /usr/bin/logger -t lotiva-payments-daily
+```
+
+Valide manualmente:
+
+```bash
+cd /opt/lotiva
+./scripts/run-payment-jobs.sh events
+./scripts/run-payment-jobs.sh daily
+sudo journalctl -t lotiva-payments
+sudo journalctl -t lotiva-payments-daily
+```
+
+Depois do deploy, abra a empresa e salve novamente a conexão Asaas para
+registrar o webhook usando a URL pública.
 
 ### Restaurar
 

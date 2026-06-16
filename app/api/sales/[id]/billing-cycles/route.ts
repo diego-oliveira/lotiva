@@ -9,7 +9,11 @@ import { NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 type Params = { params: Promise<{ id: string }> }
 
-async function getAuthorizedSale(userId: string, saleId: string) {
+async function getAuthorizedSale(
+  userId: string,
+  saleId: string,
+  permission: 'finance' | 'issuePayments' = 'finance',
+) {
   const sale = await prisma.sale.findFirst({
     where: { id: saleId, ...saleAccessWhere(userId) },
     select: {
@@ -27,7 +31,7 @@ async function getAuthorizedSale(userId: string, saleId: string) {
     },
   })
   const developmentId = sale?.lot.block.developmentId
-  if (!sale || !developmentId || !(await hasDevelopmentPermission(userId, developmentId, 'finance'))) {
+  if (!sale || !developmentId || !(await hasDevelopmentPermission(userId, developmentId, permission))) {
     return null
   }
   return {
@@ -60,6 +64,7 @@ export async function GET(_: Request, { params }: Params) {
           id: true,
           receivableId: true,
           providerChargeId: true,
+          version: true,
           billingType: true,
           status: true,
           amount: true,
@@ -68,6 +73,11 @@ export async function GET(_: Request, { params }: Params) {
           bankSlipUrl: true,
           pixPayload: true,
           cancelledAt: true,
+          cancellationReason: true,
+          grossPaidAmount: true,
+          netPaidAmount: true,
+          feeAmount: true,
+          providerPaymentDate: true,
           lastSynchronizedAt: true,
         },
       },
@@ -82,7 +92,7 @@ export async function POST(req: Request, { params }: Params) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
   const { id } = await params
-  const authorized = await getAuthorizedSale(auth.session.user.id, id)
+  const authorized = await getAuthorizedSale(auth.session.user.id, id, 'issuePayments')
   if (!authorized?.companyId) return forbiddenResponse()
 
   try {
@@ -117,6 +127,7 @@ export async function POST(req: Request, { params }: Params) {
       finePercentage: data.finePercentage
         ? String(data.finePercentage)
         : undefined,
+      actorId: auth.session.user.id,
     })
 
     return NextResponse.json(result, { status: result.alreadyComplete ? 200 : 201 })
