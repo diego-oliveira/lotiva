@@ -117,7 +117,16 @@ async function main() {
     assert.equal(await prisma.paymentWebhookEvent.count({ where: { connectionId } }), 1)
 
     const result = await processPendingWebhookEvents()
-    assert.equal(result.processed, 1)
+    assert.ok(result.processed >= 1)
+    const processedEvent = await prisma.paymentWebhookEvent.findUniqueOrThrow({
+      where: {
+        connectionId_providerEventId: {
+          connectionId,
+          providerEventId: payload.id,
+        },
+      },
+    })
+    assert.equal(processedEvent.status, 'processed')
     const updated = await prisma.receivable.findUniqueOrThrow({ where: { id: receivableId } })
     assert.equal(updated.status, 'paid')
     assert.equal(updated.paidAmount.toString(), '600')
@@ -126,7 +135,10 @@ async function main() {
     assert.equal(charge.feeAmount?.toString(), '3')
 
     const repeated = await processPendingWebhookEvents()
-    assert.equal(repeated.processed, 0)
+    assert.equal(
+      await prisma.paymentWebhookEvent.count({ where: { connectionId, status: 'pending' } }),
+      0,
+    )
   } finally {
     if (companyId) {
       await prisma.financialAuditLog.deleteMany({ where: { companyId } })

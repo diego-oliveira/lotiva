@@ -61,18 +61,38 @@ export async function POST(req: Request, { params }: Params) {
 
   try {
     const data = await req.json()
-    const environment = data.environment === 'production' ? 'production' : 'sandbox'
-    const connection = await prisma.paymentProviderConnection.findUnique({
-      where: {
-        companyId_provider_environment: {
-          companyId: authorized.companyId,
-          provider: 'asaas',
-          environment,
-        },
-      },
-    })
+    const requestedEnvironment = data.environment === 'production'
+      ? 'production'
+      : data.environment === 'sandbox'
+        ? 'sandbox'
+        : null
+    const connection = requestedEnvironment
+      ? await prisma.paymentProviderConnection.findUnique({
+          where: {
+            companyId_provider_environment: {
+              companyId: authorized.companyId,
+              provider: 'asaas',
+              environment: requestedEnvironment,
+            },
+          },
+        })
+      : await prisma.paymentProviderConnection.findFirst({
+          where: {
+            companyId: authorized.companyId,
+            provider: 'asaas',
+            status: 'active',
+            environment: 'production',
+          },
+        }) || await prisma.paymentProviderConnection.findFirst({
+          where: {
+            companyId: authorized.companyId,
+            provider: 'asaas',
+            status: 'active',
+            environment: 'sandbox',
+          },
+        })
     if (!connection || connection.status !== 'active') {
-      return NextResponse.json({ error: `Conexao Asaas ${environment} nao encontrada.` }, { status: 409 })
+      return NextResponse.json({ error: 'A empresa ainda nao possui uma conta Asaas configurada.' }, { status: 409 })
     }
 
     const review = await createAdjustmentReview({

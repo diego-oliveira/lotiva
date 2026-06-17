@@ -28,7 +28,7 @@ interface PaymentProviderDrawerProps {
 }
 
 function environmentLabel(environment: 'sandbox' | 'production') {
-  return environment === 'production' ? 'Producao' : 'Sandbox'
+  return environment === 'production' ? 'Conta real' : 'Conta de teste'
 }
 
 export default function PaymentProviderDrawer({
@@ -137,7 +137,7 @@ export default function PaymentProviderDrawer({
     <FormDrawer
       isOpen={isOpen}
       title={`Asaas - ${company.name}`}
-      description='Configure as credenciais usadas para emitir boletos e cobrancas desta empresa.'
+      description='Conecte a conta Asaas usada para gerar boletos e acompanhar pagamentos desta empresa.'
       onClose={onClose}
     >
       <div className='space-y-6'>
@@ -154,8 +154,8 @@ export default function PaymentProviderDrawer({
 
         <section className='rounded-2xl border border-border bg-surface'>
           <div className='border-b border-border bg-surface-secondary px-5 py-4'>
-            <h3 className='font-semibold text-foreground'>Conexoes configuradas</h3>
-            <p className='mt-1 text-sm text-muted'>Sandbox e producao usam chaves independentes.</p>
+            <h3 className='font-semibold text-foreground'>Conta Asaas</h3>
+            <p className='mt-1 text-sm text-muted'>Use a conta de teste durante homologacao e a conta real quando for operar vendas de verdade.</p>
           </div>
           {loading ? (
             <div className='px-5 py-8 text-sm text-muted'>Carregando conexoes...</div>
@@ -178,7 +178,7 @@ export default function PaymentProviderDrawer({
                       <p className='mt-1 text-sm text-muted'>
                         {connection
                           ? `Chave ${connection.credentialHint || 'protegida'}${connection.lastValidatedAt ? `, validada em ${new Date(connection.lastValidatedAt).toLocaleString('pt-BR')}` : ''}`
-                          : 'Nenhuma credencial ativa para este ambiente.'}
+                          : 'Nenhuma credencial ativa para esta conta.'}
                       </p>
                       {connection && (
                         <p className='mt-1 text-xs text-muted'>
@@ -211,20 +211,20 @@ export default function PaymentProviderDrawer({
         </section>
 
         <section className='rounded-2xl border border-border bg-surface p-5'>
-          <h3 className='font-semibold text-foreground'>Adicionar ou substituir credencial</h3>
+          <h3 className='font-semibold text-foreground'>Adicionar ou substituir chave</h3>
           <p className='mt-1 text-sm leading-6 text-muted'>
             A chave sera validada no Asaas antes de ser armazenada de forma criptografada.
           </p>
 
           <label className='mt-5 block'>
-            <span className='mb-2 block text-sm font-semibold text-foreground'>Ambiente</span>
+            <span className='mb-2 block text-sm font-semibold text-foreground'>Tipo de conta</span>
             <select
               value={environment}
               onChange={(event) => setEnvironment(event.target.value as 'sandbox' | 'production')}
               className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary'
             >
-              <option value='sandbox'>Sandbox</option>
-              <option value='production'>Producao</option>
+              <option value='sandbox'>Conta de teste</option>
+              <option value='production'>Conta real</option>
             </select>
           </label>
 
@@ -253,7 +253,7 @@ export default function PaymentProviderDrawer({
         </section>
 
         <div className='rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-800'>
-          Use Sandbox durante os testes. Configure Producao apenas com a conta Asaas definitiva da empresa.
+          Use a conta de teste para validar o fluxo sem impacto financeiro real. Troque para a conta real apenas quando a empresa estiver pronta para operar.
         </div>
       </div>
     </FormDrawer>

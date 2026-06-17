@@ -101,7 +101,7 @@ export default function PaymentOperationsPanel({
               <div>
                 <div className='flex flex-wrap items-center gap-2'>
                   <p className='text-sm font-semibold text-foreground'>
-                    {connection.environment === 'production' ? 'Producao' : 'Sandbox'}
+                    {connection.environment === 'production' ? 'Conta real' : 'Conta de teste'}
                   </p>
                   <span className={`pill ${connection.webhookStatus === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
                     Webhook {connection.webhookStatus === 'active' ? 'ativo' : connection.webhookStatus || 'nao configurado'}

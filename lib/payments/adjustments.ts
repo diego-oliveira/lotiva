@@ -59,45 +59,91 @@ export async function createAdjustmentReview(input: {
       receivable.sequence > previousCycle.endSequence &&
       receivable.externalCharges.length === 0,
     )
-    .slice(0, 12)
   if (eligible.length === 0) {
     throw new Error('Nao existem parcelas futuras elegiveis para reajuste.')
   }
 
-  const review = await db.adjustmentReview.create({
-    data: {
-      connectionId: input.connectionId,
-      saleId: input.saleId,
-      cycleNumber,
-      indexName: input.indexName.trim(),
-      percentage,
-      source: input.source.trim(),
-      reason: input.reason.trim(),
-      createdById: input.createdById,
-      items: {
-        create: eligible.map((receivable) => ({
-          receivableId: receivable.id,
-          previousAmount: receivable.amount,
-          adjustedAmount: decimal(receivable.amount)
-            .times(new Prisma.Decimal(1).plus(percentage.dividedBy(100)))
-            .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP),
-        })),
+  const existingReview = await db.adjustmentReview.findUnique({
+    where: {
+      connectionId_saleId_cycleNumber: {
+        connectionId: input.connectionId,
+        saleId: input.saleId,
+        cycleNumber,
       },
     },
-    include: {
-      items: {
-        include: {
-          receivable: { select: { sequence: true, dueDate: true } },
-        },
-        orderBy: { receivable: { sequence: 'asc' } },
-      },
-    },
+    select: { id: true, status: true },
   })
+
+  if (existingReview?.status === 'applied') {
+    throw new Error('Este ciclo ja possui um reajuste aprovado. Emita o proximo ciclo para criar um novo reajuste.')
+  }
+
+  const items = eligible.map((receivable) => ({
+    receivableId: receivable.id,
+    previousAmount: receivable.amount,
+    adjustedAmount: decimal(receivable.amount)
+      .times(new Prisma.Decimal(1).plus(percentage.dividedBy(100)))
+      .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP),
+  }))
+
+  const reviewData = {
+    indexName: input.indexName.trim(),
+    percentage,
+    source: input.source.trim(),
+    reason: input.reason.trim(),
+    createdById: input.createdById,
+    status: 'pending',
+    reviewedById: null,
+    reviewedAt: null,
+    appliedAt: null,
+    rejectionReason: null,
+  }
+
+  if (existingReview) {
+    await db.adjustmentReviewItem.deleteMany({
+      where: { adjustmentReviewId: existingReview.id },
+    })
+  }
+
+  const includeItems = {
+    items: {
+      include: {
+        receivable: { select: { sequence: true, dueDate: true } },
+      },
+      orderBy: { receivable: { sequence: 'asc' } },
+    },
+  } satisfies Prisma.AdjustmentReviewInclude
+
+  const review = existingReview
+    ? await db.adjustmentReview.update({
+      where: { id: existingReview.id },
+      data: {
+        ...reviewData,
+        items: { create: items },
+      },
+      include: includeItems,
+    })
+    : await db.adjustmentReview.create({
+      data: {
+        connectionId: input.connectionId,
+        saleId: input.saleId,
+        cycleNumber,
+        ...reviewData,
+        items: { create: items },
+      },
+      include: includeItems,
+    })
+
+  const auditAction = existingReview
+    ? existingReview.status === 'rejected'
+      ? 'adjustment_review_reopened'
+      : 'adjustment_review_updated'
+    : 'adjustment_review_created'
 
   await createFinancialAuditLog(db, {
     companyId: connection.companyId,
     actorId: input.createdById,
-    action: 'adjustment_review_created',
+    action: auditAction,
     entityType: 'adjustment_review',
     entityId: review.id,
     saleId: sale.id,

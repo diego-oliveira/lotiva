@@ -54,7 +54,7 @@ async function main() {
         data: {
           userId: user.id,
           lotId: lot.id,
-          installmentCount: 24,
+          installmentCount: 36,
           installmentValue: '600.00',
           downPayment: '8000.00',
           firstDueDate: new Date(Date.UTC(2026, 6, 20)),
@@ -62,7 +62,7 @@ async function main() {
         },
       })
       await tx.receivable.createMany({
-        data: Array.from({ length: 24 }, (_, index) => ({
+        data: Array.from({ length: 36 }, (_, index) => ({
           saleId: sale.id,
           kind: 'installment',
           sequence: index + 1,
@@ -110,14 +110,29 @@ async function main() {
         createdById: user.id,
         db: tx,
       })
-      for (const item of adjustment.items) {
+      assert.equal(adjustment.items.length, 24)
+      const updatedAdjustment = await createAdjustmentReview({
+        connectionId: connection.id,
+        saleId: sale.id,
+        indexName: 'INCC',
+        percentage: '6',
+        source: 'FGV teste revisado',
+        reason: 'Teste do segundo ciclo revisado',
+        createdById: user.id,
+        db: tx,
+      })
+      assert.equal(updatedAdjustment.id, adjustment.id)
+      assert.equal(updatedAdjustment.items.length, 24)
+      assert.equal(updatedAdjustment.items[0].adjustedAmount.toString(), '636')
+      assert.equal(await tx.adjustmentReview.count({ where: { saleId: sale.id } }), 1)
+      for (const item of updatedAdjustment.items) {
         await tx.receivable.update({
           where: { id: item.receivableId },
           data: { amount: item.adjustedAmount, balance: item.adjustedAmount },
         })
       }
       await tx.adjustmentReview.update({
-        where: { id: adjustment.id },
+        where: { id: updatedAdjustment.id },
         data: { status: 'applied', reviewedById: user.id, reviewedAt: new Date(), appliedAt: new Date() },
       })
 
@@ -129,15 +144,33 @@ async function main() {
       })
       assert.equal(second.charges.length, 12)
       assert.equal(second.cycle?.cycleNumber, 2)
-      assert.equal(second.charges[0].amount.toString(), '630')
-
-      const repeated = await issueNextBillingCycle({
-        connectionId: connection.id,
-        saleId: sale.id,
-        provider,
-        db: tx,
+      assert.equal(second.charges[0].amount.toString(), '636')
+      const notYetIssued = await tx.receivable.findUniqueOrThrow({
+        where: {
+          saleId_kind_sequence: {
+            saleId: sale.id,
+            kind: 'installment',
+            sequence: 25,
+          },
+        },
       })
-      assert.equal(repeated.alreadyComplete, true)
+      assert.equal(notYetIssued.amount.toString(), '636')
+      assert.equal(
+        await tx.externalCharge.count({
+          where: { receivableId: notYetIssued.id },
+        }),
+        0,
+      )
+
+      await assert.rejects(
+        () => issueNextBillingCycle({
+          connectionId: connection.id,
+          saleId: sale.id,
+          provider,
+          db: tx,
+        }),
+        /reajuste anual precisa ser aprovado/,
+      )
       assert.equal(await tx.billingCycle.count({ where: { saleId: sale.id } }), 2)
       assert.equal(await tx.externalCharge.count({ where: { receivable: { saleId: sale.id } } }), 24)
 
@@ -149,7 +182,7 @@ async function main() {
     await prisma.$disconnect()
   }
 
-  console.log('Integracao validada: 2 ciclos, reajuste obrigatorio e 24 cobrancas sem duplicidade.')
+  console.log('Integracao validada: reajuste atualiza parcelas futuras e emissao continua em ciclos de 12.')
 }
 
 main().catch((error) => {

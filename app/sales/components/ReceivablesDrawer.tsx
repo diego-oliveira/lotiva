@@ -43,6 +43,7 @@ interface ReceivablesDrawerProps {
 
 interface ExternalCharge {
   id: string
+  receivableId: string
   providerChargeId: string
   billingType: string
   status: string
@@ -132,6 +133,23 @@ function getStatusMeta(receivable: Receivable) {
   return { label: 'Em aberto', className: 'bg-amber-50 text-amber-700' }
 }
 
+function getChargeMeta(charge?: ExternalCharge) {
+  if (!charge) return { label: 'Boleto nao gerado', className: 'bg-slate-100 text-slate-600' }
+  if (charge.status === 'received' || charge.status === 'confirmed') {
+    return { label: 'Pago pelo boleto', className: 'bg-emerald-50 text-emerald-700' }
+  }
+  if (charge.status === 'overdue') {
+    return { label: 'Boleto vencido', className: 'bg-red-50 text-red-700' }
+  }
+  if (charge.status === 'cancelled') {
+    return { label: 'Boleto cancelado', className: 'bg-slate-100 text-slate-600' }
+  }
+  if (charge.status === 'refunded') {
+    return { label: 'Pagamento estornado', className: 'bg-amber-50 text-amber-700' }
+  }
+  return { label: 'Boleto gerado', className: 'bg-blue-50 text-blue-700' }
+}
+
 export default function ReceivablesDrawer({
   sale,
   isOpen,
@@ -146,7 +164,6 @@ export default function ReceivablesDrawer({
   const [cycles, setCycles] = useState<BillingCycle[]>([])
   const [cyclesLoading, setCyclesLoading] = useState(false)
   const [issuing, setIssuing] = useState(false)
-  const [cycleEnvironment, setCycleEnvironment] = useState<'sandbox' | 'production'>('sandbox')
   const [cycleSuccess, setCycleSuccess] = useState<string | null>(null)
   const [adjustments, setAdjustments] = useState<AdjustmentReview[]>([])
   const [adjustmentsLoading, setAdjustmentsLoading] = useState(false)
@@ -196,7 +213,6 @@ export default function ReceivablesDrawer({
     if (!isOpen || !sale) return
     setError(null)
     setCycleSuccess(null)
-    setCycleEnvironment('sandbox')
     setCycles([])
     setAdjustments([])
     void loadCycles()
@@ -216,6 +232,16 @@ export default function ReceivablesDrawer({
       { total: 0, paid: 0, balance: 0, overdue: 0 },
     )
   }, [receivables])
+  const chargesByReceivable = useMemo(() => {
+    const map = new Map<string, ExternalCharge>()
+    cycles
+      .flatMap((cycle) => cycle.externalCharges)
+      .sort((left, right) => right.version - left.version)
+      .forEach((charge) => {
+        if (!map.has(charge.receivableId)) map.set(charge.receivableId, charge)
+      })
+    return map
+  }, [cycles])
 
   if (!isOpen || !sale) return null
 
@@ -228,7 +254,6 @@ export default function ReceivablesDrawer({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          environment: cycleEnvironment,
           cycleSize: 12,
           billingType: 'BOLETO',
         }),
@@ -240,8 +265,8 @@ export default function ReceivablesDrawer({
 
       setCycleSuccess(
         payload.alreadyComplete
-          ? 'Este ciclo ja estava completamente emitido.'
-          : `${payload.charges?.length ?? 0} cobranca(s) emitida(s) com sucesso.`,
+          ? 'Os boletos deste ciclo ja tinham sido gerados.'
+          : `${payload.charges?.length ?? 0} boleto(s) gerado(s) com sucesso.`,
       )
       await loadCycles()
       await onUpdated()
@@ -260,7 +285,7 @@ export default function ReceivablesDrawer({
       const response = await fetch(`/api/sales/${sale.id}/adjustments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...adjustmentForm, environment: cycleEnvironment }),
+        body: JSON.stringify(adjustmentForm),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error || 'Nao foi possivel criar o reajuste.')
@@ -413,144 +438,10 @@ export default function ReceivablesDrawer({
             </div>
           </section>
 
-          {canManagePayments && (
-            <section className='mt-6 overflow-hidden rounded-2xl border border-border bg-surface'>
-              <div className='border-b border-border bg-surface-secondary px-5 py-4'>
-                <div className='flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between'>
-                  <div>
-                    <h3 className='text-base font-semibold text-foreground'>Cobrancas Asaas</h3>
-                    <p className='mt-1 text-sm text-muted'>Emita no maximo as proximas 12 parcelas de cada vez.</p>
-                  </div>
-                  <div className='flex flex-col gap-2 sm:flex-row'>
-                    <select
-                      value={cycleEnvironment}
-                      onChange={(event) => setCycleEnvironment(event.target.value as 'sandbox' | 'production')}
-                      className='rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary'
-                    >
-                      <option value='sandbox'>Sandbox</option>
-                      <option value='production'>Producao</option>
-                    </select>
-                    <button
-                      type='button'
-                      onClick={issueBillingCycle}
-                      disabled={issuing}
-                      className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
-                    >
-                      {issuing ? 'Emitindo...' : 'Emitir proximas 12'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {cyclesLoading ? (
-                <div className='px-5 py-8 text-sm text-muted'>Carregando cobrancas...</div>
-              ) : cycles.length === 0 ? (
-                <div className='px-5 py-8 text-center text-sm text-muted'>
-                  Nenhum ciclo de cobrancas foi emitido para esta venda.
-                </div>
-              ) : (
-                <div className='divide-y divide-border'>
-                  {cycles.map((cycle) => (
-                    <details key={cycle.id} className='group px-5 py-4' open={cycles.length === 1}>
-                      <summary className='flex cursor-pointer list-none flex-wrap items-center justify-between gap-3'>
-                        <div>
-                          <div className='flex flex-wrap items-center gap-2'>
-                            <p className='text-sm font-semibold text-foreground'>Ciclo {cycle.cycleNumber}</p>
-                            <span className='pill bg-blue-50 text-blue-700'>
-                              {cycle.connection.environment === 'production' ? 'Producao' : 'Sandbox'}
-                            </span>
-                            <span className={`pill ${cycle.status === 'issued' ? 'bg-emerald-50 text-emerald-700' : cycle.status === 'failed' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
-                              {cycle.status === 'issued' ? 'Emitido' : cycle.status === 'failed' ? 'Falhou' : 'Em processamento'}
-                            </span>
-                          </div>
-                          <p className='mt-1 text-sm text-muted'>
-                            Parcelas {cycle.startSequence} a {cycle.endSequence} · {cycle.externalCharges.length} cobranca(s)
-                          </p>
-                        </div>
-                        <span className='text-sm font-semibold text-primary group-open:hidden'>Ver cobrancas</span>
-                        <span className='hidden text-sm font-semibold text-primary group-open:inline'>Ocultar</span>
-                      </summary>
-
-                      <div className='mt-4 divide-y divide-border rounded-xl border border-border'>
-                        {cycle.externalCharges.map((charge) => (
-                          <div key={charge.id} className='grid gap-3 px-4 py-3 md:grid-cols-[1fr_1fr_auto] md:items-center'>
-                            <div>
-                              <p className='text-sm font-semibold text-foreground'>{formatCurrency(charge.amount)}</p>
-                              <p className='mt-1 text-xs text-muted'>Vencimento em {formatDate(charge.dueDate)}</p>
-                            </div>
-                            <div>
-                              <span className='pill bg-slate-100 text-slate-700'>{charge.status}</span>
-                              <p className='mt-1 text-xs text-muted'>{charge.providerChargeId}</p>
-                              {charge.version > 1 && <p className='mt-1 text-xs text-muted'>Reemissao v{charge.version}</p>}
-                              {charge.grossPaidAmount !== null && (
-                                <p className='mt-1 text-xs text-muted'>
-                                  Bruto {formatCurrency(charge.grossPaidAmount)}
-                                  {charge.feeAmount !== null ? ` · tarifa ${formatCurrency(charge.feeAmount)}` : ''}
-                                </p>
-                              )}
-                              {charge.cancellationReason && (
-                                <p className='mt-1 text-xs text-red-600'>Motivo: {charge.cancellationReason}</p>
-                              )}
-                            </div>
-                            <div className='flex flex-wrap gap-2 md:justify-end'>
-                              {charge.invoiceUrl && (
-                                <a
-                                  href={charge.invoiceUrl}
-                                  target='_blank'
-                                  rel='noreferrer'
-                                  className='rounded-lg px-3 py-2 text-xs font-semibold text-primary transition hover:bg-primary/8'
-                                >
-                                  Abrir cobranca
-                                </a>
-                              )}
-                              {charge.bankSlipUrl && (
-                                <a
-                                  href={charge.bankSlipUrl}
-                                  target='_blank'
-                                  rel='noreferrer'
-                                  className='rounded-lg px-3 py-2 text-xs font-semibold text-primary transition hover:bg-primary/8'
-                                >
-                                  Boleto
-                                </a>
-                              )}
-                              {charge.pixPayload && (
-                                <button
-                                  type='button'
-                                  onClick={async () => {
-                                    await navigator.clipboard.writeText(charge.pixPayload || '')
-                                    setCycleSuccess('Codigo PIX copiado.')
-                                  }}
-                                  className='rounded-lg px-3 py-2 text-xs font-semibold text-primary transition hover:bg-primary/8'
-                                >
-                                  Copiar PIX
-                                </button>
-                              )}
-                              {canCancelPayments && !['confirmed', 'received'].includes(charge.status) && (
-                                <button
-                                  type='button'
-                                  disabled={chargeActionId === charge.id}
-                                  onClick={() => runChargeAction(
-                                    charge,
-                                    ['cancelled', 'refunded'].includes(charge.status) ? 'reissue' : 'cancel',
-                                  )}
-                                  className='rounded-lg px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-60'
-                                >
-                                  {chargeActionId === charge.id
-                                    ? 'Processando...'
-                                    : ['cancelled', 'refunded'].includes(charge.status)
-                                      ? 'Reemitir'
-                                      : 'Cancelar'}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-                  ))}
-                </div>
-              )}
-            </section>
+          {canManagePayments && cyclesLoading && (
+            <div className='mt-6 rounded-2xl border border-border bg-surface px-5 py-4 text-sm text-muted'>
+              Carregando boletos...
+            </div>
           )}
 
           {canManagePayments && sale.annualAdjustment && cycles.length > 0 && (
@@ -662,47 +553,151 @@ export default function ReceivablesDrawer({
 
           <section className='mt-6 overflow-hidden rounded-2xl border border-border bg-surface'>
             <div className='border-b border-border bg-surface-secondary px-5 py-4'>
-              <h3 className='text-base font-semibold text-foreground'>Parcelas e recebimentos</h3>
+              <div className='flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between'>
+                <div>
+                  <h3 className='text-base font-semibold text-foreground'>Parcelas e recebimentos</h3>
+                  <p className='mt-1 text-sm text-muted'>
+                    Acompanhe cada parcela e veja se o boleto ja foi gerado.
+                  </p>
+                </div>
+                {canManagePayments && (
+                  <button
+                    type='button'
+                    onClick={issueBillingCycle}
+                    disabled={issuing}
+                    className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
+                  >
+                    {issuing ? 'Gerando...' : 'Gerar boletos das proximas 12'}
+                  </button>
+                )}
+              </div>
             </div>
 
             {receivables.length === 0 ? (
               <div className='px-5 py-10 text-center text-sm text-muted'>Nenhum recebivel gerado para esta venda.</div>
             ) : (
-              <div className='divide-y divide-border'>
+              <div className='space-y-4 bg-surface-secondary/40 px-5 py-5'>
                 {receivables.map((receivable) => {
                   const status = getStatusMeta(receivable)
                   const paid = receivable.status === 'paid'
+                  const charge = chargesByReceivable.get(receivable.id)
+                  const chargeMeta = getChargeMeta(charge)
 
                   return (
-                    <div key={receivable.id} className='grid gap-4 px-5 py-4 md:grid-cols-[1.4fr_1fr_1fr_auto] md:items-center'>
-                      <div>
-                        <div className='flex flex-wrap items-center gap-2'>
-                          <p className='text-sm font-semibold text-foreground'>{getReceivableLabel(receivable)}</p>
-                          <span className={`pill ${status.className}`}>{status.label}</span>
+                    <article key={receivable.id} className='rounded-2xl border border-border bg-surface px-5 py-5 shadow-sm'>
+                      <div className='grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(180px,0.7fr)]'>
+                        <div className='min-w-0'>
+                          <div className='flex flex-wrap items-center gap-2'>
+                            <p className='text-base font-semibold text-foreground'>{getReceivableLabel(receivable)}</p>
+                            <span className={`pill ${status.className}`}>{status.label}</span>
+                          </div>
+                          <div className='mt-2 grid gap-3 sm:grid-cols-2'>
+                            <div>
+                              <p className='text-xs font-semibold uppercase text-muted'>Vencimento</p>
+                              <p className='mt-1 text-sm font-medium text-foreground'>{formatDate(receivable.dueDate)}</p>
+                            </div>
+                            <div>
+                              <p className='text-xs font-semibold uppercase text-muted'>Valor</p>
+                              <p className='mt-1 text-sm font-semibold text-foreground'>{formatCurrency(receivable.amount)}</p>
+                            </div>
+                          </div>
                         </div>
-                        <p className='mt-1 text-sm text-muted'>Vencimento em {formatDate(receivable.dueDate)}</p>
+
+                        <div className='rounded-2xl border border-border bg-surface-secondary px-4 py-4'>
+                          <p className='text-xs font-semibold uppercase text-muted'>{paid ? 'Pago em' : 'Saldo'}</p>
+                          <p className='mt-1 text-lg font-semibold text-foreground'>
+                            {paid && receivable.paidAt ? formatDate(receivable.paidAt) : formatCurrency(receivable.balance)}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className='text-xs font-semibold uppercase text-muted'>Valor</p>
-                        <p className='mt-1 text-sm font-semibold text-foreground'>{formatCurrency(receivable.amount)}</p>
+
+                      <div className='mt-5 rounded-2xl border border-border px-4 py-4'>
+                        <div className='flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
+                          <div className='min-w-0'>
+                            <div className='flex flex-wrap items-center gap-2'>
+                              <p className='text-xs font-semibold uppercase text-muted'>Boleto</p>
+                              <span className={`pill ${chargeMeta.className}`}>{chargeMeta.label}</span>
+                              {charge && charge.version > 1 && <span className='pill bg-slate-100 text-slate-600'>v{charge.version}</span>}
+                            </div>
+                            {charge?.grossPaidAmount !== null && charge?.grossPaidAmount !== undefined && (
+                              <p className='mt-2 text-sm text-muted'>
+                                Bruto {formatCurrency(charge.grossPaidAmount)}
+                                {charge.feeAmount !== null ? ` · tarifa ${formatCurrency(charge.feeAmount)}` : ''}
+                              </p>
+                            )}
+                            {charge?.cancellationReason && (
+                              <p className='mt-2 text-sm text-red-700'>Motivo: {charge.cancellationReason}</p>
+                            )}
+                          </div>
+
+                          {charge && (
+                            <div className='flex flex-wrap gap-2 md:justify-end'>
+                              {charge.invoiceUrl && (
+                                <a
+                                  href={charge.invoiceUrl}
+                                  target='_blank'
+                                  rel='noreferrer'
+                                  className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-primary transition hover:bg-primary/8'
+                                >
+                                  Abrir cobranca
+                                </a>
+                              )}
+                              {charge.bankSlipUrl && (
+                                <a
+                                  href={charge.bankSlipUrl}
+                                  target='_blank'
+                                  rel='noreferrer'
+                                  className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-primary transition hover:bg-primary/8'
+                                >
+                                  Boleto
+                                </a>
+                              )}
+                              {charge.pixPayload && (
+                                <button
+                                  type='button'
+                                  onClick={async () => {
+                                    await navigator.clipboard.writeText(charge.pixPayload || '')
+                                    setCycleSuccess('Codigo PIX copiado.')
+                                  }}
+                                  className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-primary transition hover:bg-primary/8'
+                                >
+                                  Copiar PIX
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <p className='text-xs font-semibold uppercase text-muted'>{paid ? 'Pago em' : 'Saldo'}</p>
-                        <p className='mt-1 text-sm font-semibold text-foreground'>
-                          {paid && receivable.paidAt ? formatDate(receivable.paidAt) : formatCurrency(receivable.balance)}
-                        </p>
-                      </div>
-                      <div className='flex justify-start md:justify-end'>
+
+                      <div className='mt-5 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-end'>
                         <button
                           type='button'
                           onClick={() => updateReceivable(receivable, paid ? 'pending' : 'paid')}
                           disabled={savingId === receivable.id}
                           className='rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:opacity-60'
                         >
-                          {savingId === receivable.id ? 'Salvando...' : paid ? 'Reabrir' : 'Marcar como paga'}
+                          {savingId === receivable.id ? 'Salvando...' : paid ? 'Reabrir parcela' : 'Marcar como paga'}
                         </button>
+
+                        {charge && canCancelPayments && !['confirmed', 'received'].includes(charge.status) && (
+                          <button
+                            type='button'
+                            disabled={chargeActionId === charge.id}
+                            onClick={() => runChargeAction(
+                              charge,
+                              ['cancelled', 'refunded'].includes(charge.status) ? 'reissue' : 'cancel',
+                            )}
+                            className='rounded-xl border border-red-200 bg-surface px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-60'
+                          >
+                            {chargeActionId === charge.id
+                              ? 'Processando...'
+                              : ['cancelled', 'refunded'].includes(charge.status)
+                                ? 'Reemitir boleto'
+                                : 'Cancelar boleto'}
+                          </button>
+                        )}
                       </div>
-                    </div>
+                    </article>
                   )
                 })}
               </div>
