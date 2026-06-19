@@ -3,8 +3,8 @@ import path from 'path'
 export const uploadPublicPath = (process.env.UPLOAD_PUBLIC_PATH || '/uploads').replace(/\/$/, '')
 
 export const uploadDirectory = process.env.UPLOAD_DIR
-  ? path.resolve(process.env.UPLOAD_DIR)
-  : path.join(process.cwd(), 'public', 'uploads')
+  ? path.resolve(/*turbopackIgnore: true*/ process.env.UPLOAD_DIR)
+  : path.join(/*turbopackIgnore: true*/ process.cwd(), 'public', 'uploads')
 
 export const maxUploadSize = 5 * 1024 * 1024
 

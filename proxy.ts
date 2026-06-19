@@ -9,7 +9,7 @@ function hasSessionCookie(request: NextRequest) {
   )
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   if (publicPathPrefixes.some((prefix) => pathname.startsWith(prefix))) {

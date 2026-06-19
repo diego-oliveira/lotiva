@@ -3,14 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "build": "prisma generate && prisma migrate deploy && next build",
     "test": "tsx --test tests/**/*.test.ts",
     "test:payments:integration": "tsx scripts/test-billing-cycle-integration.ts && tsx scripts/test-payment-webhook-integration.ts",
     "payments:webhooks:configure": "tsx scripts/configure-payment-webhooks.ts",
     "poc:asaas": "tsx scripts/asaas-sandbox-poc.ts",
     "start": "next start",
-    "lint": "next lint",
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -19,18 +18,18 @@
     "@types/nodemailer": "^6.4.17",
     "docx": "^9.7.1",
     "docxtemplater": "^3.68.7",
-    "next": "15.3.4",
+    "next": "16.2.9",
     "next-auth": "^4.24.14",
     "nodemailer": "^7.0.3",
     "pizzip": "^3.2.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.1.0"
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "prisma": "^6.10.1",
     "tailwindcss": "^4",
     "tsx": "^4.22.4",
