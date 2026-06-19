@@ -286,6 +286,8 @@ export default function LotBatchDrawer({
                   <th className='px-2 py-2'>Area</th>
                   <th className='px-2 py-2'>Frente</th>
                   <th className='px-2 py-2'>Fundo</th>
+                  <th className='px-2 py-2'>Lateral esq.</th>
+                  <th className='px-2 py-2'>Lateral dir.</th>
                   <th className='px-2 py-2'>Valor</th>
                   <th className='px-2 py-2'>Status</th>
                 </tr>
@@ -304,6 +306,12 @@ export default function LotBatchDrawer({
                     </td>
                     <td className='px-2 py-2'>
                       <input type='number' min={0} step='0.01' value={draft.back} onChange={(event) => updateDraft(index, 'back', event.target.value)} className='w-20 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
+                    </td>
+                    <td className='px-2 py-2'>
+                      <input type='number' min={0} step='0.01' value={draft.leftSide} onChange={(event) => updateDraft(index, 'leftSide', event.target.value)} className='w-24 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
+                    </td>
+                    <td className='px-2 py-2'>
+                      <input type='number' min={0} step='0.01' value={draft.rightSide} onChange={(event) => updateDraft(index, 'rightSide', event.target.value)} className='w-24 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
                     </td>
                     <td className='px-2 py-2'>
                       <input type='number' min={0} step='0.01' value={draft.price} onChange={(event) => updateDraft(index, 'price', event.target.value)} className='w-28 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
