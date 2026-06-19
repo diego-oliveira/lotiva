@@ -9,6 +9,12 @@ type Membership = {
   roles: { role: { id: string; name: string } }[]
 }
 
+type CompanyMembership = {
+  id: string
+  company: { id: string; name: string }
+  roles: { role: { id: string; name: string } }[]
+}
+
 type LotSummary = {
   id: string
   identifier: string
@@ -73,6 +79,7 @@ type ClientProfile = {
   birthplace?: string | null
   maritalStatus?: string | null
   memberships: Membership[]
+  companyMemberships: CompanyMembership[]
   reservations: ReservationSummary[]
   proposals: ProposalSummary[]
   sales: SaleSummary[]
@@ -327,23 +334,31 @@ export default function ClientProfileDrawer({
                 <section className='rounded-2xl border border-border bg-surface-secondary p-5'>
                   <div className='flex items-center justify-between gap-3'>
                     <div>
-                      <h3 className='text-base font-semibold text-foreground'>Empreendimentos</h3>
-                      <p className='mt-1 text-sm text-muted'>Acessos e papeis vinculados a este cliente.</p>
+                      <h3 className='text-base font-semibold text-foreground'>Acessos</h3>
+                      <p className='mt-1 text-sm text-muted'>Empresas, empreendimentos e papeis vinculados a esta pessoa.</p>
                     </div>
                     <Link href={`/lots?userId=${client.id}`} className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong'>
                       Lotes do cliente
                     </Link>
                   </div>
                   <div className='mt-4 flex flex-wrap gap-2'>
-                    {client.memberships.length === 0 ? (
-                      <span className='text-sm text-muted'>Sem empreendimento vinculado.</span>
+                    {client.companyMemberships.length === 0 && client.memberships.length === 0 ? (
+                      <span className='text-sm text-muted'>Sem acesso vinculado.</span>
                     ) : (
-                      client.memberships.map((membership) => (
-                        <span key={membership.id} className='rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary'>
-                          {membership.development.name}
-                          {membership.roles[0] && <span className='ml-1 text-primary/60'>· {membership.roles[0].role.name}</span>}
-                        </span>
-                      ))
+                      <>
+                        {client.companyMemberships.map((membership) => (
+                          <span key={membership.id} className='rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700'>
+                            {membership.company.name}
+                            {membership.roles[0] && <span className='ml-1 text-blue-500'>· {membership.roles[0].role.name}</span>}
+                          </span>
+                        ))}
+                        {client.memberships.map((membership) => (
+                          <span key={membership.id} className='rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary'>
+                            {membership.development.name}
+                            {membership.roles[0] && <span className='ml-1 text-primary/60'>· {membership.roles[0].role.name}</span>}
+                          </span>
+                        ))}
+                      </>
                     )}
                   </div>
                 </section>

@@ -66,6 +66,8 @@ type DevelopmentMetrics = {
   soldPercentage: number
 }
 
+type ConfigSection = 'basic' | 'commercial' | 'documents'
+
 export default function DevelopmentsPage() {
   const [developments, setDevelopments] = useState<Development[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
@@ -74,9 +76,12 @@ export default function DevelopmentsPage() {
   const [error, setError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editingDevelopment, setEditingDevelopment] = useState<Development | null>(null)
-  const [lotBatchDevelopment, setLotBatchDevelopment] = useState<Development | null>(null)
+  const [editingSection, setEditingSection] = useState<ConfigSection>('basic')
+  const [lotBatchDevelopment, setLotBatchDevelopment] = useState<(Pick<Development, 'id' | 'name'> & { metrics: Omit<DevelopmentMetrics, 'soldPercentage'> }) | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [deletingDevelopmentId, setDeletingDevelopmentId] = useState<string | null>(null)
 
   const fetchDevelopments = async () => {
     const response = await fetch('/api/developments')
@@ -182,6 +187,48 @@ export default function DevelopmentsPage() {
     if (selected.length === 0) return 'Nao configurado'
     return selected.map((method) => labels[method] ?? method).join(', ')
   }
+  const getSetupStatus = (development: Development, metrics: DevelopmentMetrics) => {
+    const missing = [
+      ...(!development.settings ? ['Regras comerciais'] : []),
+      ...(!development.documentTemplateId ? ['Documento de venda'] : []),
+      ...(metrics.totalLots === 0 ? ['Lotes'] : []),
+      ...(metrics.availableLots === 0 ? ['Lote disponivel'] : []),
+    ]
+
+    return {
+      missing,
+      ready: missing.length === 0,
+    }
+  }
+  const deleteDevelopment = async (development: Development) => {
+    const confirmationName = window.prompt(
+      `Para excluir "${development.name}", digite o nome exato do empreendimento. Esta acao apenas arquiva o cadastro e pode ser recuperada no banco.`,
+    )
+    if (confirmationName === null) return
+    if (confirmationName.trim() !== development.name) {
+      setActionError('Nome de confirmacao incorreto. O empreendimento nao foi excluido.')
+      return
+    }
+
+    try {
+      setDeletingDevelopmentId(development.id)
+      setActionError(null)
+      const response = await fetch(`/api/developments/${development.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmationName }),
+      })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel excluir o empreendimento.')
+      await refresh()
+      setSuccessMessage('Empreendimento excluido. Os dados foram arquivados e podem ser recuperados pelo administrador.')
+      setActionError(null)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Nao foi possivel excluir o empreendimento.')
+    } finally {
+      setDeletingDevelopmentId(null)
+    }
+  }
 
   if (loading) return <div className='animate-pulse'><div className='h-8 w-64 rounded-xl bg-surface-secondary'></div></div>
   if (error) return <div className='rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700'>{error}</div>
@@ -196,6 +243,14 @@ export default function DevelopmentsPage() {
           onClose={() => setSuccessMessage(null)}
         />
       )}
+      {actionError && (
+        <InlineAlert
+          variant='error'
+          title='Nao foi possivel concluir a acao'
+          message={actionError}
+          onClose={() => setActionError(null)}
+        />
+      )}
 
       <div className='flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'>
         <div>
@@ -203,11 +258,11 @@ export default function DevelopmentsPage() {
           <p className='page-subtitle'>Cadastre loteamentos e projetos ligados a uma empresa especifica.</p>
         </div>
         <div className='flex flex-wrap gap-3'>
-          <button onClick={() => { setEditingDevelopment(null); setShowForm(true) }} disabled={companies.length === 0} className='rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-strong disabled:opacity-50'>Novo Empreendimento</button>
+          <button onClick={() => { setEditingDevelopment(null); setEditingSection('basic'); setShowForm(true) }} disabled={companies.length === 0} className='rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-strong disabled:opacity-50'>Novo Empreendimento</button>
         </div>
       </div>
 
-      <section className='grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]'>
+      <section>
         <div className='panel'>
           <div className='panel-header flex flex-col gap-4 px-6 py-5 md:flex-row md:items-center md:justify-between'>
             <div>
@@ -229,6 +284,8 @@ export default function DevelopmentsPage() {
                 totalValue: 0,
                 soldPercentage: 0,
               }
+              const setup = getSetupStatus(development, metrics)
+              const shouldShowSetupStatus = !setup.ready || metrics.soldLots === 0
 
               return (
                 <article key={development.id} className='rounded-2xl border border-border bg-surface p-5 shadow-sm'>
@@ -250,6 +307,17 @@ export default function DevelopmentsPage() {
                       {formatPercent(metrics.soldPercentage)} vendido
                     </span>
                   </div>
+
+                  {shouldShowSetupStatus && (
+                    <div className={`mt-5 rounded-2xl border px-4 py-3 text-sm ${
+                      setup.ready ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'
+                    }`}>
+                      <p className='font-semibold'>{setup.ready ? 'Pronto para venda' : 'Configuracao pendente'}</p>
+                      {!setup.ready && (
+                        <p className='mt-1 leading-6'>Falta configurar: {setup.missing.join(', ')}.</p>
+                      )}
+                    </div>
+                  )}
 
                   <div className='mt-5'>
                     <div className='h-2 overflow-hidden rounded-full bg-surface-secondary'>
@@ -278,14 +346,40 @@ export default function DevelopmentsPage() {
                     <p className='sm:col-span-2'><span className='font-semibold text-foreground'>Pagamento:</span> {formatPaymentMethods(development.settings?.paymentMethods)}</p>
                   </div>
 
-                  <div className='mt-5 flex flex-wrap justify-end gap-2'>
-                    <Link href={`/lots?developmentId=${development.id}`} className='rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong'>
-                      Ver lotes
-                    </Link>
-                    <button type='button' onClick={() => setLotBatchDevelopment(development)} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
-                      {metrics.totalLots > 0 ? 'Complementar lotes' : 'Criar lotes'}
+                  <div className='mt-5 flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between'>
+                    <div className='flex flex-wrap gap-2'>
+                      <Link href={`/lots?developmentId=${development.id}`} className='rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+                        Ver lotes
+                      </Link>
+                      <button
+                        type='button'
+                        onClick={() => setLotBatchDevelopment({
+                          id: development.id,
+                          name: development.name,
+                          metrics: {
+                            totalLots: metrics.totalLots,
+                            availableLots: metrics.availableLots,
+                            reservedLots: metrics.reservedLots,
+                            soldLots: metrics.soldLots,
+                            totalValue: metrics.totalValue,
+                          },
+                        })}
+                        className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'
+                      >
+                        Lotes
+                      </button>
+                      <button onClick={() => { setEditingDevelopment(development); setEditingSection('commercial'); setShowForm(true) }} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>Regras</button>
+                      <button onClick={() => { setEditingDevelopment(development); setEditingSection('documents'); setShowForm(true) }} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>Documento</button>
+                      <button onClick={() => { setEditingDevelopment(development); setEditingSection('basic'); setShowForm(true) }} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>Dados</button>
+                    </div>
+                    <button
+                      type='button'
+                      onClick={() => void deleteDevelopment(development)}
+                      disabled={deletingDevelopmentId === development.id}
+                      className='shrink-0 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50'
+                    >
+                      {deletingDevelopmentId === development.id ? 'Excluindo...' : 'Excluir'}
                     </button>
-                    <button onClick={() => { setEditingDevelopment(development); setShowForm(true) }} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>Editar empreendimento</button>
                   </div>
                 </article>
               )
@@ -299,37 +393,22 @@ export default function DevelopmentsPage() {
             )}
           </div>
         </div>
-
-        <aside className='panel'>
-          <div className='panel-header px-6 py-5'>
-            <h2 className='text-lg font-semibold text-foreground'>Regras comerciais</h2>
-            <p className='mt-1 text-sm text-muted'>Defina padroes que serao usados em reserva, simulacao e venda.</p>
-          </div>
-          <div className='space-y-4 px-6 py-6'>
-            <div className='rounded-2xl border border-border bg-surface-secondary px-4 py-4'>
-              <p className='text-sm font-semibold text-foreground'>Padroes por empreendimento</p>
-              <p className='mt-2 text-sm leading-6 text-muted'>Cada loteamento pode ter prazo de reserva, juros, correcao, entrada minima e formas de pagamento proprios.</p>
-            </div>
-            <div className='rounded-2xl border border-border bg-surface-secondary px-4 py-4'>
-              <p className='text-sm font-semibold text-foreground'>Proximo uso</p>
-              <p className='mt-2 text-sm leading-6 text-muted'>O simulador financeiro deve carregar esses valores como padrao antes de montar propostas.</p>
-            </div>
-          </div>
-        </aside>
       </section>
       <DevelopmentForm
         development={editingDevelopment}
         companies={companies}
         isOpen={showForm}
-        onClose={() => { setShowForm(false); setEditingDevelopment(null) }}
-        onSave={async (mode) => {
+        initialSection={editingSection}
+        onClose={() => { setShowForm(false); setEditingDevelopment(null); setEditingSection('basic') }}
+        onSave={async (mode, savedDevelopment) => {
           await refresh()
           setShowForm(false)
           setEditingDevelopment(null)
+          setEditingSection('basic')
           setSuccessMessage(
             mode === 'create'
-              ? 'O empreendimento foi criado com sucesso.'
-              : 'O empreendimento foi atualizado com sucesso.',
+              ? 'O empreendimento foi criado. Configure regras, documento e lotes em qualquer ordem.'
+              : 'A configuracao foi atualizada com sucesso.',
           )
         }}
       />

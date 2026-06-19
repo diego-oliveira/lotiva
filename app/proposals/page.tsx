@@ -14,6 +14,7 @@ type Proposal = {
   downPayment: number
   installmentCount: number
   installmentValue: number
+  balance: number
   totalValue: number
   createdAt: string
   reviewedAt?: string | null
@@ -48,6 +49,7 @@ function formatDate(value: string) {
 
 function ProposalsContent() {
   const searchParams = useSearchParams()
+  const developmentFilter = searchParams.get('developmentId') ?? ''
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -75,9 +77,15 @@ function ProposalsContent() {
     void fetchData()
   }, [])
 
+  useEffect(() => {
+    setStatusFilter(searchParams.get('status') ?? '')
+  }, [searchParams])
+
   const filteredProposals = useMemo(
-    () => proposals.filter((proposal) => !statusFilter || proposal.status === statusFilter),
-    [proposals, statusFilter],
+    () => proposals
+      .filter((proposal) => !developmentFilter || proposal.lot.block.development?.id === developmentFilter)
+      .filter((proposal) => !statusFilter || proposal.status === statusFilter),
+    [developmentFilter, proposals, statusFilter],
   )
 
   async function reviewProposal(proposalId: string, action: 'approve' | 'reject') {
@@ -178,10 +186,9 @@ function ProposalsContent() {
                       Cliente: <span className='font-semibold text-foreground'>{proposal.user.name}</span> · Enviada por {proposal.createdBy.name}
                     </p>
                     <div className='mt-4 flex flex-wrap gap-2 text-sm'>
-                      <span className='rounded-xl bg-surface-secondary px-3 py-2'>Venda {formatCurrency(proposal.salePrice)}</span>
                       <span className='rounded-xl bg-surface-secondary px-3 py-2'>Entrada {formatCurrency(proposal.downPayment)}</span>
+                      <span className='rounded-xl bg-surface-secondary px-3 py-2'>Valor {formatCurrency(proposal.balance)}</span>
                       <span className='rounded-xl bg-surface-secondary px-3 py-2'>{proposal.installmentCount}x de {formatCurrency(proposal.installmentValue)}</span>
-                      <span className='rounded-xl bg-surface-secondary px-3 py-2'>Total {formatCurrency(proposal.totalValue)}</span>
                     </div>
                     {proposal.exceptionReasons && (
                       <div className='mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800'>
@@ -199,7 +206,7 @@ function ProposalsContent() {
                   <div className='flex shrink-0 flex-col gap-2 sm:flex-row xl:flex-col'>
                     {proposal.status === 'approved' && (
                       <Link
-                        href={`/sales?lotId=${proposal.lot.id}&userId=${proposal.user.id}&reservationId=${proposal.reservation?.id ?? ''}&proposalId=${proposal.id}`}
+                        href={`/sales?developmentId=${proposal.lot.block.development?.id ?? developmentFilter}&lotId=${proposal.lot.id}&userId=${proposal.user.id}&reservationId=${proposal.reservation?.id ?? ''}&proposalId=${proposal.id}`}
                         className='rounded-xl bg-primary px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-primary-strong'
                       >
                         Continuar venda

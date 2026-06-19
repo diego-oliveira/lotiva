@@ -1,0 +1,3 @@
+-- No-op.
+-- This migration was generated with invalid historical constraint renames during development.
+-- The actual soft-delete column is added by 20260618134500_add_development_deleted_at.

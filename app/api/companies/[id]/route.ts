@@ -1,10 +1,25 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
-import { forbiddenResponse, membershipWhere } from '@/lib/access-control'
+import { companyAccessWhere, forbiddenResponse, membershipWhere } from '@/lib/access-control'
 import { isValidUploadedImagePath } from '@/lib/uploadStorage'
 import { NextRequest, NextResponse } from 'next/server'
 
 type Params = { params: Promise<{ id: string }> }
+
+function normalizeCompanyData(data: any) {
+  return {
+    name: String(data.name || '').trim(),
+    legalName: String(data.legalName || '').trim(),
+    document: String(data.document || '').trim(),
+    stateRegistration: String(data.stateRegistration || '').trim(),
+    address: String(data.address || '').trim(),
+    city: String(data.city || '').trim(),
+    state: String(data.state || '').trim(),
+    zipCode: String(data.zipCode || '').trim(),
+    phone: String(data.phone || '').trim(),
+    email: String(data.email || '').trim(),
+  }
+}
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const auth = await requireAuthenticatedUser()
@@ -16,10 +31,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const company = await prisma.company.findFirst({
     where: {
       id,
-      OR: [
-        { developments: { some: membershipWhere(userId) } },
-        { developments: { none: {} } },
-      ],
+      ...companyAccessWhere(userId),
     },
     include: {
       _count: {
@@ -46,16 +58,18 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
   const { id } = await params
   const data = await req.json()
-  if (!isValidUploadedImagePath(String(data.logo || ''))) {
+  const companyData = normalizeCompanyData(data)
+  if (!companyData.name) {
+    return NextResponse.json({ error: 'Informe o nome da empresa.' }, { status: 400 })
+  }
+  const logo = String(data.logo || '').trim()
+  if (logo && !isValidUploadedImagePath(logo)) {
     return NextResponse.json({ error: 'Envie uma imagem valida para o logo.' }, { status: 400 })
   }
   const company = await prisma.company.findFirst({
     where: {
       id,
-      OR: [
-        { developments: { some: membershipWhere(userId) } },
-        { developments: { none: {} } },
-      ],
+      ...companyAccessWhere(userId),
     },
     select: { id: true },
   })
@@ -64,8 +78,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
   const updated = await prisma.company.update({
     where: { id },
     data: {
-      name: data.name,
-      logo: data.logo,
+      logo,
+      ...companyData,
       updatedAt: new Date(),
     },
   })

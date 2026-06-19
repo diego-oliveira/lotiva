@@ -75,6 +75,7 @@ export default function DocumentTemplatesPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [formNotice, setFormNotice] = useState<string | null>(null)
   const [newVariableLabel, setNewVariableLabel] = useState('')
   const [newVariableKey, setNewVariableKey] = useState('')
   const [newVariableType, setNewVariableType] = useState('text')
@@ -96,11 +97,17 @@ export default function DocumentTemplatesPage() {
         fetch('/api/companies', { cache: 'no-store' }),
       ])
       if (!templatesResponse.ok || !companiesResponse.ok) throw new Error('Nao foi possivel carregar os modelos.')
-      setTemplates(await templatesResponse.json())
-      setCompanies(await companiesResponse.json())
+      const [nextTemplates, nextCompanies] = await Promise.all([
+        templatesResponse.json(),
+        companiesResponse.json(),
+      ]) as [DocumentTemplate[], Company[]]
+      setTemplates(nextTemplates)
+      setCompanies(nextCompanies)
       setError(null)
+      return nextTemplates
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Erro ao carregar modelos.')
+      return []
     } finally {
       setLoading(false)
     }
@@ -128,6 +135,7 @@ export default function DocumentTemplatesPage() {
     setCompanyId(companies[0]?.id ?? '')
     setPurpose('sale_contract')
     setFile(null)
+    setFormNotice(null)
     setFormOpen(true)
   }
 
@@ -138,6 +146,7 @@ export default function DocumentTemplatesPage() {
     setCompanyId(template.company.id)
     setPurpose(template.purpose)
     setFile(null)
+    setFormNotice(null)
     setFormOpen(true)
   }
 
@@ -162,11 +171,15 @@ export default function DocumentTemplatesPage() {
         const unknown = payload.unknownVariables?.map((variable: string) => `{{${variable}}}`).join(', ')
         throw new Error(unknown ? `${payload.error} ${unknown}` : payload.error || 'Nao foi possivel salvar o modelo.')
       }
-      await loadData()
-      setFormOpen(false)
-      setSuccess(editingTemplate
-        ? file ? 'Nova versao DOCX criada como rascunho.' : 'Dados do modelo atualizados.'
-        : 'Modelo DOCX criado como rascunho.')
+      const wasEditing = Boolean(editingTemplate)
+      const savedTemplateId = editingTemplate?.id ?? payload.id
+      const refreshedTemplates = await loadData()
+      const refreshedTemplate = refreshedTemplates.find((template) => template.id === savedTemplateId) ?? null
+      if (refreshedTemplate) setEditingTemplate(refreshedTemplate)
+      setFile(null)
+      setFormNotice(wasEditing
+        ? file ? 'Nova versao salva como rascunho. Revise o historico e publique quando estiver pronto.' : 'Dados salvos. Se houver rascunho pendente, publique para liberar o uso.'
+        : 'Modelo salvo como rascunho. O proximo passo e publicar esta versao.')
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Erro ao salvar modelo.')
     } finally {
@@ -349,6 +362,13 @@ export default function DocumentTemplatesPage() {
         widthClassName='max-w-4xl'
       >
         <div className='space-y-6'>
+          {formNotice && (
+            <div className='rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-800'>
+              <p className='font-semibold'>Rascunho salvo</p>
+              <p className='mt-1'>{formNotice}</p>
+            </div>
+          )}
+
           <div className='grid gap-4 md:grid-cols-2'>
             <label className='block'>
               <span className='mb-2 block text-sm font-semibold'>Nome do modelo</span>

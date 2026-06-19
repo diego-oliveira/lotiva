@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import {
-  blockAccessWhere,
-  lotAccessWhere,
   membershipWhere,
   userAccessWhere,
 } from '@/lib/access-control'
@@ -24,100 +22,96 @@ export async function GET(req: Request) {
   const requestedDevelopmentId = new URL(req.url).searchParams.get('developmentId')
 
   const [
-    companyCount,
+    companies,
     developmentCount,
     userCount,
-    blockCount,
-    lotCount,
-    pricedLotCount,
-    availableLotCount,
     primaryDevelopment,
-    fallbackCompany,
   ] = await Promise.all([
-    prisma.company.count({
+    prisma.company.findMany({
       where: {
         OR: [
           { developments: { some: membershipWhere(userId) } },
           { developments: { none: {} } },
         ],
       },
+      select: { id: true, name: true, logo: true },
+      orderBy: { createdAt: 'asc' },
     }),
     prisma.development.count({ where: membershipWhere(userId) }),
     prisma.user.count({ where: userAccessWhere(userId) }),
-    prisma.block.count({ where: blockAccessWhere(userId) }),
-    prisma.lot.count({ where: lotAccessWhere(userId) }),
-    prisma.lot.count({
-      where: {
-        ...lotAccessWhere(userId),
-        price: { gt: 0 },
-        totalArea: { gt: 0 },
-        front: { gt: 0 },
-        back: { gt: 0 },
-        leftSide: { gt: 0 },
-        rightSide: { gt: 0 },
-      },
-    }),
-    prisma.lot.count({ where: { ...lotAccessWhere(userId), status: 'available' } }),
-    prisma.development.findFirst({
-      where: {
-        ...membershipWhere(userId),
-        ...(requestedDevelopmentId ? { id: requestedDevelopmentId } : {}),
-      },
-      include: {
-        company: true,
-        blocks: {
+    requestedDevelopmentId
+      ? prisma.development.findFirst({
+          where: {
+            ...membershipWhere(userId),
+            id: requestedDevelopmentId,
+          },
           include: {
-            _count: {
-              select: { lots: true },
-            },
-            lots: {
+            company: true,
+            blocks: {
+              include: {
+                _count: {
+                  select: { lots: true },
+                },
+                lots: {
+                  orderBy: { createdAt: 'asc' },
+                  take: 1,
+                },
+              },
               orderBy: { createdAt: 'asc' },
-              take: 1,
             },
           },
-          orderBy: { createdAt: 'asc' },
-        },
-      },
-      orderBy: { createdAt: 'asc' },
-    }),
-    prisma.company.findFirst({
-      where: {
-        OR: [
-          { developments: { some: membershipWhere(userId) } },
-          { developments: { none: {} } },
-        ],
-      },
-      orderBy: { createdAt: 'asc' },
-    }),
+        })
+      : Promise.resolve(null),
   ])
 
-  const setupCompany = primaryDevelopment?.company ?? fallbackCompany
+  const setupCompany = primaryDevelopment?.company ?? companies[0] ?? null
   const firstLot = primaryDevelopment?.blocks.find((block) => block.lots.length > 0)?.lots[0] ?? null
   const firstBlockLotCount = primaryDevelopment?.blocks[0]?._count.lots ?? null
+  const companyCount = companies.length
+  const blockCount = primaryDevelopment?.blocks.length ?? 0
+  const lotCount = primaryDevelopment?.blocks.reduce((sum, block) => sum + block._count.lots, 0) ?? 0
+  const pricedLotCount = primaryDevelopment
+    ? await prisma.lot.count({
+        where: {
+          block: { developmentId: primaryDevelopment.id },
+          price: { gt: 0 },
+          totalArea: { gt: 0 },
+          front: { gt: 0 },
+          back: { gt: 0 },
+          leftSide: { gt: 0 },
+          rightSide: { gt: 0 },
+        },
+      })
+    : 0
+  const availableLotCount = primaryDevelopment
+    ? await prisma.lot.count({ where: { block: { developmentId: primaryDevelopment.id }, status: 'available' } })
+    : 0
 
   const checklist: ChecklistItem[] = [
     {
       id: 'company',
-      title: 'Cadastrar empresa proprietaria',
-      description: 'Registre a empresa, incorporadora ou loteadora responsavel pelo empreendimento.',
-      href: '/onboarding',
+      title: 'Selecionar empresa proprietaria',
+      description: 'Use a empresa ja criada pela Lotiva como proprietaria do empreendimento.',
+      href: '/companies',
       status: companyCount > 0 ? 'complete' : 'action',
       metric: `${companyCount} empresas`,
     },
     {
       id: 'development',
-      title: 'Cadastrar empreendimento',
-      description: 'Crie o loteamento dentro da empresa correta para organizar quadras, lotes e vendas.',
-      href: '/onboarding',
-      status: developmentCount > 0 ? 'complete' : companyCount > 0 ? 'action' : 'pending',
-      metric: `${developmentCount} empreendimentos`,
+      title: requestedDevelopmentId ? 'Atualizar empreendimento' : 'Criar empreendimento',
+      description: 'Crie cada loteamento dentro da empresa correta para organizar quadras, lotes e vendas.',
+      href: '/developments',
+      status: primaryDevelopment ? 'complete' : companyCount > 0 ? 'action' : 'pending',
+      metric: requestedDevelopmentId
+        ? primaryDevelopment?.name ?? 'Empreendimento nao encontrado'
+        : `${developmentCount} empreendimentos existentes`,
     },
     {
       id: 'inventory',
       title: 'Criar quadras e lotes iniciais',
       description: 'Monte o estoque inicial com quadras e lotes para iniciar a operacao comercial.',
-      href: '/onboarding',
-      status: blockCount > 0 && lotCount > 0 ? 'complete' : developmentCount > 0 ? 'action' : 'pending',
+      href: '/developments',
+      status: blockCount > 0 && lotCount > 0 ? 'complete' : primaryDevelopment ? 'action' : 'pending',
       metric: `${blockCount} quadras / ${lotCount} lotes`,
     },
     {
@@ -157,6 +151,7 @@ export async function GET(req: Request) {
       availableLots: availableLotCount,
     },
     setup: {
+      companies,
       company: setupCompany
         ? {
             id: setupCompany.id,

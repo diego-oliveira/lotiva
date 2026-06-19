@@ -13,8 +13,18 @@ interface Development {
   name: string
 }
 
+interface Company {
+  id: string
+  name: string
+}
+
 interface MembershipRow {
   developmentId: string
+  roleId: string
+}
+
+interface CompanyMembershipRow {
+  companyId: string
   roleId: string
 }
 
@@ -33,13 +43,17 @@ interface Client {
     development: { id: string; name: string }
     roles: { role: { id: string; name: string } }[]
   }[]
+  companyMemberships?: {
+    company: { id: string; name: string }
+    roles: { role: { id: string; name: string } }[]
+  }[]
 }
 
 interface ClientFormProps {
   client?: Client | null
   isOpen: boolean
   onClose: () => void
-  onSave: () => void
+  onSave: (mode: 'create' | 'update') => void
 }
 
 const MARITAL_STATUS_OPTIONS = [
@@ -66,6 +80,8 @@ export default function ClientForm({ client, isOpen, onClose, onSave }: ClientFo
 
   // memberships
   const [memberships, setMemberships] = useState<MembershipRow[]>([])
+  const [companyMemberships, setCompanyMemberships] = useState<CompanyMembershipRow[]>([])
+  const [companies, setCompanies] = useState<Company[]>([])
   const [developments, setDevelopments] = useState<Development[]>([])
   const [roles, setRoles] = useState<Role[]>([])
 
@@ -74,6 +90,7 @@ export default function ClientForm({ client, isOpen, onClose, onSave }: ClientFo
 
   useEffect(() => {
     if (!isOpen) return
+    fetch('/api/companies').then((r) => r.json()).then(setCompanies).catch(() => {})
     fetch('/api/developments').then((r) => r.json()).then(setDevelopments).catch(() => {})
     fetch('/api/roles').then((r) => r.json()).then(setRoles).catch(() => {})
   }, [isOpen])
@@ -97,6 +114,12 @@ export default function ClientForm({ client, isOpen, onClose, onSave }: ClientFo
           roleId: m.roles[0]?.role.id ?? '',
         })),
       )
+      setCompanyMemberships(
+        (client.companyMemberships ?? []).map((m) => ({
+          companyId: m.company.id,
+          roleId: m.roles[0]?.role.id ?? '',
+        })),
+      )
     } else {
       setName('')
       setEmail('')
@@ -109,6 +132,7 @@ export default function ClientForm({ client, isOpen, onClose, onSave }: ClientFo
       setMaritalStatus('')
       setShowLegal(false)
       setMemberships([])
+      setCompanyMemberships([])
     }
     setErrors({})
   }, [client, isOpen])
@@ -117,16 +141,31 @@ export default function ClientForm({ client, isOpen, onClose, onSave }: ClientFo
     setMemberships((prev) => [...prev, { developmentId: '', roleId: '' }])
   }
 
+  const addCompanyMembership = () => {
+    setCompanyMemberships((prev) => [...prev, { companyId: '', roleId: roles[0]?.id ?? '' }])
+  }
+
   const removeMembership = (index: number) => {
     setMemberships((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const removeCompanyMembership = (index: number) => {
+    setCompanyMemberships((prev) => prev.filter((_, i) => i !== index))
   }
 
   const updateMembership = (index: number, field: keyof MembershipRow, value: string) => {
     setMemberships((prev) => prev.map((m, i) => (i === index ? { ...m, [field]: value } : m)))
   }
 
+  const updateCompanyMembership = (index: number, field: keyof CompanyMembershipRow, value: string) => {
+    setCompanyMemberships((prev) => prev.map((m, i) => (i === index ? { ...m, [field]: value } : m)))
+  }
+
   const usedDevelopmentIds = (excludeIndex: number) =>
     memberships.filter((_, i) => i !== excludeIndex).map((m) => m.developmentId)
+
+  const usedCompanyIds = (excludeIndex: number) =>
+    companyMemberships.filter((_, i) => i !== excludeIndex).map((m) => m.companyId)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -135,9 +174,16 @@ export default function ClientForm({ client, isOpen, onClose, onSave }: ClientFo
     if (!name.trim()) newErrors.name = 'Nome e obrigatorio'
     if (!email.trim()) newErrors.email = 'Email e obrigatorio'
     else if (!/\S+@\S+\.\S+/.test(email)) newErrors.email = 'Email invalido'
+    if (memberships.length === 0 && companyMemberships.length === 0) {
+      newErrors.access = 'Informe pelo menos uma empresa ou empreendimento.'
+    }
 
     for (let i = 0; i < memberships.length; i++) {
       if (!memberships[i].developmentId) newErrors[`m_dev_${i}`] = 'Selecione um empreendimento'
+    }
+    for (let i = 0; i < companyMemberships.length; i++) {
+      if (!companyMemberships[i].companyId) newErrors[`c_company_${i}`] = 'Selecione uma empresa'
+      if (!companyMemberships[i].roleId) newErrors[`c_role_${i}`] = 'Selecione uma funcao'
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -157,6 +203,7 @@ export default function ClientForm({ client, isOpen, onClose, onSave }: ClientFo
         profession: profession.trim() || null,
         birthplace: birthplace.trim() || null,
         maritalStatus: maritalStatus || null,
+        companyMemberships: companyMemberships.filter((m) => m.companyId && m.roleId),
         memberships: memberships.filter((m) => m.developmentId),
       }
 
@@ -178,7 +225,7 @@ export default function ClientForm({ client, isOpen, onClose, onSave }: ClientFo
         throw new Error(msg)
       }
 
-      onSave()
+      onSave(client?.id ? 'update' : 'create')
       onClose()
     } catch (error) {
       setErrors({ submit: error instanceof Error ? error.message : 'Erro ao salvar usuario' })
@@ -203,6 +250,11 @@ export default function ClientForm({ client, isOpen, onClose, onSave }: ClientFo
         {errors.submit && (
           <div className='rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700'>
             {errors.submit}
+          </div>
+        )}
+        {errors.access && (
+          <div className='rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800'>
+            {errors.access}
           </div>
         )}
 
@@ -233,12 +285,90 @@ export default function ClientForm({ client, isOpen, onClose, onSave }: ClientFo
           </div>
         </div>
 
+        {/* Company memberships */}
+        <div>
+          <div className='mb-3 flex items-center justify-between'>
+            <div>
+              <p className='text-sm font-semibold text-foreground'>Acesso a empresas</p>
+              <p className='text-xs text-muted'>Use para equipe/admin que deve criar e configurar empreendimentos da empresa.</p>
+            </div>
+            <button
+              type='button'
+              onClick={addCompanyMembership}
+              className='rounded-xl border border-border bg-surface px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-surface-secondary'
+            >
+              + Adicionar
+            </button>
+          </div>
+
+          {companyMemberships.length === 0 && (
+            <div className='rounded-2xl border border-dashed border-border px-5 py-4 text-center text-sm text-muted'>
+              Nenhum acesso a empresa configurado
+            </div>
+          )}
+
+          <div className='space-y-3'>
+            {companyMemberships.map((m, i) => (
+              <div key={i} className='rounded-2xl border border-border bg-surface-secondary p-4'>
+                <div className='flex items-start gap-3'>
+                  <div className='flex-1 space-y-3'>
+                    <div>
+                      <label className='mb-1 block text-xs font-semibold text-foreground'>Empresa</label>
+                      <select
+                        value={m.companyId}
+                        onChange={(e) => { updateCompanyMembership(i, 'companyId', e.target.value); setErrors((p) => ({ ...p, [`c_company_${i}`]: '' })) }}
+                        className={fieldClass(errors[`c_company_${i}`])}
+                      >
+                        <option value=''>Selecione...</option>
+                        {companies.map((company) => (
+                          <option
+                            key={company.id}
+                            value={company.id}
+                            disabled={usedCompanyIds(i).includes(company.id)}
+                          >
+                            {company.name}
+                          </option>
+                        ))}
+                      </select>
+                      {errors[`c_company_${i}`] && <p className='mt-1 text-xs text-red-600'>{errors[`c_company_${i}`]}</p>}
+                    </div>
+
+                    <div>
+                      <label className='mb-1 block text-xs font-semibold text-foreground'>Funcao</label>
+                      <select
+                        value={m.roleId}
+                        onChange={(e) => { updateCompanyMembership(i, 'roleId', e.target.value); setErrors((p) => ({ ...p, [`c_role_${i}`]: '' })) }}
+                        className={fieldClass(errors[`c_role_${i}`])}
+                      >
+                        <option value=''>Selecione...</option>
+                        {roles.map((r) => (
+                          <option key={r.id} value={r.id}>{r.name}</option>
+                        ))}
+                      </select>
+                      {errors[`c_role_${i}`] && <p className='mt-1 text-xs text-red-600'>{errors[`c_role_${i}`]}</p>}
+                    </div>
+                  </div>
+                  <button
+                    type='button'
+                    onClick={() => removeCompanyMembership(i)}
+                    className='mt-6 rounded-xl p-2 text-muted transition hover:bg-red-50 hover:text-red-600'
+                  >
+                    <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M6 18L18 6M6 6l12 12' />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Memberships */}
         <div>
           <div className='mb-3 flex items-center justify-between'>
             <div>
               <p className='text-sm font-semibold text-foreground'>Acessos a empreendimentos</p>
-              <p className='text-xs text-muted'>Opcional — pode ser configurado depois</p>
+              <p className='text-xs text-muted'>Use quando a pessoa deve acessar apenas um empreendimento especifico.</p>
             </div>
             <button
               type='button'

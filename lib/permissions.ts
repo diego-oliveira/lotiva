@@ -57,14 +57,29 @@ export function hasPermissionFromRoles(roleNames: string[], permission: AppPermi
 }
 
 export async function getUserPermissions(userId: string) {
-  const memberships = await prisma.developmentUser.findMany({
-    where: { userId },
-    include: {
-      roles: { include: { role: true } },
-    },
-  })
+  const [memberships, companyMemberships, createdCompanyCount] = await Promise.all([
+    prisma.developmentUser.findMany({
+      where: { userId, development: { deletedAt: null } },
+      include: {
+        roles: { include: { role: true } },
+      },
+    }),
+    prisma.companyUser.findMany({
+      where: { userId },
+      include: {
+        roles: { include: { role: true } },
+      },
+    }),
+    prisma.company.count({
+      where: { createdById: userId },
+    }),
+  ])
 
-  const roleNames = memberships.flatMap((membership) => membership.roles.map((assignment) => assignment.role.name))
+  const roleNames = [
+    ...memberships.flatMap((membership) => membership.roles.map((assignment) => assignment.role.name)),
+    ...companyMemberships.flatMap((membership) => membership.roles.map((assignment) => assignment.role.name)),
+    ...(createdCompanyCount > 0 ? ['owner'] : []),
+  ]
   const permissions = buildPermissions(roleNames)
 
   return {
@@ -87,66 +102,148 @@ export async function getUserPermissions(userId: string) {
 export async function hasAnyDevelopmentPermission(userId: string, permission: AppPermission) {
   const roleNames = permissionRoleNames[permission]
 
-  const membership = await prisma.developmentUser.findFirst({
-    where: {
-      userId,
-      roles: {
-        some: {
-          role: {
-            name: {
-              in: roleNames,
-              mode: 'insensitive',
+  const [developmentMembership, companyMembership, createdCompany] = await Promise.all([
+    prisma.developmentUser.findFirst({
+      where: {
+        development: { deletedAt: null },
+        userId,
+        roles: {
+          some: {
+            role: {
+              name: {
+                in: roleNames,
+                mode: 'insensitive',
+              },
             },
           },
         },
       },
-    },
-    select: { id: true },
-  })
+      select: { id: true },
+    }),
+    prisma.companyUser.findFirst({
+      where: {
+        userId,
+        roles: {
+          some: {
+            role: {
+              name: {
+                in: roleNames,
+                mode: 'insensitive',
+              },
+            },
+          },
+        },
+      },
+      select: { id: true },
+    }),
+    prisma.company.findFirst({
+      where: { createdById: userId },
+      select: { id: true },
+    }),
+  ])
 
-  return Boolean(membership)
+  return Boolean(developmentMembership || companyMembership || createdCompany)
 }
 
 export async function hasDevelopmentPermission(userId: string, developmentId: string, permission: AppPermission) {
   const roleNames = permissionRoleNames[permission]
 
-  const membership = await prisma.developmentUser.findUnique({
-    where: {
-      developmentId_userId: {
+  const [membership, companyMembership, createdCompany] = await Promise.all([
+    prisma.developmentUser.findFirst({
+      where: {
         developmentId,
         userId,
+        development: { deletedAt: null },
       },
-    },
-    include: {
-      roles: { include: { role: true } },
-    },
-  })
-
-  if (!membership) return false
-  return hasPermissionFromRoles(membership.roles.map((assignment) => assignment.role.name), permission)
-}
-
-export async function hasCompanyPermission(userId: string, companyId: string, permission: AppPermission) {
-  const roleNames = permissionRoleNames[permission]
-  const membership = await prisma.developmentUser.findFirst({
-    where: {
-      userId,
-      development: { companyId },
-      roles: {
-        some: {
-          role: {
-            name: {
-              in: roleNames,
-              mode: 'insensitive',
+      include: {
+        roles: { include: { role: true } },
+      },
+    }),
+    prisma.companyUser.findFirst({
+      where: {
+        userId,
+        company: {
+          developments: {
+            some: {
+              id: developmentId,
+              deletedAt: null,
             },
           },
         },
       },
-    },
-    select: { id: true },
-  })
+      include: {
+        roles: { include: { role: true } },
+      },
+    }),
+    prisma.company.findFirst({
+      where: {
+        createdById: userId,
+        developments: {
+          some: {
+            id: developmentId,
+            deletedAt: null,
+          },
+        },
+      },
+      select: { id: true },
+    }),
+  ])
 
-  return Boolean(membership)
+  const roleNamesForUser = [
+    ...(membership?.roles.map((assignment) => assignment.role.name) ?? []),
+    ...(companyMembership?.roles.map((assignment) => assignment.role.name) ?? []),
+    ...(createdCompany ? ['owner'] : []),
+  ]
+  return hasPermissionFromRoles(roleNamesForUser, permission)
+}
+
+export async function hasCompanyPermission(userId: string, companyId: string, permission: AppPermission) {
+  const roleNames = permissionRoleNames[permission]
+  const [developmentMembership, companyMembership, createdCompany] = await Promise.all([
+    prisma.developmentUser.findFirst({
+      where: {
+        userId,
+        development: { companyId, deletedAt: null },
+        roles: {
+          some: {
+            role: {
+              name: {
+                in: roleNames,
+                mode: 'insensitive',
+              },
+            },
+          },
+        },
+      },
+      select: { id: true },
+    }),
+    prisma.companyUser.findFirst({
+      where: {
+        userId,
+        companyId,
+        roles: {
+          some: {
+            role: {
+              name: {
+                in: roleNames,
+                mode: 'insensitive',
+              },
+            },
+          },
+        },
+      },
+      select: { id: true },
+    }),
+    prisma.company.findFirst({
+      where: {
+        id: companyId,
+        createdById: userId,
+      },
+      select: { id: true },
+    }),
+  ])
+
+  return Boolean(developmentMembership || companyMembership || createdCompany)
 }
 
 export async function ensureBaseRoles() {

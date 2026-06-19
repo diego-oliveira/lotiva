@@ -580,64 +580,59 @@ export default function ReceivablesDrawer({
                 {receivables.map((receivable) => {
                   const status = getStatusMeta(receivable)
                   const paid = receivable.status === 'paid'
+                  const hasRemainingBalance = !paid && Math.abs(receivable.balance - receivable.amount) > 0.009
                   const charge = chargesByReceivable.get(receivable.id)
                   const chargeMeta = getChargeMeta(charge)
+                  const canChangeCharge = Boolean(charge && canCancelPayments && !['confirmed', 'received'].includes(charge.status))
+                  const chargeActionLabel = charge && ['cancelled', 'refunded'].includes(charge.status) ? 'Reemitir boleto' : 'Cancelar boleto'
 
                   return (
-                    <article key={receivable.id} className='rounded-2xl border border-border bg-surface px-5 py-5 shadow-sm'>
-                      <div className='grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(180px,0.7fr)]'>
+                    <article key={receivable.id} className='rounded-2xl border border-border bg-surface px-5 py-5 shadow-sm transition hover:border-primary/25 hover:shadow-md'>
+                      <div className='grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(220px,0.55fr)] xl:items-start'>
                         <div className='min-w-0'>
-                          <div className='flex flex-wrap items-center gap-2'>
-                            <p className='text-base font-semibold text-foreground'>{getReceivableLabel(receivable)}</p>
-                            <span className={`pill ${status.className}`}>{status.label}</span>
-                          </div>
-                          <div className='mt-2 grid gap-3 sm:grid-cols-2'>
-                            <div>
-                              <p className='text-xs font-semibold uppercase text-muted'>Vencimento</p>
-                              <p className='mt-1 text-sm font-medium text-foreground'>{formatDate(receivable.dueDate)}</p>
+                          <div className='flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between'>
+                            <div className='min-w-0'>
+                              <div className='flex flex-wrap items-center gap-2'>
+                                <p className='text-base font-semibold text-foreground'>{getReceivableLabel(receivable)}</p>
+                                <span className={`pill ${status.className}`}>{status.label}</span>
+                              </div>
+                              <div className='mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted'>
+                                <span>Vencimento em {formatDate(receivable.dueDate)}</span>
+                                {paid && receivable.paidAt && <span>Pago em {formatDate(receivable.paidAt)}</span>}
+                                {hasRemainingBalance && <span>Saldo restante {formatCurrency(receivable.balance)}</span>}
+                              </div>
                             </div>
-                            <div>
+
+                            <div className='shrink-0 sm:text-right'>
                               <p className='text-xs font-semibold uppercase text-muted'>Valor</p>
-                              <p className='mt-1 text-sm font-semibold text-foreground'>{formatCurrency(receivable.amount)}</p>
+                              <p className='mt-1 text-2xl font-bold leading-tight text-foreground'>{formatCurrency(receivable.amount)}</p>
                             </div>
                           </div>
-                        </div>
 
-                        <div className='rounded-2xl border border-border bg-surface-secondary px-4 py-4'>
-                          <p className='text-xs font-semibold uppercase text-muted'>{paid ? 'Pago em' : 'Saldo'}</p>
-                          <p className='mt-1 text-lg font-semibold text-foreground'>
-                            {paid && receivable.paidAt ? formatDate(receivable.paidAt) : formatCurrency(receivable.balance)}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className='mt-5 rounded-2xl border border-border px-4 py-4'>
-                        <div className='flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
-                          <div className='min-w-0'>
-                            <div className='flex flex-wrap items-center gap-2'>
-                              <p className='text-xs font-semibold uppercase text-muted'>Boleto</p>
-                              <span className={`pill ${chargeMeta.className}`}>{chargeMeta.label}</span>
-                              {charge && charge.version > 1 && <span className='pill bg-slate-100 text-slate-600'>v{charge.version}</span>}
-                            </div>
+                          <div className='mt-4 flex flex-wrap items-center gap-2'>
+                            <span className={`pill ${chargeMeta.className}`}>{chargeMeta.label}</span>
+                            {charge && charge.version > 1 && <span className='pill bg-slate-100 text-slate-600'>v{charge.version}</span>}
                             {charge?.grossPaidAmount !== null && charge?.grossPaidAmount !== undefined && (
-                              <p className='mt-2 text-sm text-muted'>
+                              <span className='text-sm text-muted'>
                                 Bruto {formatCurrency(charge.grossPaidAmount)}
                                 {charge.feeAmount !== null ? ` · tarifa ${formatCurrency(charge.feeAmount)}` : ''}
-                              </p>
-                            )}
-                            {charge?.cancellationReason && (
-                              <p className='mt-2 text-sm text-red-700'>Motivo: {charge.cancellationReason}</p>
+                              </span>
                             )}
                           </div>
+                          {charge?.cancellationReason && (
+                            <p className='mt-2 text-sm text-red-700'>Motivo: {charge.cancellationReason}</p>
+                          )}
+                        </div>
 
+                        <div className='flex flex-col gap-3 xl:items-end'>
                           {charge && (
-                            <div className='flex flex-wrap gap-2 md:justify-end'>
+                            <div className='grid w-full grid-cols-1 gap-2 sm:grid-cols-3 xl:grid-cols-1'>
                               {charge.invoiceUrl && (
                                 <a
                                   href={charge.invoiceUrl}
                                   target='_blank'
                                   rel='noreferrer'
-                                  className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-primary transition hover:bg-primary/8'
+                                  className='rounded-xl border border-border bg-surface px-3 py-2 text-center text-sm font-semibold text-primary transition hover:bg-primary/8'
                                 >
                                   Abrir cobranca
                                 </a>
@@ -647,7 +642,7 @@ export default function ReceivablesDrawer({
                                   href={charge.bankSlipUrl}
                                   target='_blank'
                                   rel='noreferrer'
-                                  className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-primary transition hover:bg-primary/8'
+                                  className='rounded-xl border border-border bg-surface px-3 py-2 text-center text-sm font-semibold text-primary transition hover:bg-primary/8'
                                 >
                                   Boleto
                                 </a>
@@ -666,36 +661,32 @@ export default function ReceivablesDrawer({
                               )}
                             </div>
                           )}
-                        </div>
-                      </div>
 
-                      <div className='mt-5 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-end'>
-                        <button
-                          type='button'
-                          onClick={() => updateReceivable(receivable, paid ? 'pending' : 'paid')}
-                          disabled={savingId === receivable.id}
-                          className='rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:opacity-60'
-                        >
-                          {savingId === receivable.id ? 'Salvando...' : paid ? 'Reabrir parcela' : 'Marcar como paga'}
-                        </button>
+                          <div className='flex w-full flex-col gap-2 sm:flex-row xl:flex-col'>
+                            <button
+                              type='button'
+                              onClick={() => updateReceivable(receivable, paid ? 'pending' : 'paid')}
+                              disabled={savingId === receivable.id}
+                              className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
+                            >
+                              {savingId === receivable.id ? 'Salvando...' : paid ? 'Reabrir parcela' : 'Marcar como paga'}
+                            </button>
 
-                        {charge && canCancelPayments && !['confirmed', 'received'].includes(charge.status) && (
-                          <button
-                            type='button'
-                            disabled={chargeActionId === charge.id}
-                            onClick={() => runChargeAction(
-                              charge,
-                              ['cancelled', 'refunded'].includes(charge.status) ? 'reissue' : 'cancel',
+                            {canChangeCharge && charge && (
+                              <button
+                                type='button'
+                                disabled={chargeActionId === charge.id}
+                                onClick={() => runChargeAction(
+                                  charge,
+                                  ['cancelled', 'refunded'].includes(charge.status) ? 'reissue' : 'cancel',
+                                )}
+                                className='rounded-xl border border-red-200 bg-surface px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-60'
+                              >
+                                {chargeActionId === charge.id ? 'Processando...' : chargeActionLabel}
+                              </button>
                             )}
-                            className='rounded-xl border border-red-200 bg-surface px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-60'
-                          >
-                            {chargeActionId === charge.id
-                              ? 'Processando...'
-                              : ['cancelled', 'refunded'].includes(charge.status)
-                                ? 'Reemitir boleto'
-                                : 'Cancelar boleto'}
-                          </button>
-                        )}
+                          </div>
+                        </div>
                       </div>
                     </article>
                   )

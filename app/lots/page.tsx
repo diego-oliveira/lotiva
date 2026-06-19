@@ -230,6 +230,7 @@ function calculateInstallment(balance: number, installmentCount: number, monthly
 
 function LotsContent() {
   const searchParams = useSearchParams()
+  const developmentFilter = searchParams.get('developmentId') ?? ''
   const [lots, setLots] = useState<Lot[]>([])
   const [clients, setClients] = useState<Person[]>([])
   const [loading, setLoading] = useState(true)
@@ -274,7 +275,6 @@ function LotsContent() {
   })
   const [viewMode, setViewMode] = useState<ViewMode>('map')
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null)
-  const [developmentFilter, setDevelopmentFilter] = useState('')
   const [clientFilter, setClientFilter] = useState('')
   const [blockFilter, setBlockFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -306,18 +306,17 @@ function LotsContent() {
   }, [])
 
   useEffect(() => {
-    const developmentId = searchParams.get('developmentId')
     const userId = searchParams.get('userId')
-    if (developmentId) {
-      setDevelopmentFilter(developmentId)
-      setBlockFilter('')
-      setSelectedLotId(null)
-    }
-    if (userId) {
-      setClientFilter(userId)
-      setSelectedLotId(null)
-    }
+    const status = searchParams.get('status')
+    setClientFilter(userId ?? '')
+    setStatusFilter(status ?? '')
+    setSelectedLotId(null)
   }, [searchParams])
+
+  useEffect(() => {
+    setBlockFilter('')
+    setSelectedLotId(null)
+  }, [developmentFilter])
 
   async function fetchClients() {
     const response = await fetch('/api/clients?scope=operational', { cache: 'no-store' })
@@ -350,19 +349,6 @@ function LotsContent() {
       setEventSaving(false)
     }
   }
-
-  const developments = useMemo(() => {
-    const map = new Map<string, Development>()
-    lots.forEach((lot) => {
-      if (lot.block.development) map.set(lot.block.development.id, lot.block.development)
-    })
-    return Array.from(map.values()).sort((a, b) => compareNatural(a.name, b.name))
-  }, [lots])
-
-  const selectedDevelopment = useMemo(
-    () => developments.find((development) => development.id === developmentFilter) ?? null,
-    [developments, developmentFilter],
-  )
 
   const blocks = useMemo(() => {
     const map = new Map<string, Block>()
@@ -418,19 +404,7 @@ function LotsContent() {
       })
   }, [lots, developmentFilter, clientFilter, blockFilter, statusFilter, searchTerm, sortBy, sortDirection])
 
-  const clientFilterName = useMemo(() => {
-    if (!clientFilter) return null
-    for (const lot of lots) {
-      if (lot.sale?.user.id === clientFilter) return lot.sale.user.name
-      const reservation = lot.reservations.find((item) => item.user.id === clientFilter)
-      if (reservation) return reservation.user.name
-      const proposal = lot.proposals.find((item) => item.user.id === clientFilter)
-      if (proposal) return proposal.user.name
-    }
-    return 'cliente selecionado'
-  }, [lots, clientFilter])
-
-  const hasActiveLotFilters = Boolean(developmentFilter || clientFilter || blockFilter || statusFilter || searchTerm)
+  const hasActiveLotFilters = Boolean(clientFilter || blockFilter || statusFilter || searchTerm)
 
   const lotsByBlock = useMemo(() => {
     const map = new Map<string, { block: Block; lots: Lot[] }>()
@@ -554,14 +528,15 @@ function LotsContent() {
   )
 
   const stats = useMemo(() => {
-    const totalValue = filteredLots.reduce((sum, lot) => sum + lot.price, 0)
+    const sold = filteredLots.filter((lot) => getEffectiveLotStatus(lot) === 'sold').length
+    const total = filteredLots.length
 
     return {
-      total: filteredLots.length,
+      total,
       available: filteredLots.filter((lot) => getEffectiveLotStatus(lot) === 'available').length,
-      reserved: filteredLots.filter((lot) => ['reserved', 'on_hold'].includes(getEffectiveLotStatus(lot))).length,
-      sold: filteredLots.filter((lot) => getEffectiveLotStatus(lot) === 'sold').length,
-      totalValue,
+      reserved: filteredLots.filter((lot) => getEffectiveLotStatus(lot) === 'reserved').length,
+      sold,
+      soldPercentage: total > 0 ? sold / total : 0,
     }
   }, [filteredLots])
 
@@ -575,17 +550,10 @@ function LotsContent() {
   }
 
   const clearFilters = () => {
-    setDevelopmentFilter('')
     setClientFilter('')
     setBlockFilter('')
     setStatusFilter('')
     setSearchTerm('')
-    setSelectedLotId(null)
-  }
-
-  const handleDevelopmentChange = (developmentId: string) => {
-    setDevelopmentFilter(developmentId)
-    setBlockFilter('')
     setSelectedLotId(null)
   }
 
@@ -933,14 +901,14 @@ function LotsContent() {
             </div>
             <div className='flex shrink-0 gap-2'>
               <Link
-                href={`/proposals?proposalId=${proposalOutcome.id}`}
+                href={`/proposals?developmentId=${selectedLot?.block.development?.id ?? developmentFilter}&proposalId=${proposalOutcome.id}`}
                 className='rounded-xl bg-surface px-4 py-3 text-sm font-semibold text-foreground shadow-sm'
               >
                 Ver proposta
               </Link>
               {proposalOutcome.status === 'approved' && selectedLot && (
                 <Link
-                  href={`/sales?lotId=${selectedLot.id}&userId=${proposalForm.userId}&proposalId=${proposalOutcome.id}`}
+                  href={`/sales?developmentId=${selectedLot.block.development?.id ?? developmentFilter}&lotId=${selectedLot.id}&userId=${proposalForm.userId}&proposalId=${proposalOutcome.id}`}
                   className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white'
                 >
                   Continuar venda
@@ -958,51 +926,28 @@ function LotsContent() {
         </div>
       )}
 
-      <section className='grid gap-4 md:grid-cols-4'>
+      <section className='grid gap-4 md:grid-cols-2 xl:grid-cols-5'>
         <div className='metric-card px-5 py-4'>
-          <p className='metric-label'>Lotes filtrados</p>
+          <p className='metric-label'>Lotes vendidos</p>
+          <p className='metric-value text-primary'>
+            {new Intl.NumberFormat('pt-BR', { style: 'percent', maximumFractionDigits: 1 }).format(stats.soldPercentage)}
+          </p>
+        </div>
+        <div className='metric-card px-5 py-4'>
+          <p className='metric-label'>Lotes totais</p>
           <p className='metric-value'>{stats.total}</p>
+        </div>
+        <div className='metric-card px-5 py-4'>
+          <p className='metric-label'>Vendidos</p>
+          <p className='metric-value text-red-700'>{stats.sold}</p>
+        </div>
+        <div className='metric-card px-5 py-4'>
+          <p className='metric-label'>Reservados</p>
+          <p className='metric-value text-amber-700'>{stats.reserved}</p>
         </div>
         <div className='metric-card px-5 py-4'>
           <p className='metric-label'>Disponiveis</p>
           <p className='metric-value text-emerald-700'>{stats.available}</p>
-        </div>
-        <div className='metric-card px-5 py-4'>
-          <p className='metric-label'>Reservados/bloqueados</p>
-          <p className='metric-value text-amber-700'>{stats.reserved}</p>
-        </div>
-        <div className='metric-card px-5 py-4'>
-          <p className='metric-label'>Valor em estoque</p>
-          <p className='metric-value'>{formatCurrency(stats.totalValue)}</p>
-        </div>
-      </section>
-
-      <section className='panel px-6 py-5'>
-        <div className='grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,360px)] lg:items-center'>
-          <div>
-            <p className='text-xs font-semibold uppercase tracking-[0.18em] text-muted'>Empreendimento selecionado</p>
-            <h2 className='mt-2 text-2xl font-bold text-foreground'>{selectedDevelopment?.name ?? 'Todos os empreendimentos'}</h2>
-            <p className='mt-1 text-sm text-muted'>
-              {clientFilterName
-                ? `Mostrando lotes relacionados a ${clientFilterName}.`
-                : selectedDevelopment
-                ? `${stats.total} lotes no recorte atual, com ${stats.available} disponiveis para venda.`
-                : 'Selecione um empreendimento para focar o mapa, a lista e as metricas de estoque.'}
-            </p>
-          </div>
-          <label className='block'>
-            <span className='mb-2 block text-sm font-semibold text-foreground'>Trocar empreendimento</span>
-            <select
-              value={developmentFilter}
-              onChange={(event) => handleDevelopmentChange(event.target.value)}
-              className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm font-semibold text-foreground outline-none transition focus:ring-2 focus:ring-primary'
-            >
-              <option value=''>Todos os empreendimentos</option>
-              {developments.map((development) => (
-                <option key={development.id} value={development.id}>{development.name}</option>
-              ))}
-            </select>
-          </label>
         </div>
       </section>
 
@@ -1063,15 +1008,15 @@ function LotsContent() {
                 <p className='mt-2 max-w-md text-sm leading-6 text-muted'>
                   {hasActiveLotFilters
                     ? 'Ajuste ou limpe os filtros para visualizar o mapa e a lista de lotes.'
-                    : 'Crie quadras e lotes pelo onboarding para iniciar a operacao comercial.'}
+                    : 'Crie um empreendimento com quadras e lotes para iniciar a operacao comercial.'}
                 </p>
                 {hasActiveLotFilters ? (
                   <button onClick={clearFilters} className='mt-6 rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
                     Limpar filtros
                   </button>
                 ) : (
-                  <Link href='/onboarding' className='mt-6 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
-                    Abrir onboarding
+                  <Link href='/developments' className='mt-6 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+                    Criar empreendimento
                   </Link>
                 )}
               </div>
@@ -1358,7 +1303,7 @@ function LotsContent() {
                       <>
                         {reservationCanConvert ? (
                           <Link
-                            href={`/sales?lotId=${selectedLot.id}${selectedLotReservation ? `&userId=${selectedLotReservation.user.id}&reservationId=${selectedLotReservation.id}` : ''}${reservationProposalId ? `&proposalId=${reservationProposalId}` : ''}`}
+                            href={`/sales?developmentId=${selectedLot.block.development?.id ?? developmentFilter}&lotId=${selectedLot.id}${selectedLotReservation ? `&userId=${selectedLotReservation.user.id}&reservationId=${selectedLotReservation.id}` : ''}${reservationProposalId ? `&proposalId=${reservationProposalId}` : ''}`}
                             className='block w-full rounded-xl bg-primary px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-primary-strong'
                           >
                             Converter em venda
@@ -1412,7 +1357,7 @@ function LotsContent() {
 
                     {selectedLotStatus === 'sold' && (
                       <>
-                        <Link href='/sales' className='block w-full rounded-xl bg-primary px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-primary-strong'>
+                        <Link href={`/sales?developmentId=${selectedLot.block.development?.id ?? developmentFilter}`} className='block w-full rounded-xl bg-primary px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-primary-strong'>
                           Ver venda
                         </Link>
                         {selectedLot.sale?.contract && (

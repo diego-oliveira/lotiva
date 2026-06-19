@@ -15,17 +15,29 @@ datasource db {
 }
 
 model Company {
-  id        String   @id @default(uuid())
-  name      String
-  logo      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String   @id @default(uuid())
+  name              String
+  logo              String
+  legalName         String   @default("")
+  document          String   @default("")
+  stateRegistration String   @default("")
+  address           String   @default("")
+  city              String   @default("")
+  state             String   @default("")
+  zipCode           String   @default("")
+  phone             String   @default("")
+  email             String   @default("")
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
+  createdBy          User? @relation("CompanyCreator", fields: [createdById], references: [id], onDelete: SetNull)
   developments      Development[]
   documentTemplates DocumentTemplate[]
   documentVariables DocumentVariable[]
   paymentConnections PaymentProviderConnection[]
   financialAuditLogs FinancialAuditLog[]
+  memberships      CompanyUser[]
 }
 
 model Development {
@@ -35,6 +47,7 @@ model Development {
   companyId String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
 
   company            Company                      @relation(fields: [companyId], references: [id])
   blocks             Block[]
@@ -46,6 +59,7 @@ model Development {
   documentValues     DevelopmentDocumentValue[]
 
   @@index([documentTemplateId])
+  @@index([deletedAt])
 }
 
 model DevelopmentSettings {
@@ -109,6 +123,8 @@ model User {
   reviewedProposals   Proposal[]                @relation("ProposalReviewer")
   notifications       Notification[]
   memberships         DevelopmentUser[]
+  companyMemberships  CompanyUser[]
+  createdCompanies    Company[]                  @relation("CompanyCreator")
   accounts            Account[]
   sessions            Session[]
   lotEvents           LotEvent[]
@@ -163,6 +179,33 @@ model Role {
   updatedAt DateTime @updatedAt
 
   assignments DevelopmentUserRole[]
+  companyAssignments CompanyUserRole[]
+}
+
+model CompanyUser {
+  id        String   @id @default(uuid())
+  companyId String
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roles   CompanyUserRole[]
+
+  @@unique([companyId, userId])
+}
+
+model CompanyUserRole {
+  id            String   @id @default(uuid())
+  companyUserId String
+  roleId        String
+  createdAt     DateTime @default(now())
+
+  companyUser CompanyUser @relation(fields: [companyUserId], references: [id], onDelete: Cascade)
+  role        Role        @relation(fields: [roleId], references: [id])
+
+  @@unique([companyUserId, roleId])
 }
 
 model DevelopmentUser {

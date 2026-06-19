@@ -47,10 +47,19 @@ export async function isAdminEligibleEmail(email?: string | null) {
         select: { id: true },
         take: 1,
       },
+      companyMemberships: {
+        where: {
+          roles: {
+            some: {},
+          },
+        },
+        select: { id: true },
+        take: 1,
+      },
     },
   })
 
-  return Boolean(user?.memberships.length)
+  return Boolean(user?.memberships.length || user?.companyMemberships.length)
 }
 
 async function sendMagicLinkEmail({
@@ -63,7 +72,7 @@ async function sendMagicLinkEmail({
   const isEligible = await isAdminEligibleEmail(identifier)
 
   if (!isEligible) {
-    console.warn(`[auth] Magic link skipped because ${identifier} is not linked to any development`)
+    console.warn(`[auth] Magic link skipped because ${identifier} is not linked to any company or development`)
     return
   }
 

@@ -6,7 +6,6 @@ import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@/app/generated/prisma'
 import { hasAnyDevelopmentPermission, hasDevelopmentPermission } from '@/lib/permissions'
 import ReceivableActions from './components/ReceivableActions'
-import FinanceDevelopmentSelect from './components/FinanceDevelopmentSelect'
 import PaymentOperationsPanel from './components/PaymentOperationsPanel'
 import { hasCompanyPermission } from '@/lib/permissions'
 
@@ -92,8 +91,8 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
         <section className='panel px-6 py-10 text-center'>
           <h2 className='text-lg font-semibold text-foreground'>Nenhum empreendimento acessivel</h2>
           <p className='mt-2 text-sm text-muted'>O financeiro depende de vendas e parcelas associadas a um empreendimento.</p>
-          <Link href='/onboarding' className='mt-6 inline-flex rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
-            Abrir onboarding
+          <Link href='/developments' className='mt-6 inline-flex rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+            Criar empreendimento
           </Link>
         </section>
       </div>
@@ -258,23 +257,19 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
           <h1 className='page-title'>Financeiro</h1>
           <p className='page-subtitle'>Localize parcelas, acompanhe vencidos e registre baixas de pagamento.</p>
         </div>
-        <Link href='/sales' className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+        <Link href={`/sales?developmentId=${selectedDevelopment.id}`} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
           Ver vendas
         </Link>
       </div>
 
       <section className='panel px-6 py-5'>
-        <div className='grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,360px)] lg:items-center'>
+        <div>
           <div>
             <h2 className='text-2xl font-bold text-foreground'>{selectedDevelopment.name}</h2>
             <p className='mt-1 text-sm text-muted'>
               {selectedDevelopment.company.name} · {receivables.length} parcela(s) no recorte financeiro atual.
             </p>
           </div>
-          <FinanceDevelopmentSelect
-            developments={developments.map((development) => ({ id: development.id, name: development.name }))}
-            selectedDevelopmentId={selectedDevelopment.id}
-          />
         </div>
       </section>
 
@@ -379,7 +374,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
             <button type='submit' className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
               Filtrar
             </button>
-            <Link href='/finance' className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+            <Link href={`/finance?developmentId=${selectedDevelopment.id}`} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
               Limpar
             </Link>
           </div>
@@ -392,10 +387,10 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
               Ajuste os filtros ou crie uma venda parcelada para gerar a agenda financeira automaticamente.
             </p>
             <div className='mt-6 flex flex-col justify-center gap-3 sm:flex-row'>
-              <Link href='/finance' className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+              <Link href={`/finance?developmentId=${selectedDevelopment.id}`} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
                 Limpar filtros
               </Link>
-              <Link href='/sales' className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+              <Link href={`/sales?developmentId=${selectedDevelopment.id}`} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
                 Criar venda
               </Link>
             </div>

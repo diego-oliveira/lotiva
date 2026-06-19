@@ -4,19 +4,11 @@ import { getCurrentSession } from '@/lib/auth'
 import { membershipWhere } from '@/lib/access-control'
 import { prisma } from '@/lib/prisma'
 import { getUserPermissions } from '@/lib/permissions'
-import DevelopmentSelector from './components/DevelopmentSelector'
 
 type HomeProps = {
   searchParams?: Promise<{
     developmentId?: string
   }>
-}
-
-type MonthlyPoint = {
-  key: string
-  label: string
-  sales: number
-  received: number
 }
 
 function formatCurrency(value: number) {
@@ -36,27 +28,6 @@ function formatPercent(value: number) {
 
 function formatDate(value: Date | string) {
   return new Date(value).toLocaleDateString('pt-BR')
-}
-
-function getMonthKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-}
-
-function buildMonthlySeries() {
-  const now = new Date()
-  const series: MonthlyPoint[] = []
-
-  for (let offset = 5; offset >= 0; offset -= 1) {
-    const date = new Date(now.getFullYear(), now.getMonth() - offset, 1)
-    series.push({
-      key: getMonthKey(date),
-      label: date.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', ''),
-      sales: 0,
-      received: 0,
-    })
-  }
-
-  return series
 }
 
 export default async function Home({ searchParams }: HomeProps) {
@@ -87,8 +58,8 @@ export default async function Home({ searchParams }: HomeProps) {
           <p className='mx-auto mt-2 max-w-xl text-sm leading-6 text-muted'>
             O dashboard depende de um empreendimento com quadras, lotes e permissoes configuradas.
           </p>
-          <Link href='/onboarding' className='mt-6 inline-flex rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
-            Abrir onboarding
+          <Link href='/developments' className='mt-6 inline-flex rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+            Criar empreendimento
           </Link>
         </section>
       </div>
@@ -189,28 +160,6 @@ export default async function Home({ searchParams }: HomeProps) {
     salesMonthDelta === 0 ? 'estavel vs. mes anterior' : `${salesMonthDelta > 0 ? '+' : ''}${salesMonthDelta} vs. mes anterior`
   const salesMonthDeltaTone = salesMonthDelta > 0 ? 'text-emerald-700' : salesMonthDelta < 0 ? 'text-red-700' : 'text-muted'
 
-  const monthlySeries = buildMonthlySeries()
-  const monthlyByKey = new Map(monthlySeries.map((point) => [point.key, point]))
-
-  sales.forEach((sale) => {
-    const point = monthlyByKey.get(getMonthKey(sale.createdAt))
-    if (point) point.sales += Number(sale.totalValue)
-  })
-
-  receivables.forEach((receivable) => {
-    if (!receivable.paidAt) return
-    const point = monthlyByKey.get(getMonthKey(receivable.paidAt))
-    if (point) point.received += Number(receivable.paidAmount)
-  })
-
-  const maxMonthlyValue = Math.max(1, ...monthlySeries.flatMap((point) => [point.sales, point.received]))
-  const receivedLinePoints = monthlySeries
-    .map((point, index) => {
-      const x = monthlySeries.length === 1 ? 0 : (index / (monthlySeries.length - 1)) * 100
-      const y = 100 - (point.received / maxMonthlyValue) * 92
-      return `${x},${y}`
-    })
-    .join(' ')
   const overdueReceivables = receivables
     .filter((receivable) => receivable.status !== 'paid' && receivable.dueDate < today)
     .slice(0, 5)
@@ -232,7 +181,7 @@ export default async function Home({ searchParams }: HomeProps) {
       ? [{
           title: 'Cadastre quadras e lotes',
           description: 'O empreendimento ainda nao tem estoque para o time comercial consultar.',
-          href: '/onboarding',
+          href: '/developments',
           tone: 'amber' as const,
         }]
       : []),
@@ -240,7 +189,7 @@ export default async function Home({ searchParams }: HomeProps) {
       ? [{
           title: 'Sem lotes disponiveis',
           description: 'Libere ou cadastre novos lotes para manter o funil de venda ativo.',
-          href: '/lots',
+          href: `/lots?developmentId=${selectedDevelopment.id}`,
           tone: 'red' as const,
         }]
       : []),
@@ -248,7 +197,7 @@ export default async function Home({ searchParams }: HomeProps) {
       ? [{
           title: `${financialMetrics.overdueCount} parcela(s) vencida(s)`,
           description: `${formatCurrency(financialMetrics.overdueAmount)} em aberto exige acompanhamento financeiro.`,
-          href: '/finance?status=overdue',
+          href: `/finance?developmentId=${selectedDevelopment.id}&status=overdue`,
           tone: 'red' as const,
         }]
       : []),
@@ -256,7 +205,7 @@ export default async function Home({ searchParams }: HomeProps) {
       ? [{
           title: `${expiringReservations.length} reserva(s) vencem em ate 3 dias`,
           description: 'Priorize contato com os clientes antes de liberar os lotes.',
-          href: '/lots?status=reserved',
+          href: `/lots?developmentId=${selectedDevelopment.id}&status=reserved`,
           tone: 'amber' as const,
         }]
       : []),
@@ -269,14 +218,6 @@ export default async function Home({ searchParams }: HomeProps) {
           <h1 className='page-title'>Painel</h1>
           <p className='page-subtitle'>Resumo executivo de estoque, vendas e recebiveis do empreendimento.</p>
         </div>
-        <DevelopmentSelector
-          selectedDevelopmentId={selectedDevelopment.id}
-          developments={developments.map((development) => ({
-            id: development.id,
-            name: development.name,
-            companyName: development.company.name,
-          }))}
-        />
       </div>
 
       <section className='panel overflow-hidden'>
@@ -367,70 +308,7 @@ export default async function Home({ searchParams }: HomeProps) {
         </div>
       </section>
 
-      <section className='grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]'>
-        <div className='panel overflow-hidden'>
-          <div className='panel-header px-6 py-5'>
-            <h2 className='text-lg font-semibold text-foreground'>Evolucao mensal</h2>
-            <p className='mt-1 text-sm text-muted'>
-              Vendido mostra contratos fechados no mes. Recebido soma entradas e parcelas marcadas como pagas no mes.
-            </p>
-            <div className='mt-4 flex flex-wrap gap-3 text-xs font-semibold text-muted'>
-              <span className='inline-flex items-center gap-2'><span className='h-2.5 w-2.5 rounded-full bg-primary' />Vendido no mes</span>
-              <span className='inline-flex items-center gap-2'><span className='h-2.5 w-2.5 rounded-full bg-emerald-500' />Recebido no mes</span>
-            </div>
-          </div>
-          <div className='px-6 py-6'>
-            <div className='rounded-2xl border border-border bg-surface-secondary px-4 py-4'>
-              <div className='mb-3 flex items-center justify-between gap-3'>
-                <p className='text-sm font-semibold text-foreground'>Recebido mes a mes</p>
-                <p className='text-xs font-semibold text-muted'>Ultimos 6 meses</p>
-              </div>
-              <svg viewBox='0 0 100 110' className='h-44 w-full overflow-visible' preserveAspectRatio='none'>
-                <polyline
-                  fill='none'
-                  stroke='rgb(16 185 129)'
-                  strokeWidth='3'
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  points={receivedLinePoints}
-                />
-                {monthlySeries.map((point, index) => {
-                  const x = monthlySeries.length === 1 ? 0 : (index / (monthlySeries.length - 1)) * 100
-                  const y = 100 - (point.received / maxMonthlyValue) * 92
-                  return <circle key={point.key} cx={x} cy={y} r='2.2' fill='rgb(16 185 129)' />
-                })}
-              </svg>
-            </div>
-            <div className='mt-6 space-y-4'>
-            {monthlySeries.map((point) => (
-              <div key={point.key} className='grid gap-3 md:grid-cols-[72px_minmax(0,1fr)] md:items-center'>
-                <p className='text-sm font-semibold capitalize text-foreground'>{point.label}</p>
-                <div className='space-y-2'>
-                  <div>
-                    <div className='mb-1 flex justify-between text-xs font-medium text-muted'>
-                      <span>Vendido</span>
-                      <span>{formatCurrency(point.sales)}</span>
-                    </div>
-                    <div className='h-3 overflow-hidden rounded-full bg-surface-secondary'>
-                      <div className='h-full rounded-full bg-primary' style={{ width: `${(point.sales / maxMonthlyValue) * 100}%` }} />
-                    </div>
-                  </div>
-                  <div>
-                    <div className='mb-1 flex justify-between text-xs font-medium text-muted'>
-                      <span>Recebido</span>
-                      <span>{formatCurrency(point.received)}</span>
-                    </div>
-                    <div className='h-3 overflow-hidden rounded-full bg-surface-secondary'>
-                      <div className='h-full rounded-full bg-emerald-500' style={{ width: `${(point.received / maxMonthlyValue) * 100}%` }} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-            </div>
-          </div>
-        </div>
-
+      <section>
         <aside className='panel overflow-hidden'>
           <div className='panel-header px-6 py-5'>
             <h2 className='text-lg font-semibold text-foreground'>Vencidos</h2>
@@ -467,7 +345,7 @@ export default async function Home({ searchParams }: HomeProps) {
             <h2 className='text-lg font-semibold text-foreground'>Ultimas vendas</h2>
             <p className='mt-1 text-sm text-muted'>Contratos mais recentes do empreendimento selecionado.</p>
           </div>
-          <Link href='/sales' className='text-sm font-semibold text-primary'>
+          <Link href={`/sales?developmentId=${selectedDevelopment.id}`} className='text-sm font-semibold text-primary'>
             Ver vendas
           </Link>
         </div>

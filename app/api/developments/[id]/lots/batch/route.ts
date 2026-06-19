@@ -17,6 +17,8 @@ type LotInput = {
   status?: string
 }
 
+const allowedStatuses = new Set(['available', 'reserved', 'on_hold', 'sold'])
+
 function toNumber(value: unknown) {
   const number = Number(value)
   return Number.isFinite(number) ? number : 0
@@ -31,6 +33,7 @@ function validateLot(lot: LotInput, index: number) {
   if (toNumber(lot.rightSide) <= 0) errors.push(`Lote ${index + 1}: lateral direita deve ser maior que zero.`)
   if (toNumber(lot.totalArea) <= 0) errors.push(`Lote ${index + 1}: area deve ser maior que zero.`)
   if (toNumber(lot.price) < 0) errors.push(`Lote ${index + 1}: valor nao pode ser negativo.`)
+  if (lot.status && !allowedStatuses.has(lot.status)) errors.push(`Lote ${index + 1}: status invalido.`)
   return errors
 }
 
@@ -82,7 +85,7 @@ export async function POST(req: NextRequest, { params }: Params) {
           rightSide: toNumber(lotInput.rightSide),
           totalArea: toNumber(lotInput.totalArea),
           price: toNumber(lotInput.price),
-          status: lotInput.status || 'available',
+          status: allowedStatuses.has(lotInput.status || '') ? lotInput.status! : 'available',
         },
       })
 

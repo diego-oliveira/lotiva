@@ -60,8 +60,9 @@ interface DevelopmentFormProps {
   development?: Development | null
   companies: Company[]
   isOpen: boolean
+  initialSection?: ConfigSection
   onClose: () => void
-  onSave: (mode: 'create' | 'update') => void
+  onSave: (mode: 'create' | 'update', development: Development) => void
 }
 
 const defaultSettings: DevelopmentSettingsFormData = {
@@ -88,10 +89,19 @@ const defaultContractSettings: DevelopmentContractSettings = {
   additionalClauses: '',
 }
 
+type ConfigSection = 'basic' | 'commercial' | 'documents'
+
+const configSections: Array<{ id: ConfigSection; title: string; description: string }> = [
+  { id: 'basic', title: 'Dados principais', description: 'Empresa, nome e logo opcional' },
+  { id: 'commercial', title: 'Regras comerciais', description: 'Reservas, juros e pagamento' },
+  { id: 'documents', title: 'Documento de venda', description: 'Modelo de contrato' },
+]
+
 export default function DevelopmentForm({
   development,
   companies,
   isOpen,
+  initialSection = 'basic',
   onClose,
   onSave,
 }: DevelopmentFormProps) {
@@ -99,6 +109,7 @@ export default function DevelopmentForm({
   const [settingsData, setSettingsData] = useState<DevelopmentSettingsFormData>(defaultSettings)
   const [contractSettingsData, setContractSettingsData] = useState<DevelopmentContractSettings>(defaultContractSettings)
   const [documentTemplates, setDocumentTemplates] = useState<DocumentTemplateOption[]>([])
+  const [currentSection, setCurrentSection] = useState<ConfigSection>('basic')
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -120,8 +131,9 @@ export default function DevelopmentForm({
         : defaultSettings,
     )
     setContractSettingsData(development?.contractSettings ? { ...defaultContractSettings, ...development.contractSettings } : defaultContractSettings)
+    setCurrentSection(development ? initialSection : 'basic')
     setErrors({})
-  }, [development, isOpen, companies])
+  }, [development, isOpen, companies, initialSection])
 
   useEffect(() => {
     if (!isOpen) return
@@ -141,17 +153,26 @@ export default function DevelopmentForm({
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }))
   }
 
-  const validateForm = () => {
+  const validateForm = (section: ConfigSection = currentSection) => {
     const newErrors: Record<string, string> = {}
-    if (!formData.name.trim()) newErrors.name = 'Nome é obrigatório'
-    if (!formData.companyId) newErrors.companyId = 'Selecione uma empresa'
-    if (!formData.documentTemplateId) newErrors.documentTemplateId = 'Selecione um modelo de contrato publicado'
-    if (!formData.logo.trim()) newErrors.logo = 'Logo é obrigatória'
-    if (settingsData.reservationValidityDays < 1 || settingsData.reservationValidityDays > 180) newErrors.reservationValidityDays = 'Informe entre 1 e 180 dias.'
-    if (settingsData.defaultInterestRate < 0 || settingsData.defaultInterestRate > 10) newErrors.defaultInterestRate = 'Informe entre 0% e 10% ao mes.'
-    if (settingsData.minDownPaymentPercentage < 0 || settingsData.minDownPaymentPercentage > 100) newErrors.minDownPaymentPercentage = 'Informe entre 0% e 100%.'
-    if (settingsData.maxInstallments < 1 || settingsData.maxInstallments > 240) newErrors.maxInstallments = 'Informe ate 240 parcelas.'
-    if (settingsData.paymentMethods.length === 0) newErrors.paymentMethods = 'Selecione pelo menos uma forma de pagamento.'
+
+    if (section === 'basic') {
+      if (!formData.name.trim()) newErrors.name = 'Nome é obrigatório'
+      if (!formData.companyId) newErrors.companyId = 'Selecione uma empresa'
+    }
+
+    if (section === 'commercial') {
+      if (settingsData.reservationValidityDays < 1 || settingsData.reservationValidityDays > 180) newErrors.reservationValidityDays = 'Informe entre 1 e 180 dias.'
+      if (settingsData.defaultInterestRate < 0 || settingsData.defaultInterestRate > 10) newErrors.defaultInterestRate = 'Informe entre 0% e 10% ao mes.'
+      if (settingsData.minDownPaymentPercentage < 0 || settingsData.minDownPaymentPercentage > 100) newErrors.minDownPaymentPercentage = 'Informe entre 0% e 100%.'
+      if (settingsData.maxInstallments < 1 || settingsData.maxInstallments > 240) newErrors.maxInstallments = 'Informe ate 240 parcelas.'
+      if (settingsData.paymentMethods.length === 0) newErrors.paymentMethods = 'Selecione pelo menos uma forma de pagamento.'
+    }
+
+    if (section === 'documents' && !formData.documentTemplateId) {
+      newErrors.documentTemplateId = 'Selecione um modelo de contrato publicado'
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -190,20 +211,26 @@ export default function DevelopmentForm({
     try {
       const url = development?.id ? `/api/developments/${development.id}` : '/api/developments'
       const method = development?.id ? 'PUT' : 'POST'
+      const body: Record<string, unknown> = {
+        id: formData.id,
+        name: formData.name,
+        logo: formData.logo,
+        companyId: formData.companyId,
+        documentTemplateId: formData.documentTemplateId ?? null,
+      }
+      if (currentSection === 'commercial') body.settings = settingsData
+      if (currentSection === 'documents') body.contractSettings = contractSettingsData
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          settings: settingsData,
-          contractSettings: contractSettingsData,
-        }),
+        body: JSON.stringify(body),
       })
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Erro ao salvar empreendimento')
       }
-      onSave(development?.id ? 'update' : 'create')
+      const savedDevelopment = await response.json()
+      onSave(development?.id ? 'update' : 'create', savedDevelopment)
       onClose()
     } catch (error) {
       setErrors({ submit: error instanceof Error ? error.message : 'Erro ao salvar empreendimento' })
@@ -215,9 +242,10 @@ export default function DevelopmentForm({
   return (
     <FormDrawer
       isOpen={isOpen}
-      title={development?.id ? 'Editar Empreendimento' : 'Novo Empreendimento'}
-      description='Defina a empresa proprietaria e os dados visuais principais do empreendimento.'
+      title={development?.id ? 'Configurar Empreendimento' : 'Novo Empreendimento'}
+      description={development?.id ? 'Atualize qualquer parte da configuracao sem depender de uma ordem fixa.' : 'Crie o empreendimento com o minimo necessario. Depois configure regras, documento e lotes em qualquer ordem.'}
       onClose={onClose}
+      widthClassName='max-w-4xl'
     >
       <form onSubmit={handleSubmit} className='space-y-6'>
         {errors.submit && (
@@ -226,57 +254,84 @@ export default function DevelopmentForm({
           </div>
         )}
 
+        {development?.id && (
+        <div className='grid gap-3 md:grid-cols-3'>
+          {configSections.map((section) => {
+            const active = section.id === currentSection
+            return (
+              <button
+                key={section.id}
+                type='button'
+                onClick={() => { setCurrentSection(section.id); setErrors({}) }}
+                className={`rounded-2xl border px-4 py-3 text-left transition ${
+                  active
+                    ? 'border-primary bg-primary/8 text-primary'
+                    : 'border-border bg-surface-secondary text-muted'
+                }`}
+              >
+                <span className='mt-1 block text-sm font-semibold'>{section.title}</span>
+                <span className='mt-1 block text-xs'>{section.description}</span>
+              </button>
+            )
+          })}
+        </div>
+        )}
+
         <div className='grid gap-6'>
-          <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
-            <label className='mb-2 block text-sm font-semibold text-foreground'>Empresa *</label>
-            <select
-              name='companyId'
-              value={formData.companyId}
-              onChange={handleInputChange}
-              className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary ${
-                errors.companyId ? 'border-red-300' : 'border-border'
-              }`}
-            >
-              <option value=''>Selecione uma empresa</option>
-              {companies.map((company) => (
-                <option key={company.id} value={company.id}>
-                  {company.name}
-                </option>
-              ))}
-            </select>
-            {errors.companyId && <p className='mt-2 text-sm text-red-600'>{errors.companyId}</p>}
-          </div>
+          {currentSection === 'basic' && (
+            <div className='grid gap-5'>
+              <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                <label className='mb-2 block text-sm font-semibold text-foreground'>Empresa *</label>
+                <select
+                  name='companyId'
+                  value={formData.companyId}
+                  onChange={handleInputChange}
+                  className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary ${
+                    errors.companyId ? 'border-red-300' : 'border-border'
+                  }`}
+                >
+                  <option value=''>Selecione uma empresa</option>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
+                {errors.companyId && <p className='mt-2 text-sm text-red-600'>{errors.companyId}</p>}
+              </div>
 
-          <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
-            <label className='mb-2 block text-sm font-semibold text-foreground'>Nome do Empreendimento *</label>
-            <input
-              type='text'
-              name='name'
-              value={formData.name}
-              onChange={handleInputChange}
-              className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary ${
-                errors.name ? 'border-red-300' : 'border-border'
-              }`}
-              placeholder='Loteamento Cajueiro I'
-            />
-            {errors.name && <p className='mt-2 text-sm text-red-600'>{errors.name}</p>}
-          </div>
+              <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                <label className='mb-2 block text-sm font-semibold text-foreground'>Nome do Empreendimento *</label>
+                <input
+                  type='text'
+                  name='name'
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary ${
+                    errors.name ? 'border-red-300' : 'border-border'
+                  }`}
+                  placeholder='Loteamento Cajueiro I'
+                />
+                {errors.name && <p className='mt-2 text-sm text-red-600'>{errors.name}</p>}
+              </div>
 
-          <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
-            <ImageUploadField
-              label='Logo'
-              value={formData.logo}
-              onChange={(logo) => {
-                setFormData((current) => ({ ...current, logo }))
-                setErrors((current) => ({ ...current, logo: '' }))
-              }}
-              error={errors.logo}
-              onError={(logoError) => setErrors((current) => ({ ...current, logo: logoError }))}
-              previewAlt={formData.name || 'Logo do empreendimento'}
-              required
-            />
-          </div>
+              <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                <ImageUploadField
+                  label='Logo'
+                  value={formData.logo}
+                  onChange={(logo) => {
+                    setFormData((current) => ({ ...current, logo }))
+                    setErrors((current) => ({ ...current, logo: '' }))
+                  }}
+                  error={errors.logo}
+                  onError={(logoError) => setErrors((current) => ({ ...current, logo: logoError }))}
+                  previewAlt={formData.name || 'Logo do empreendimento'}
+                />
+              </div>
+            </div>
+          )}
 
+          {development?.id && currentSection === 'commercial' && (
           <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
             <div>
               <h3 className='text-base font-semibold text-foreground'>Regras comerciais</h3>
@@ -413,7 +468,9 @@ export default function DevelopmentForm({
               </span>
             </label>
           </div>
+          )}
 
+          {development?.id && currentSection === 'documents' && (
           <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
             <div>
               <h3 className='text-base font-semibold text-foreground'>Documentos da venda</h3>
@@ -452,12 +509,13 @@ export default function DevelopmentForm({
               </div>
             </div>
           </div>
+          )}
         </div>
 
-        <div className='flex justify-end gap-3 border-t border-border pt-6'>
+        <div className='flex flex-col gap-3 border-t border-border pt-6 md:flex-row md:items-center md:justify-between'>
           <button type='button' onClick={onClose} disabled={loading} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:opacity-50'>Cancelar</button>
           <button type='submit' disabled={loading} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-50'>
-            {loading ? 'Salvando...' : development?.id ? 'Atualizar Empreendimento' : 'Criar Empreendimento'}
+            {loading ? 'Salvando...' : development?.id ? 'Salvar configuracao' : 'Criar Empreendimento'}
           </button>
         </div>
       </form>

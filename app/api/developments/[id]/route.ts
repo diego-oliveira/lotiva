@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, membershipWhere } from '@/lib/access-control'
+import { hasDevelopmentPermission } from '@/lib/permissions'
 import { isValidUploadedImagePath } from '@/lib/uploadStorage'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -77,8 +78,12 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
   const { id } = await params
   const data = await req.json()
-  if (!isValidUploadedImagePath(String(data.logo || ''))) {
+  const logo = String(data.logo || '').trim()
+  if (logo && !isValidUploadedImagePath(logo)) {
     return NextResponse.json({ error: 'Envie uma imagem valida para o logo.' }, { status: 400 })
+  }
+  if (!String(data.name || '').trim()) {
+    return NextResponse.json({ error: 'Informe o nome do empreendimento.' }, { status: 400 })
   }
 
   const canAccessDevelopment = await prisma.development.count({
@@ -90,55 +95,92 @@ export async function PUT(req: NextRequest, { params }: Params) {
   if (!canAccessDevelopment) return forbiddenResponse()
 
   const documentTemplateId = String(data.documentTemplateId || '').trim()
-  if (!documentTemplateId) {
-    return NextResponse.json({ error: 'Selecione um modelo de contrato publicado.' }, { status: 400 })
-  }
-  const template = await prisma.documentTemplate.findFirst({
-    where: {
-      id: documentTemplateId,
-      companyId: data.companyId,
-      purpose: 'sale_contract',
-      status: 'published',
-      versions: { some: { status: 'published' } },
-    },
-    select: { id: true },
-  })
-  if (!template) {
-    return NextResponse.json({ error: 'Selecione um modelo publicado da mesma empresa.' }, { status: 400 })
+  if (documentTemplateId) {
+    const template = await prisma.documentTemplate.findFirst({
+      where: {
+        id: documentTemplateId,
+        companyId: data.companyId,
+        purpose: 'sale_contract',
+        status: 'published',
+        versions: { some: { status: 'published' } },
+      },
+      select: { id: true },
+    })
+    if (!template) {
+      return NextResponse.json({ error: 'Selecione um modelo publicado da mesma empresa.' }, { status: 400 })
+    }
   }
 
   const updated = await prisma.$transaction(async (tx) => {
     const development = await tx.development.update({
       where: { id },
       data: {
-        name: data.name,
-        logo: data.logo,
+        name: String(data.name).trim(),
+        logo,
         companyId: data.companyId,
-        documentTemplateId,
+        documentTemplateId: documentTemplateId || null,
         updatedAt: new Date(),
       },
     })
 
-    await tx.developmentSettings.upsert({
-      where: { developmentId: id },
-      create: {
-        developmentId: id,
-        ...normalizeSettings(data.settings),
-      },
-      update: normalizeSettings(data.settings),
-    })
+    if (data.settings) {
+      await tx.developmentSettings.upsert({
+        where: { developmentId: id },
+        create: {
+          developmentId: id,
+          ...normalizeSettings(data.settings),
+        },
+        update: normalizeSettings(data.settings),
+      })
+    }
 
-    await tx.developmentContractSettings.upsert({
-      where: { developmentId: id },
-      create: {
-        developmentId: id,
-        ...normalizeContractSettings(data.contractSettings),
-      },
-      update: normalizeContractSettings(data.contractSettings),
-    })
+    if (data.contractSettings) {
+      await tx.developmentContractSettings.upsert({
+        where: { developmentId: id },
+        create: {
+          developmentId: id,
+          ...normalizeContractSettings(data.contractSettings),
+        },
+        update: normalizeContractSettings(data.contractSettings),
+      })
+    }
 
     return development
   })
 
   return NextResponse.json(updated)
+}
+
+export async function DELETE(req: NextRequest, { params }: Params) {
+  const auth = await requireAuthenticatedUser()
+  if (auth.response) return auth.response
+  const userId = auth.session.user.id
+
+  const { id } = await params
+  const canManageSettings = await hasDevelopmentPermission(userId, id, 'manageSettings')
+  if (!canManageSettings) return forbiddenResponse()
+
+  const data = await req.json().catch(() => ({}))
+  const confirmationName = String(data.confirmationName || '').trim()
+
+  const development = await prisma.development.findFirst({
+    where: {
+      id,
+      ...membershipWhere(userId),
+    },
+    select: { id: true, name: true, deletedAt: true },
+  })
+  if (!development) {
+    return NextResponse.json({ error: 'Empreendimento nao encontrado.' }, { status: 404 })
+  }
+  if (confirmationName !== development.name) {
+    return NextResponse.json({ error: 'Digite o nome exato do empreendimento para confirmar a exclusao.' }, { status: 400 })
+  }
+
+  const deleted = await prisma.development.update({
+    where: { id },
+    data: { deletedAt: new Date() },
+  })
+
+  return NextResponse.json(deleted)
 }

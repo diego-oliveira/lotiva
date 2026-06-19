@@ -2,8 +2,8 @@
 
 import Link from 'next/link'
 import { signOut } from 'next-auth/react'
-import { usePathname } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 
 type NavItem = {
   href: string
@@ -11,6 +11,11 @@ type NavItem = {
   description: string
   icon: 'dashboard' | 'setup' | 'company' | 'development' | 'document' | 'user' | 'lot' | 'sale' | 'finance'
   permission?: 'admin' | 'manageSettings' | 'manageUsers' | 'sales' | 'finance'
+}
+
+type NavSection = {
+  label: string
+  items: NavItem[]
 }
 
 type PermissionMap = {
@@ -27,6 +32,15 @@ type CurrentUser = {
   email: string
 }
 
+type WorkspaceDevelopment = {
+  id: string
+  name: string
+  logo?: string | null
+  company?: {
+    name: string
+  } | null
+}
+
 type Notification = {
   id: string
   title: string
@@ -36,77 +50,101 @@ type Notification = {
   createdAt: string
 }
 
-const navItems: NavItem[] = [
+const navSections: NavSection[] = [
   {
-    href: '/',
-    label: 'Painel',
-    description: 'Indicadores gerais',
-    icon: 'dashboard',
+    label: 'Visao geral',
+    items: [
+      {
+        href: '/',
+        label: 'Painel',
+        description: 'Indicadores gerais',
+        icon: 'dashboard',
+      },
+    ],
   },
   {
-    href: '/onboarding',
-    label: 'Cadastro inicial',
-    description: 'Cadastro guiado',
-    icon: 'setup',
-    permission: 'manageSettings',
+    label: 'Comercial',
+    items: [
+      {
+        href: '/lots',
+        label: 'Lotes',
+        description: 'Estoque comercial',
+        icon: 'lot',
+        permission: 'sales',
+      },
+      {
+        href: '/proposals',
+        label: 'Propostas',
+        description: 'Aprovacoes comerciais',
+        icon: 'sale',
+        permission: 'sales',
+      },
+      {
+        href: '/sales',
+        label: 'Vendas',
+        description: 'Contratos e parcelas',
+        icon: 'sale',
+        permission: 'sales',
+      },
+    ],
   },
   {
-    href: '/companies',
-    label: 'Empresas',
-    description: 'Proprietarias',
-    icon: 'company',
-    permission: 'manageSettings',
-  },
-  {
-    href: '/developments',
-    label: 'Empreendimentos',
-    description: 'Loteamentos',
-    icon: 'development',
-    permission: 'manageSettings',
-  },
-  {
-    href: '/document-templates',
-    label: 'Modelos',
-    description: 'Documentos e contratos',
-    icon: 'document',
-    permission: 'manageSettings',
-  },
-  {
-    href: '/clients',
-    label: 'Pessoas',
-    description: 'Clientes e equipe',
-    icon: 'user',
-    permission: 'manageUsers',
-  },
-  {
-    href: '/lots',
-    label: 'Lotes',
-    description: 'Estoque comercial',
-    icon: 'lot',
-    permission: 'sales',
-  },
-  {
-    href: '/proposals',
-    label: 'Propostas',
-    description: 'Aprovacoes comerciais',
-    icon: 'sale',
-    permission: 'sales',
-  },
-  {
-    href: '/sales',
-    label: 'Vendas',
-    description: 'Contratos',
-    icon: 'sale',
-    permission: 'sales',
-  },
-  {
-    href: '/finance',
     label: 'Financeiro',
-    description: 'Recebimentos',
-    icon: 'finance',
-    permission: 'finance',
+    items: [
+      {
+        href: '/finance',
+        label: 'Recebimentos',
+        description: 'Boletos e conciliacao',
+        icon: 'finance',
+        permission: 'finance',
+      },
+    ],
+  },
+  {
+    label: 'Cadastros',
+    items: [
+      {
+        href: '/clients',
+        label: 'Pessoas',
+        description: 'Compradores e equipe',
+        icon: 'user',
+        permission: 'manageUsers',
+      },
+      {
+        href: '/companies',
+        label: 'Empresas',
+        description: 'Proprietarias',
+        icon: 'company',
+        permission: 'manageSettings',
+      },
+      {
+        href: '/developments',
+        label: 'Empreendimentos',
+        description: 'Regras, lotes e documentos',
+        icon: 'development',
+        permission: 'manageSettings',
+      },
+    ],
+  },
+  {
+    label: 'Administracao',
+    items: [
+      {
+        href: '/document-templates',
+        label: 'Modelos de contrato',
+        description: 'Documentos de venda',
+        icon: 'document',
+        permission: 'manageSettings',
+      },
+    ],
   },
 ]
+
+const workspaceRoutes = ['/', '/lots', '/proposals', '/sales', '/finance']
+
+function isWorkspaceRoute(pathname: string) {
+  return workspaceRoutes.some((route) => (route === '/' ? pathname === '/' : pathname.startsWith(route)))
+}
 
 function NavIcon({ icon }: { icon: NavItem['icon'] }) {
   const className = 'h-5 w-5'
@@ -169,6 +207,95 @@ function NavIcon({ icon }: { icon: NavItem['icon'] }) {
   }
 }
 
+function WorkspaceSelector({
+  developments,
+}: {
+  developments: WorkspaceDevelopment[] | null
+}) {
+  return (
+    <Suspense fallback={null}>
+      <WorkspaceSelectorContent developments={developments} />
+    </Suspense>
+  )
+}
+
+function WorkspaceSelectorContent({
+  developments,
+}: {
+  developments: WorkspaceDevelopment[] | null
+}) {
+  const pathname = usePathname()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const enabled = isWorkspaceRoute(pathname)
+
+  const currentDevelopmentId = searchParams.get('developmentId') ?? ''
+  const selectedDevelopment =
+    developments?.find((development) => development.id === currentDevelopmentId) ?? developments?.[0] ?? null
+
+  useEffect(() => {
+    if (!enabled || !developments || developments.length === 0) return
+
+    const storedDevelopmentId = window.localStorage.getItem('lotiva.workspace.developmentId') ?? ''
+    const urlDevelopment = developments.find((development) => development.id === currentDevelopmentId)
+    const storedDevelopment = developments.find((development) => development.id === storedDevelopmentId)
+    const nextDevelopmentId = urlDevelopment?.id ?? storedDevelopment?.id ?? developments[0]?.id
+
+    if (!nextDevelopmentId) return
+
+    window.localStorage.setItem('lotiva.workspace.developmentId', nextDevelopmentId)
+
+    if (currentDevelopmentId !== nextDevelopmentId) {
+      const params = new URLSearchParams(searchParams.toString())
+      params.set('developmentId', nextDevelopmentId)
+      router.replace(`${pathname}?${params.toString()}`)
+    }
+  }, [currentDevelopmentId, developments, enabled, pathname, router, searchParams])
+
+  if (!enabled || !developments) return null
+
+  if (developments.length === 0) {
+    return (
+      <div className='hidden rounded-2xl border border-border bg-surface px-4 py-2 text-sm text-muted lg:block'>
+        Nenhum empreendimento acessivel
+      </div>
+    )
+  }
+
+  const handleChange = (developmentId: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('developmentId', developmentId)
+    window.localStorage.setItem('lotiva.workspace.developmentId', developmentId)
+    router.push(`${pathname}?${params.toString()}`)
+  }
+
+  return (
+    <div className='hidden h-12 min-w-[280px] max-w-sm items-center gap-3 rounded-xl border border-border bg-surface px-3 shadow-sm lg:flex'>
+      <div className='flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-background'>
+        {selectedDevelopment?.logo ? (
+          <img src={selectedDevelopment.logo} alt='' className='h-full w-full object-contain p-1' />
+        ) : (
+          <span className='text-xs font-bold text-primary'>
+            {(selectedDevelopment?.name ?? 'LO').slice(0, 2).toUpperCase()}
+          </span>
+        )}
+      </div>
+      <select
+        aria-label='Empreendimento ativo'
+        value={selectedDevelopment?.id ?? ''}
+        onChange={(event) => handleChange(event.target.value)}
+        className='min-w-0 flex-1 bg-transparent py-2 text-sm font-semibold text-foreground outline-none'
+      >
+        {developments.map((development) => (
+          <option key={development.id} value={development.id}>
+            {development.name}{development.company?.name ? ` - ${development.company.name}` : ''}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -178,6 +305,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [accessChecked, setAccessChecked] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const [workspaceDevelopments, setWorkspaceDevelopments] = useState<WorkspaceDevelopment[] | null>(null)
   const isAuthPage = pathname.startsWith('/signin') || pathname.startsWith('/auth')
 
   useEffect(() => {
@@ -230,6 +358,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [accessChecked, currentUser, isAuthPage, pathname])
 
   useEffect(() => {
+    if (isAuthPage || !accessChecked || !currentUser) return
+    if (!isWorkspaceRoute(pathname)) return
+
+    setWorkspaceDevelopments(null)
+    fetch('/api/developments', { cache: 'no-store' })
+      .then((response) => (response.ok ? response.json() : []))
+      .then((payload) => setWorkspaceDevelopments(Array.isArray(payload) ? payload : []))
+      .catch(() => setWorkspaceDevelopments([]))
+  }, [accessChecked, currentUser, isAuthPage, pathname])
+
+  useEffect(() => {
     setUserMenuOpen(false)
     setNotificationsOpen(false)
   }, [pathname])
@@ -244,18 +383,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     await fetch(`/api/notifications/${notification.id}`, { method: 'PATCH' }).catch(() => undefined)
   }
 
-  const visibleNavItems = useMemo(() => {
-    if (!permissions) return navItems
+  const visibleNavSections = useMemo(() => {
+    if (!permissions) return navSections
     const salesOnly =
       permissions.sales &&
       !permissions.admin &&
       !permissions.manageSettings &&
       !permissions.manageUsers &&
       !permissions.finance
-    return navItems.filter((item) => {
-      if (salesOnly && item.href === '/') return false
-      return !item.permission || permissions[item.permission]
-    })
+    return navSections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) => {
+          if (salesOnly && item.href === '/') return false
+          return !item.permission || permissions[item.permission]
+        }),
+      }))
+      .filter((section) => section.items.length > 0)
   }, [permissions])
 
   if (isAuthPage) {
@@ -300,33 +444,41 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className='px-5 py-6'>
-            <p className='mb-3 px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500'>Menu</p>
-            <nav className='space-y-1.5'>
-              {visibleNavItems.map((item) => {
-                const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setSidebarOpen(false)}
-                    className={`flex items-center gap-3 rounded-xl px-4 py-3 transition-colors ${
-                      isActive
-                        ? 'bg-sidebar-active text-white'
-                        : 'text-slate-300 hover:bg-white/5 hover:text-white'
-                    }`}
-                  >
-                    <span className={`rounded-lg p-2 ${isActive ? 'bg-white/10 text-white' : 'bg-white/5 text-slate-300'}`}>
-                      <NavIcon icon={item.icon} />
-                    </span>
-                    <span className='min-w-0'>
-                      <span className='block text-sm font-semibold'>{item.label}</span>
-                      <span className={`block truncate text-xs ${isActive ? 'text-slate-300' : 'text-slate-400'}`}>
-                        {item.description}
-                      </span>
-                    </span>
-                  </Link>
-                )
-              })}
+            <nav className='space-y-6'>
+              {visibleNavSections.map((section) => (
+                <div key={section.label}>
+                  <p className='mb-2 px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500'>
+                    {section.label}
+                  </p>
+                  <div className='space-y-1.5'>
+                    {section.items.map((item) => {
+                      const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={() => setSidebarOpen(false)}
+                          className={`flex items-center gap-3 rounded-xl px-4 py-3 transition-colors ${
+                            isActive
+                              ? 'bg-sidebar-active text-white'
+                              : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                          }`}
+                        >
+                          <span className={`rounded-lg p-2 ${isActive ? 'bg-white/10 text-white' : 'bg-white/5 text-slate-300'}`}>
+                            <NavIcon icon={item.icon} />
+                          </span>
+                          <span className='min-w-0'>
+                            <span className='block text-sm font-semibold'>{item.label}</span>
+                            <span className={`block truncate text-xs ${isActive ? 'text-slate-300' : 'text-slate-400'}`}>
+                              {item.description}
+                            </span>
+                          </span>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </nav>
             <button
               type='button'
@@ -359,6 +511,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </div>
 
               <div className='flex items-center gap-4'>
+                <WorkspaceSelector developments={workspaceDevelopments} />
                 <div className='relative'>
                   <button
                     type='button'
@@ -366,7 +519,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                       setNotificationsOpen((current) => !current)
                       setUserMenuOpen(false)
                     }}
-                    className='relative rounded-xl border border-border bg-surface p-3 text-foreground shadow-sm transition hover:bg-surface-secondary'
+                    className='relative flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-surface text-foreground shadow-sm transition hover:bg-surface-secondary'
                     aria-label='Notificacoes'
                     aria-expanded={notificationsOpen}
                   >
@@ -435,10 +588,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     setUserMenuOpen((current) => !current)
                     setNotificationsOpen(false)
                   }}
-                  className='flex items-center gap-3 rounded-2xl border border-border bg-surface px-3 py-2 text-left shadow-sm transition hover:bg-surface-secondary'
+                  className='flex h-12 items-center gap-3 rounded-xl border border-border bg-surface px-3 text-left shadow-sm transition hover:bg-surface-secondary'
                   aria-expanded={userMenuOpen}
                 >
-                  <div className='flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-sm font-semibold text-white'>
+                  <div className='flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-white'>
                     {(currentUser?.name ?? currentUser?.email ?? 'LO').slice(0, 2).toUpperCase()}
                   </div>
                   <div className='hidden min-w-0 pr-1 sm:block'>

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import ClientForm from './components/ClientForm'
 import ClientProfileDrawer from './components/ClientProfileDrawer'
 import DeleteConfirmModal from './components/DeleteConfirmModal'
+import InlineAlert from '@/app/components/InlineAlert'
 
 const ITEMS_PER_PAGE = 10
 
@@ -25,6 +26,11 @@ interface Client {
   birthplace?: string | null
   maritalStatus?: string | null
   memberships: Membership[]
+  companyMemberships: {
+    id: string
+    company: { id: string; name: string }
+    roles: { role: { id: string; name: string } }[]
+  }[]
   createdAt: string
   updatedAt: string
 }
@@ -51,12 +57,19 @@ export default function ClientsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [personType, setPersonType] = useState<'all' | 'clients' | 'team'>('all')
   const [currentPage, setCurrentPage] = useState(1)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   useEffect(() => { fetchClients() }, [])
 
   useEffect(() => {
     setCurrentPage(1)
   }, [searchTerm, personType])
+
+  useEffect(() => {
+    if (!successMessage) return
+    const timeout = setTimeout(() => setSuccessMessage(null), 4000)
+    return () => clearTimeout(timeout)
+  }, [successMessage])
 
   const fetchClients = async () => {
     try {
@@ -89,7 +102,7 @@ export default function ClientsPage() {
   }
 
   const filteredClients = clients.filter((c) => {
-    const isTeamMember = c.memberships.some((membership) => membership.roles.length > 0)
+    const isTeamMember = c.companyMemberships.some((membership) => membership.roles.length > 0) || c.memberships.some((membership) => membership.roles.length > 0)
     if (personType === 'clients' && isTeamMember) return false
     if (personType === 'team' && !isTeamMember) return false
     if (!searchTerm) return true
@@ -103,7 +116,10 @@ export default function ClientsPage() {
   })
   const totalPages = Math.max(1, Math.ceil(filteredClients.length / ITEMS_PER_PAGE))
   const paginatedClients = filteredClients.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
-  const clientCount = clients.filter((client) => client.memberships.every((membership) => membership.roles.length === 0)).length
+  const clientCount = clients.filter((client) => (
+    client.companyMemberships.every((membership) => membership.roles.length === 0) &&
+    client.memberships.every((membership) => membership.roles.length === 0)
+  )).length
   const teamCount = clients.length - clientCount
 
   if (loading) return <div className='animate-pulse'><div className='h-8 w-56 rounded-xl bg-surface-secondary' /></div>
@@ -111,6 +127,15 @@ export default function ClientsPage() {
 
   return (
     <div className='space-y-6'>
+      {successMessage && (
+        <InlineAlert
+          variant='success'
+          title='Operacao realizada com sucesso'
+          message={successMessage}
+          onClose={() => setSuccessMessage(null)}
+        />
+      )}
+
       <div className='flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'>
         <div>
           <h1 className='page-title'>Pessoas</h1>
@@ -203,7 +228,7 @@ export default function ClientsPage() {
                 <tr>
                   <th className='table-head px-6 py-4 text-left'>Pessoa</th>
                   <th className='table-head px-6 py-4 text-left'>Tipo</th>
-                  <th className='table-head px-6 py-4 text-left'>Empreendimentos</th>
+                  <th className='table-head px-6 py-4 text-left'>Acessos</th>
                   <th className='table-head px-6 py-4 text-left'>Perfil contrato</th>
                   <th className='table-head px-6 py-4 text-left'>Cadastro</th>
                   <th className='table-head px-6 py-4 text-right'>Acoes</th>
@@ -212,7 +237,8 @@ export default function ClientsPage() {
               <tbody className='divide-y divide-border bg-surface'>
                 {paginatedClients.map((client) => {
                   const complete = profileComplete(client)
-                  const isTeamMember = client.memberships.some((membership) => membership.roles.length > 0)
+                  const isTeamMember = client.companyMemberships.some((membership) => membership.roles.length > 0) || client.memberships.some((membership) => membership.roles.length > 0)
+                  const accessCount = client.companyMemberships.length + client.memberships.length
                   return (
                     <tr key={client.id} className='transition hover:bg-surface-secondary/70'>
                       <td className='px-6 py-4 whitespace-nowrap'>
@@ -234,10 +260,22 @@ export default function ClientsPage() {
                       </td>
 
                       <td className='px-6 py-4'>
-                        {client.memberships.length === 0 ? (
+                        {accessCount === 0 ? (
                           <span className='text-sm text-muted'>Sem acesso</span>
                         ) : (
                           <div className='flex flex-wrap gap-1'>
+                            {client.companyMemberships.map((m) => (
+                              <span
+                                key={m.id}
+                                className='inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700'
+                                title={m.roles.map((r) => r.role.name).join(', ')}
+                              >
+                                {m.company.name}
+                                {m.roles[0] && (
+                                  <span className='ml-1 text-blue-500'>· {m.roles[0].role.name}</span>
+                                )}
+                              </span>
+                            ))}
                             {client.memberships.map((m) => (
                               <span
                                 key={m.id}
@@ -278,6 +316,15 @@ export default function ClientsPage() {
 
                       <td className='px-6 py-4 whitespace-nowrap text-right text-sm font-semibold'>
                         <div className='flex items-center justify-end gap-2'>
+                          <button
+                            onClick={() => {
+                              setEditingClient(client)
+                              setShowForm(true)
+                            }}
+                            className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'
+                          >
+                            Editar
+                          </button>
                           <button
                             onClick={() => { setSelectedClientId(client.id); setShowProfile(true) }}
                             className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'
@@ -333,7 +380,12 @@ export default function ClientsPage() {
         client={editingClient}
         isOpen={showForm}
         onClose={() => { setShowForm(false); setEditingClient(null) }}
-        onSave={() => { fetchClients(); setShowForm(false); setEditingClient(null) }}
+        onSave={(mode) => {
+          fetchClients()
+          setShowForm(false)
+          setEditingClient(null)
+          setSuccessMessage(mode === 'create' ? 'Usuario criado com sucesso.' : 'Usuario atualizado com sucesso.')
+        }}
       />
 
       <ClientProfileDrawer
@@ -342,6 +394,8 @@ export default function ClientsPage() {
         onClose={() => { setShowProfile(false); setSelectedClientId(null) }}
         onEdit={(client) => {
           setEditingClient(client)
+          setShowProfile(false)
+          setSelectedClientId(null)
           setShowForm(true)
         }}
       />

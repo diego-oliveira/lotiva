@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
-import { forbiddenResponse, hasAccessToAllDevelopments, membershipWhere, userAccessWhere } from '@/lib/access-control'
+import { forbiddenResponse, hasAccessToAllCompanies, hasAccessToAllDevelopments, membershipWhere, userAccessWhere } from '@/lib/access-control'
 import { hasAnyDevelopmentPermission } from '@/lib/permissions'
 import { NextResponse } from 'next/server'
 
@@ -18,6 +18,20 @@ const membershipInclude = (userId: string) => ({
     },
     include: {
       development: true,
+      roles: { include: { role: true } },
+    },
+  },
+  companyMemberships: {
+    where: {
+      company: {
+        OR: [
+          { memberships: { some: { userId } } },
+          { developments: { some: membershipWhere(userId) } },
+        ],
+      },
+    },
+    include: {
+      company: true,
       roles: { include: { role: true } },
     },
   },
@@ -76,17 +90,25 @@ export async function POST(req: Request) {
     }
 
     const memberships: { developmentId: string; roleId: string }[] = data.memberships ?? []
+    const companyMemberships: { companyId: string; roleId: string }[] = data.companyMemberships ?? []
     const canManageUsers = await hasAnyDevelopmentPermission(currentUserId, 'manageUsers')
     if (!canManageUsers && memberships.some((membership) => membership.roleId)) return forbiddenResponse()
-    if (memberships.length === 0) {
-      return NextResponse.json({ error: 'Selecione pelo menos um empreendimento.' }, { status: 400 })
+    if (!canManageUsers && companyMemberships.length > 0) return forbiddenResponse()
+    if (memberships.length === 0 && companyMemberships.length === 0) {
+      return NextResponse.json({ error: 'Selecione pelo menos uma empresa ou empreendimento.' }, { status: 400 })
     }
 
-    const canAssignMemberships = await hasAccessToAllDevelopments(
-      currentUserId,
-      memberships.map((membership) => membership.developmentId),
-    )
-    if (!canAssignMemberships) return forbiddenResponse()
+    const [canAssignMemberships, canAssignCompanyMemberships] = await Promise.all([
+      hasAccessToAllDevelopments(
+        currentUserId,
+        memberships.map((membership) => membership.developmentId),
+      ),
+      hasAccessToAllCompanies(
+        currentUserId,
+        companyMemberships.map((membership) => membership.companyId),
+      ),
+    ])
+    if (!canAssignMemberships || !canAssignCompanyMemberships) return forbiddenResponse()
 
     const newUser = await prisma.user.create({
       data: {
@@ -112,6 +134,15 @@ export async function POST(req: Request) {
           data: { developmentUserId: devUser.id, roleId: m.roleId },
         })
       }
+    }
+    for (const m of companyMemberships) {
+      if (!m.companyId || !m.roleId) continue
+      const companyUser = await prisma.companyUser.create({
+        data: { companyId: m.companyId, userId: newUser.id },
+      })
+      await prisma.companyUserRole.create({
+        data: { companyUserId: companyUser.id, roleId: m.roleId },
+      })
     }
 
     const user = await prisma.user.findUnique({ where: { id: newUser.id }, include: membershipInclude(currentUserId) })

@@ -6,6 +6,13 @@ import FormDrawer from '@/app/components/FormDrawer'
 type Development = {
   id: string
   name: string
+  metrics?: {
+    totalLots: number
+    availableLots: number
+    reservedLots: number
+    soldLots: number
+    totalValue: number
+  }
 }
 
 type LotDraft = {
@@ -37,6 +44,13 @@ const defaultForm = {
   price: 0,
   status: 'available',
 }
+
+const statusOptions = [
+  { value: 'available', label: 'Disponivel' },
+  { value: 'reserved', label: 'Reservado' },
+  { value: 'on_hold', label: 'Bloqueado' },
+  { value: 'sold', label: 'Vendido' },
+] as const
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', {
@@ -137,9 +151,10 @@ export default function LotBatchDrawer({
   return (
     <FormDrawer
       isOpen={isOpen}
-      title='Criar lotes'
-      description={development ? `Gere quadras e lotes para ${development.name}.` : 'Gere quadras e lotes para o empreendimento.'}
+      title='Configurar lotes'
+      description={development ? `Gerencie o estoque inicial e complementar de ${development.name}.` : 'Gerencie os lotes do empreendimento.'}
       onClose={onClose}
+      widthClassName='max-w-5xl'
     >
       <form onSubmit={handleSubmit} className='space-y-6'>
         {errors.length > 0 && (
@@ -152,8 +167,40 @@ export default function LotBatchDrawer({
         )}
 
         <section className='rounded-2xl border border-border bg-surface-secondary p-5'>
+          <div className='flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
+            <div>
+              <h3 className='text-base font-semibold text-foreground'>Resumo dos lotes</h3>
+              <p className='mt-1 text-sm text-muted'>
+                {development?.metrics?.totalLots
+                  ? 'Use esta area para complementar novas quadras e lotes.'
+                  : 'Nenhum lote cadastrado ainda. Crie a primeira quadra abaixo.'}
+              </p>
+            </div>
+            {development?.id && (
+              <a href={`/lots?developmentId=${development.id}`} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-background'>
+                Ver mapa/lista
+              </a>
+            )}
+          </div>
+          <div className='mt-5 grid grid-cols-2 gap-3 md:grid-cols-5'>
+            {[
+              ['Total', development?.metrics?.totalLots ?? 0],
+              ['Disponiveis', development?.metrics?.availableLots ?? 0],
+              ['Reservados', development?.metrics?.reservedLots ?? 0],
+              ['Vendidos', development?.metrics?.soldLots ?? 0],
+              ['VGV', formatCurrency(development?.metrics?.totalValue ?? 0)],
+            ].map(([label, value]) => (
+              <div key={label} className='rounded-xl border border-border bg-surface px-3 py-3'>
+                <p className='text-xs font-semibold uppercase text-muted'>{label}</p>
+                <p className='mt-1 text-base font-bold text-foreground'>{value}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className='rounded-2xl border border-border bg-surface-secondary p-5'>
           <div>
-            <h3 className='text-base font-semibold text-foreground'>Padrao da quadra</h3>
+            <h3 className='text-base font-semibold text-foreground'>Nova quadra</h3>
             <p className='mt-1 text-sm text-muted'>Defina o modelo inicial. Depois ajuste os lotes diferentes na pre-visualizacao.</p>
           </div>
 
@@ -202,6 +249,14 @@ export default function LotBatchDrawer({
               <span className='mb-2 block text-sm font-semibold text-foreground'>Valor padrao</span>
               <input type='number' min={0} step='0.01' value={form.price} onChange={(event) => updateForm('price', event.target.value)} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary' />
             </label>
+            <label className='block'>
+              <span className='mb-2 block text-sm font-semibold text-foreground'>Status padrao</span>
+              <select value={form.status} onChange={(event) => updateForm('status', event.target.value)} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'>
+                {statusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
           </div>
         </section>
 
@@ -232,6 +287,7 @@ export default function LotBatchDrawer({
                   <th className='px-2 py-2'>Frente</th>
                   <th className='px-2 py-2'>Fundo</th>
                   <th className='px-2 py-2'>Valor</th>
+                  <th className='px-2 py-2'>Status</th>
                 </tr>
               </thead>
               <tbody className='divide-y divide-border'>
@@ -252,6 +308,13 @@ export default function LotBatchDrawer({
                     <td className='px-2 py-2'>
                       <input type='number' min={0} step='0.01' value={draft.price} onChange={(event) => updateDraft(index, 'price', event.target.value)} className='w-28 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
                     </td>
+                    <td className='px-2 py-2'>
+                      <select value={draft.status} onChange={(event) => updateDraft(index, 'status', event.target.value)} className='w-32 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary'>
+                        {statusOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -262,7 +325,7 @@ export default function LotBatchDrawer({
         <div className='flex justify-end gap-3 border-t border-border pt-6'>
           <button type='button' onClick={onClose} disabled={saving} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:opacity-50'>Cancelar</button>
           <button type='submit' disabled={saving || drafts.length === 0} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-50'>
-            {saving ? 'Criando lotes...' : `Criar ${drafts.length} lote(s)`}
+            {saving ? 'Salvando lotes...' : `Criar ${drafts.length} lote(s)`}
           </button>
         </div>
       </form>

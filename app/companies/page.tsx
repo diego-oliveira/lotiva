@@ -9,6 +9,15 @@ interface Company {
   id: string
   name: string
   logo: string
+  legalName?: string
+  document?: string
+  stateRegistration?: string
+  address?: string
+  city?: string
+  state?: string
+  zipCode?: string
+  phone?: string
+  email?: string
   createdAt: string
   _count?: {
     developments: number
@@ -120,7 +129,7 @@ export default function CompaniesPage() {
                         )}
                         <div>
                           <div className='text-sm font-semibold text-foreground'>{company.name}</div>
-                          <div className='text-sm text-muted'>Empresa proprietaria</div>
+                          <div className='text-sm text-muted'>{company.document || company.legalName || 'Empresa proprietaria'}</div>
                         </div>
                       </div>
                     </td>

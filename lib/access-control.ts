@@ -7,11 +7,30 @@ export function forbiddenResponse() {
 
 export function membershipWhere(userId: string) {
   return {
-    memberships: {
-      some: {
-        userId,
+    deletedAt: null,
+    OR: [
+      {
+        company: {
+          createdById: userId,
+        },
       },
-    },
+      {
+        memberships: {
+          some: {
+            userId,
+          },
+        },
+      },
+      {
+        company: {
+          memberships: {
+            some: {
+              userId,
+            },
+          },
+        },
+      },
+    ],
   }
 }
 
@@ -176,9 +195,30 @@ export function receivableAccessWhere(userId: string) {
 
 export function companyAccessWhere(userId: string) {
   return {
-    developments: {
-      some: membershipWhere(userId),
-    },
+    OR: [
+      {
+        createdById: userId,
+      },
+      {
+        memberships: {
+          some: {
+            userId,
+          },
+        },
+      },
+      {
+        developments: {
+          some: {
+            deletedAt: null,
+            memberships: {
+              some: {
+                userId,
+              },
+            },
+          },
+        },
+      },
+    ],
   }
 }
 
@@ -190,49 +230,91 @@ export function documentTemplateAccessWhere(userId: string) {
 
 export function userAccessWhere(userId: string) {
   return {
-    memberships: {
-      some: {
-        development: membershipWhere(userId),
+    OR: [
+      {
+        memberships: {
+          some: {
+            development: membershipWhere(userId),
+          },
+        },
       },
-    },
+      {
+        companyMemberships: {
+          some: {
+            company: companyAccessWhere(userId),
+          },
+        },
+      },
+    ],
+  }
+}
+
+export function manageableUserWhere(userId: string) {
+  return {
+    AND: [
+      userAccessWhere(userId),
+      {
+        createdCompanies: {
+          none: {
+            createdById: {
+              not: userId,
+            },
+          },
+        },
+      },
+    ],
   }
 }
 
 export async function getAccessibleDevelopmentIds(userId: string) {
-  const memberships = await prisma.developmentUser.findMany({
-    where: { userId },
-    select: { developmentId: true },
+  const developments = await prisma.development.findMany({
+    where: membershipWhere(userId),
+    select: { id: true },
   })
 
-  return memberships.map((membership) => membership.developmentId)
+  return developments.map((development) => development.id)
 }
 
 export async function hasAccessToDevelopment(userId: string, developmentId: string) {
-  const membership = await prisma.developmentUser.findUnique({
+  const development = await prisma.development.findFirst({
     where: {
-      developmentId_userId: {
-        developmentId,
-        userId,
-      },
+      id: developmentId,
+      ...membershipWhere(userId),
     },
     select: { id: true },
   })
 
-  return Boolean(membership)
+  return Boolean(development)
 }
 
 export async function hasAccessToAllDevelopments(userId: string, developmentIds: string[]) {
   const uniqueDevelopmentIds = [...new Set(developmentIds.filter(Boolean))]
   if (uniqueDevelopmentIds.length === 0) return true
 
-  const count = await prisma.developmentUser.count({
+  const count = await prisma.development.count({
     where: {
-      userId,
-      developmentId: {
+      id: {
         in: uniqueDevelopmentIds,
       },
+      ...membershipWhere(userId),
     },
   })
 
   return count === uniqueDevelopmentIds.length
+}
+
+export async function hasAccessToAllCompanies(userId: string, companyIds: string[]) {
+  const uniqueCompanyIds = [...new Set(companyIds.filter(Boolean))]
+  if (uniqueCompanyIds.length === 0) return true
+
+  const count = await prisma.company.count({
+    where: {
+      id: {
+        in: uniqueCompanyIds,
+      },
+      ...companyAccessWhere(userId),
+    },
+  })
+
+  return count === uniqueCompanyIds.length
 }

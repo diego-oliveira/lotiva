@@ -2,8 +2,11 @@ import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import {
   forbiddenResponse,
+  companyAccessWhere,
   getAccessibleDevelopmentIds,
+  hasAccessToAllCompanies,
   hasAccessToAllDevelopments,
+  manageableUserWhere,
   membershipWhere,
   proposalAccessWhere,
   reservationAccessWhere,
@@ -29,6 +32,15 @@ const membershipInclude = (userId: string) => ({
     },
     include: {
       development: true,
+      roles: { include: { role: true } },
+    },
+  },
+  companyMemberships: {
+    where: {
+      company: companyAccessWhere(userId),
+    },
+    include: {
+      company: true,
       roles: { include: { role: true } },
     },
   },
@@ -124,22 +136,33 @@ export async function PUT(req: Request, { params }: Params) {
     const { id } = await params
     const data = await req.json()
     const memberships: { developmentId: string; roleId: string }[] = data.memberships ?? []
+    const companyMemberships: { companyId: string; roleId: string }[] = data.companyMemberships ?? []
     const canManageUsers = await hasAnyDevelopmentPermission(currentUserId, 'manageUsers')
     if (!canManageUsers && memberships.some((membership) => membership.roleId)) return forbiddenResponse()
+    if (!canManageUsers && companyMemberships.length > 0) return forbiddenResponse()
+    if (memberships.length === 0 && companyMemberships.length === 0) {
+      return NextResponse.json({ error: 'Selecione pelo menos uma empresa ou empreendimento.' }, { status: 400 })
+    }
     const canAccessClient = await prisma.user.findFirst({
       where: {
         id,
-        ...userAccessWhere(currentUserId),
+        ...manageableUserWhere(currentUserId),
       },
       select: { id: true },
     })
     if (!canAccessClient) return forbiddenResponse()
 
-    const canAssignMemberships = await hasAccessToAllDevelopments(
-      currentUserId,
-      memberships.map((membership) => membership.developmentId),
-    )
-    if (!canAssignMemberships) return forbiddenResponse()
+    const [canAssignMemberships, canAssignCompanyMemberships] = await Promise.all([
+      hasAccessToAllDevelopments(
+        currentUserId,
+        memberships.map((membership) => membership.developmentId),
+      ),
+      hasAccessToAllCompanies(
+        currentUserId,
+        companyMemberships.map((membership) => membership.companyId),
+      ),
+    ])
+    if (!canAssignMemberships || !canAssignCompanyMemberships) return forbiddenResponse()
 
     await prisma.user.update({
       where: { id },
@@ -177,6 +200,31 @@ export async function PUT(req: Request, { params }: Params) {
       },
     })
 
+    const accessibleCompanies = await prisma.company.findMany({
+      where: companyAccessWhere(currentUserId),
+      select: { id: true },
+    })
+    const accessibleCompanyIds = accessibleCompanies.map((company) => company.id)
+    const existingCompanyMemberships = await prisma.companyUser.findMany({
+      where: {
+        userId: id,
+        companyId: {
+          in: accessibleCompanyIds,
+        },
+      },
+    })
+    for (const companyUser of existingCompanyMemberships) {
+      await prisma.companyUserRole.deleteMany({ where: { companyUserId: companyUser.id } })
+    }
+    await prisma.companyUser.deleteMany({
+      where: {
+        userId: id,
+        companyId: {
+          in: accessibleCompanyIds,
+        },
+      },
+    })
+
     for (const m of memberships) {
       if (!m.developmentId) continue
       const devUser = await prisma.developmentUser.create({
@@ -187,6 +235,15 @@ export async function PUT(req: Request, { params }: Params) {
           data: { developmentUserId: devUser.id, roleId: m.roleId },
         })
       }
+    }
+    for (const m of companyMemberships) {
+      if (!m.companyId || !m.roleId) continue
+      const companyUser = await prisma.companyUser.create({
+        data: { companyId: m.companyId, userId: id },
+      })
+      await prisma.companyUserRole.create({
+        data: { companyUserId: companyUser.id, roleId: m.roleId },
+      })
     }
 
     const user = await prisma.user.findUnique({ where: { id }, include: membershipInclude(currentUserId) })
@@ -223,7 +280,7 @@ export async function DELETE(_: Request, { params }: Params) {
     const client = await prisma.user.findFirst({
       where: {
         id,
-        ...userAccessWhere(currentUserId),
+        ...manageableUserWhere(currentUserId),
       },
       select: { id: true },
     })
@@ -237,13 +294,26 @@ export async function DELETE(_: Request, { params }: Params) {
         },
       },
     })
-    if (inaccessibleMembershipCount > 0) return forbiddenResponse()
+    const inaccessibleCompanyMembershipCount = await prisma.companyUser.count({
+      where: {
+        userId: id,
+        company: {
+          NOT: companyAccessWhere(currentUserId),
+        },
+      },
+    })
+    if (inaccessibleMembershipCount > 0 || inaccessibleCompanyMembershipCount > 0) return forbiddenResponse()
 
     const existing = await prisma.developmentUser.findMany({ where: { userId: id } })
     for (const du of existing) {
       await prisma.developmentUserRole.deleteMany({ where: { developmentUserId: du.id } })
     }
     await prisma.developmentUser.deleteMany({ where: { userId: id } })
+    const existingCompanyMemberships = await prisma.companyUser.findMany({ where: { userId: id } })
+    for (const companyUser of existingCompanyMemberships) {
+      await prisma.companyUserRole.deleteMany({ where: { companyUserId: companyUser.id } })
+    }
+    await prisma.companyUser.deleteMany({ where: { userId: id } })
     await prisma.user.delete({ where: { id } })
 
     return NextResponse.json({ deleted: true })
