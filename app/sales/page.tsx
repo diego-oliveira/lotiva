@@ -106,7 +106,7 @@ function SalesContent() {
   const [correctionSale, setCorrectionSale] = useState<Sale | null>(null)
   const [correctionReason, setCorrectionReason] = useState('')
   const [initialSaleData, setInitialSaleData] = useState<{ userId?: string; lotId?: string; reservationId?: string; proposalId?: string } | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ message: string; developmentId?: string } | null>(null)
   const [showContract, setShowContract] = useState(false)
   const [contractSaleId, setContractSaleId] = useState<string>('')
   const [receivablesSale, setReceivablesSale] = useState<Sale | null>(null)
@@ -141,6 +141,15 @@ function SalesContent() {
     const userId = searchParams.get('userId')
     setClientFilter(userId ?? '')
   }, [searchParams])
+
+  useEffect(() => {
+    setNotice((current) => {
+      if (!current || !developmentFilter) return current
+      if (!current.developmentId) return null
+      if (current.developmentId === developmentFilter) return current
+      return null
+    })
+  }, [developmentFilter])
 
   const fetchSales = async () => {
     try {
@@ -194,12 +203,19 @@ function SalesContent() {
 
   const handleFormSave = async () => {
     const message = editingSale ? 'Venda atualizada com sucesso.' : 'Venda criada com sucesso. O lote foi marcado como vendido e o contrato foi gerado.'
-    await fetchSales()
+    const noticeDevelopmentId = editingSale?.lot.block.development?.id ?? developmentFilter
+    const nextSales = await fetchSales()
+    const savedSale = initialSaleData?.lotId
+      ? nextSales?.find((sale) => sale.lotId === initialSaleData.lotId)
+      : null
     setShowForm(false)
     setEditingSale(null)
     setInitialSaleData(null)
     setCorrectionReason('')
-    setNotice(message)
+    setNotice({
+      message,
+      developmentId: savedSale?.lot.block.development?.id ?? noticeDevelopmentId,
+    })
   }
 
   const handleViewContract = (saleId: string) => {
@@ -291,7 +307,7 @@ function SalesContent() {
 
       {notice && (
         <div className='rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800'>
-          {notice}
+          {notice.message}
         </div>
       )}
 

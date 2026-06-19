@@ -175,6 +175,7 @@ export default function ReceivablesDrawer({
     reason: '',
   })
   const [chargeActionId, setChargeActionId] = useState<string | null>(null)
+  const [chargeIssueId, setChargeIssueId] = useState<string | null>(null)
 
   const loadCycles = async () => {
     if (!sale || !canManagePayments) return
@@ -349,6 +350,28 @@ export default function ReceivablesDrawer({
       setError(err instanceof Error ? err.message : 'Nao foi possivel alterar a cobranca.')
     } finally {
       setChargeActionId(null)
+    }
+  }
+
+  const issueReceivableCharge = async (receivable: Receivable) => {
+    setChargeIssueId(receivable.id)
+    setError(null)
+    setCycleSuccess(null)
+    try {
+      const response = await fetch(`/api/receivables/${receivable.id}/charge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ billingType: 'BOLETO' }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.details || payload.error || 'Nao foi possivel gerar o boleto.')
+      setCycleSuccess(payload.alreadyComplete ? 'O boleto deste recebivel ja tinha sido gerado.' : 'Boleto gerado com sucesso.')
+      await loadCycles()
+      await onUpdated()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao foi possivel gerar o boleto.')
+    } finally {
+      setChargeIssueId(null)
     }
   }
 
@@ -671,6 +694,21 @@ export default function ReceivablesDrawer({
                                 className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
                               >
                                 {savingId === receivable.id ? 'Salvando...' : paid ? 'Reabrir parcela' : 'Marcar como paga'}
+                              </button>
+                            )}
+
+                            {canManagePayments && !paid && !charge && (
+                              <button
+                                type='button'
+                                onClick={() => issueReceivableCharge(receivable)}
+                                disabled={chargeIssueId === receivable.id}
+                                className='rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/8 disabled:opacity-60'
+                              >
+                                {chargeIssueId === receivable.id
+                                  ? 'Gerando...'
+                                  : receivable.kind === 'down_payment'
+                                    ? 'Gerar boleto da entrada'
+                                    : 'Gerar boleto'}
                               </button>
                             )}
 

@@ -85,7 +85,56 @@ export async function GET(_: Request, { params }: Params) {
     orderBy: { cycleNumber: 'desc' },
   })
 
-  return NextResponse.json(cycles)
+  const standaloneCharges = await prisma.externalCharge.findMany({
+    where: {
+      billingCycleId: null,
+      receivable: { saleId: id },
+    },
+    orderBy: { dueDate: 'asc' },
+    select: {
+      id: true,
+      receivableId: true,
+      providerChargeId: true,
+      version: true,
+      billingType: true,
+      status: true,
+      amount: true,
+      dueDate: true,
+      invoiceUrl: true,
+      bankSlipUrl: true,
+      pixPayload: true,
+      cancelledAt: true,
+      cancellationReason: true,
+      grossPaidAmount: true,
+      netPaidAmount: true,
+      feeAmount: true,
+      providerPaymentDate: true,
+      lastSynchronizedAt: true,
+      connection: {
+        select: {
+          provider: true,
+          environment: true,
+          status: true,
+        },
+      },
+    },
+  })
+
+  if (standaloneCharges.length === 0) return NextResponse.json(cycles)
+
+  return NextResponse.json([
+    ...cycles,
+    {
+      id: 'standalone',
+      cycleNumber: 0,
+      startSequence: 0,
+      endSequence: 0,
+      status: 'issued',
+      issuedAt: standaloneCharges[0].lastSynchronizedAt,
+      connection: standaloneCharges[0].connection,
+      externalCharges: standaloneCharges.map(({ connection: _connection, ...charge }) => charge),
+    },
+  ])
 }
 
 export async function POST(req: Request, { params }: Params) {

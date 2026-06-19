@@ -32,6 +32,12 @@ type Proposal = {
   }
 }
 
+type Feedback = {
+  type: 'success' | 'error'
+  message: string
+  developmentId?: string
+}
+
 const statusMeta: Record<string, { label: string; className: string }> = {
   pending_approval: { label: 'Aguardando aprovacao', className: 'bg-amber-50 text-amber-700' },
   approved: { label: 'Aprovada', className: 'bg-emerald-50 text-emerald-700' },
@@ -53,7 +59,7 @@ function ProposalsContent() {
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') ?? '')
   const [reviewingId, setReviewingId] = useState<string | null>(null)
   const [rejectionId, setRejectionId] = useState<string | null>(null)
@@ -81,6 +87,15 @@ function ProposalsContent() {
     setStatusFilter(searchParams.get('status') ?? '')
   }, [searchParams])
 
+  useEffect(() => {
+    setFeedback((current) => {
+      if (!current || !developmentFilter) return current
+      if (!current.developmentId) return null
+      if (current.developmentId === developmentFilter) return current
+      return null
+    })
+  }, [developmentFilter])
+
   const filteredProposals = useMemo(
     () => proposals
       .filter((proposal) => !developmentFilter || proposal.lot.block.development?.id === developmentFilter)
@@ -88,7 +103,16 @@ function ProposalsContent() {
     [developmentFilter, proposals, statusFilter],
   )
 
+  const visibleFeedback = useMemo(() => {
+    if (!feedback) return null
+    if (developmentFilter && feedback.developmentId !== developmentFilter) return null
+    return feedback
+  }, [developmentFilter, feedback])
+
   async function reviewProposal(proposalId: string, action: 'approve' | 'reject') {
+    const currentProposal = proposals.find((proposal) => proposal.id === proposalId)
+    const feedbackDevelopmentId = currentProposal?.lot.block.development?.id ?? developmentFilter
+
     try {
       setReviewingId(proposalId)
       setError(null)
@@ -108,11 +132,12 @@ function ProposalsContent() {
       setFeedback({
         type: 'success',
         message: action === 'approve' ? 'Proposta aprovada com sucesso.' : 'Proposta rejeitada com sucesso.',
+        developmentId: feedbackDevelopmentId,
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Nao foi possivel revisar a proposta.'
       setError(message)
-      setFeedback({ type: 'error', message })
+      setFeedback({ type: 'error', message, developmentId: feedbackDevelopmentId })
     } finally {
       setReviewingId(null)
     }
@@ -142,17 +167,17 @@ function ProposalsContent() {
 
       {error && <div className='rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700'>{error}</div>}
 
-      {feedback && (
+      {visibleFeedback && (
         <div
-          role={feedback.type === 'error' ? 'alert' : 'status'}
+          role={visibleFeedback.type === 'error' ? 'alert' : 'status'}
           aria-live='polite'
           className={`fixed right-4 top-24 z-[70] flex max-w-sm items-start gap-3 rounded-2xl border px-4 py-3 shadow-xl ${
-            feedback.type === 'success'
+            visibleFeedback.type === 'success'
               ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
               : 'border-red-200 bg-red-50 text-red-700'
           }`}
         >
-          <p className='flex-1 text-sm font-semibold'>{feedback.message}</p>
+          <p className='flex-1 text-sm font-semibold'>{visibleFeedback.message}</p>
           <button
             type='button'
             onClick={() => setFeedback(null)}

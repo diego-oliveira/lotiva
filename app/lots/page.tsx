@@ -120,6 +120,15 @@ interface Lot {
   } | null
 }
 
+interface ProposalOutcome {
+  id: string
+  status: string
+  clientName: string
+  developmentId: string
+  lotId: string
+  userId: string
+}
+
 const statusMeta: Record<string, { label: string; tile: string; badge: string; dot: string }> = {
   available: {
     label: 'Disponivel',
@@ -271,7 +280,7 @@ function LotsContent() {
   const [proposalNotice, setProposalNotice] = useState<string | null>(null)
   const [proposalError, setProposalError] = useState<string | null>(null)
   const [proposalSaving, setProposalSaving] = useState(false)
-  const [proposalOutcome, setProposalOutcome] = useState<{ id: string; status: string; clientName: string } | null>(null)
+  const [proposalOutcome, setProposalOutcome] = useState<ProposalOutcome | null>(null)
   const [proposalForm, setProposalForm] = useState({
     userId: '',
     notes: '',
@@ -337,6 +346,16 @@ function LotsContent() {
   useEffect(() => {
     setBlockFilter('')
     setSelectedLotId(null)
+    setShowReservationForm(false)
+    setShowSimulator(false)
+    setReservationError(null)
+    setProposalError(null)
+    setProposalNotice(null)
+    setEventError(null)
+    setProposalOutcome((current) => {
+      if (!current || !developmentFilter || current.developmentId === developmentFilter) return current
+      return null
+    })
   }, [developmentFilter])
 
   async function fetchClients() {
@@ -547,6 +566,17 @@ function LotsContent() {
     () => clients.find((client) => client.id === proposalForm.userId) ?? null,
     [clients, proposalForm.userId],
   )
+
+  const visibleProposalOutcome = useMemo(() => {
+    if (!proposalOutcome) return null
+    if (developmentFilter && proposalOutcome.developmentId !== developmentFilter) return null
+
+    const proposalLot = lots.find((lot) => lot.id === proposalOutcome.lotId)
+    if (!proposalLot) return null
+    if (developmentFilter && proposalLot.block.development?.id !== developmentFilter) return null
+
+    return proposalOutcome
+  }, [developmentFilter, lots, proposalOutcome])
 
   const stats = useMemo(() => {
     const sold = filteredLots.filter((lot) => getEffectiveLotStatus(lot) === 'sold').length
@@ -793,6 +823,9 @@ function LotsContent() {
         id: proposal.id,
         status: proposal.status,
         clientName: proposal.user?.name ?? selectedProposalClient?.name ?? 'cliente',
+        developmentId: selectedLot.block.development?.id ?? developmentFilter,
+        lotId: selectedLot.id,
+        userId: proposal.user?.id ?? proposalForm.userId,
       })
       setShowSimulator(false)
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -901,35 +934,35 @@ function LotsContent() {
         </div>
       </div>
 
-      {proposalOutcome && (
+      {visibleProposalOutcome && (
         <div className={`rounded-2xl border px-5 py-4 ${
-          proposalOutcome.status === 'approved'
+          visibleProposalOutcome.status === 'approved'
             ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
             : 'border-amber-200 bg-amber-50 text-amber-800'
         }`}>
           <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
             <div>
               <p className='font-semibold'>
-                {proposalOutcome.status === 'approved'
-                  ? `Proposta de ${proposalOutcome.clientName} aprovada automaticamente.`
-                  : `Proposta de ${proposalOutcome.clientName} enviada para aprovacao.`}
+                {visibleProposalOutcome.status === 'approved'
+                  ? `Proposta de ${visibleProposalOutcome.clientName} aprovada automaticamente.`
+                  : `Proposta de ${visibleProposalOutcome.clientName} enviada para aprovacao.`}
               </p>
               <p className='mt-1 text-sm'>
-                {proposalOutcome.status === 'approved'
+                {visibleProposalOutcome.status === 'approved'
                   ? 'As condicoes seguem as regras do empreendimento e a venda ja pode continuar.'
                   : 'O lote permanece reservado enquanto um administrador revisa as condicoes excepcionais.'}
               </p>
             </div>
             <div className='flex shrink-0 gap-2'>
               <Link
-                href={`/proposals?developmentId=${selectedLot?.block.development?.id ?? developmentFilter}&proposalId=${proposalOutcome.id}`}
+                href={`/proposals?developmentId=${visibleProposalOutcome.developmentId}&proposalId=${visibleProposalOutcome.id}`}
                 className='rounded-xl bg-surface px-4 py-3 text-sm font-semibold text-foreground shadow-sm'
               >
                 Ver proposta
               </Link>
-              {proposalOutcome.status === 'approved' && selectedLot && (
+              {visibleProposalOutcome.status === 'approved' && (
                 <Link
-                  href={`/sales?developmentId=${selectedLot.block.development?.id ?? developmentFilter}&lotId=${selectedLot.id}&userId=${proposalForm.userId}&proposalId=${proposalOutcome.id}`}
+                  href={`/sales?developmentId=${visibleProposalOutcome.developmentId}&lotId=${visibleProposalOutcome.lotId}&userId=${visibleProposalOutcome.userId}&proposalId=${visibleProposalOutcome.id}`}
                   className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white'
                 >
                   Continuar venda

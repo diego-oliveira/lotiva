@@ -6,6 +6,7 @@ import { createFinancialAuditLog } from './audit'
 
 type ReceivableCandidate = {
   id: string
+  kind?: string
   sequence: number
   dueDate: Date
   amount: { toString(): string }
@@ -86,7 +87,7 @@ async function findOrCreateCharge(input: {
   db: PaymentDatabase
   provider: PaymentProvider
   connectionId: string
-  billingCycleId: string
+  billingCycleId?: string | null
   providerCustomerId: string
   receivable: ReceivableCandidate
   saleId: string
@@ -106,12 +107,15 @@ async function findOrCreateCharge(input: {
   if (saved) return saved
 
   const listed = await input.provider.listCharges({ externalReference, limit: 1 })
+  const receivableLabel = input.receivable.kind === 'down_payment'
+    ? 'Entrada'
+    : `Parcela ${input.receivable.sequence}`
   const charge = listed.charges[0] ?? await input.provider.createCharge({
     customerId: input.providerCustomerId,
     amount: input.receivable.amount.toString(),
     dueDate: dateOnly(input.receivable.dueDate),
     billingType: input.billingType,
-    description: `Parcela ${input.receivable.sequence} da venda ${input.saleId}`,
+    description: `${receivableLabel} da venda ${input.saleId}`,
     externalReference,
     interest: input.interestPercentage
       ? { percentage: input.interestPercentage }
@@ -137,7 +141,7 @@ async function findOrCreateCharge(input: {
     },
     create: {
       connectionId: input.connectionId,
-      billingCycleId: input.billingCycleId,
+      billingCycleId: input.billingCycleId ?? null,
       receivableId: input.receivable.id,
       providerChargeId: charge.id,
       externalReference,
@@ -152,7 +156,7 @@ async function findOrCreateCharge(input: {
       providerPayload: JSON.parse(JSON.stringify(charge)) as Prisma.InputJsonValue,
     },
     update: {
-      billingCycleId: input.billingCycleId,
+      billingCycleId: input.billingCycleId ?? undefined,
       status: charge.status,
       invoiceUrl: charge.invoiceUrl,
       bankSlipUrl: charge.bankSlipUrl,
@@ -200,7 +204,7 @@ export async function issueNextBillingCycle(input: {
         },
       },
       billingCycles: {
-        where: { connectionId: input.connectionId },
+        where: { connectionId: input.connectionId, cycleNumber: { gt: 0 } },
         orderBy: { cycleNumber: 'desc' },
         take: 1,
       },
@@ -333,4 +337,97 @@ export async function issueNextBillingCycle(input: {
   })
 
   return { cycle: issuedCycle, charges, alreadyComplete: false }
+}
+
+export async function issueReceivableCharge(input: {
+  connectionId: string
+  receivableId: string
+  provider: PaymentProvider
+  billingType?: BillingType
+  interestPercentage?: string
+  finePercentage?: string
+  db?: PaymentDatabase
+  actorId?: string | null
+}) {
+  const db = input.db ?? prisma
+  const billingType = input.billingType ?? 'BOLETO'
+
+  const connection = await db.paymentProviderConnection.findUnique({
+    where: { id: input.connectionId },
+  })
+  if (!connection || connection.status !== 'active') {
+    throw new Error('A conexao com o provedor de pagamentos nao esta ativa.')
+  }
+  if (connection.provider !== input.provider.name) {
+    throw new Error('O provedor informado nao corresponde a conexao selecionada.')
+  }
+
+  const receivable = await db.receivable.findUnique({
+    where: { id: input.receivableId },
+    include: {
+      externalCharges: {
+        where: { connectionId: input.connectionId },
+      },
+      sale: {
+        include: {
+          user: true,
+          lot: {
+            include: {
+              block: {
+                include: { development: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  if (!receivable) throw new Error('Recebivel nao encontrado.')
+  if (receivable.sale.lot.block.development?.companyId !== connection.companyId) {
+    throw new Error('A conexao de pagamento pertence a outra empresa.')
+  }
+  if (receivable.status === 'paid') {
+    throw new Error('Nao e possivel emitir boleto para um recebivel pago.')
+  }
+
+  const existing = receivable.externalCharges.find((charge) => !['cancelled', 'refunded'].includes(charge.status))
+  if (existing) return { charge: existing, alreadyComplete: true }
+
+  const customer = await findOrCreateExternalCustomer({
+    db,
+    connectionId: connection.id,
+    provider: input.provider,
+    user: receivable.sale.user,
+  })
+  const charge = await findOrCreateCharge({
+    db,
+    provider: input.provider,
+    connectionId: connection.id,
+    billingCycleId: null,
+    providerCustomerId: customer.providerCustomerId,
+    receivable,
+    saleId: receivable.saleId,
+    billingType,
+    interestPercentage: input.interestPercentage,
+    finePercentage: input.finePercentage,
+  })
+
+  await createFinancialAuditLog(db, {
+    companyId: connection.companyId,
+    actorId: input.actorId,
+    action: 'receivable_charge_issued',
+    entityType: 'external_charge',
+    entityId: charge.id,
+    saleId: receivable.saleId,
+    receivableId: receivable.id,
+    externalChargeId: charge.id,
+    metadata: {
+      kind: receivable.kind,
+      sequence: receivable.sequence,
+      provider: connection.provider,
+      environment: connection.environment,
+    },
+  })
+
+  return { charge, alreadyComplete: false }
 }
