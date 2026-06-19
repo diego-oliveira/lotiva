@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
-import { forbiddenResponse, hasAccessToAllCompanies, hasAccessToAllDevelopments, membershipWhere, userAccessWhere } from '@/lib/access-control'
+import { companyAccessWhere, forbiddenResponse, hasAccessToAllCompanies, hasAccessToAllDevelopments, membershipWhere, userAccessWhere } from '@/lib/access-control'
 import { hasAnyDevelopmentPermission } from '@/lib/permissions'
 import { NextResponse } from 'next/server'
 
@@ -23,12 +23,7 @@ const membershipInclude = (userId: string) => ({
   },
   companyMemberships: {
     where: {
-      company: {
-        OR: [
-          { memberships: { some: { userId } } },
-          { developments: { some: membershipWhere(userId) } },
-        ],
-      },
+      company: companyAccessWhere(userId),
     },
     include: {
       company: true,
