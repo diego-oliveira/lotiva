@@ -663,14 +663,16 @@ export default function ReceivablesDrawer({
                           )}
 
                           <div className='flex w-full flex-col gap-2 sm:flex-row xl:flex-col'>
-                            <button
-                              type='button'
-                              onClick={() => updateReceivable(receivable, paid ? 'pending' : 'paid')}
-                              disabled={savingId === receivable.id}
-                              className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
-                            >
-                              {savingId === receivable.id ? 'Salvando...' : paid ? 'Reabrir parcela' : 'Marcar como paga'}
-                            </button>
+                            {canManagePayments && (
+                              <button
+                                type='button'
+                                onClick={() => updateReceivable(receivable, paid ? 'pending' : 'paid')}
+                                disabled={savingId === receivable.id}
+                                className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
+                              >
+                                {savingId === receivable.id ? 'Salvando...' : paid ? 'Reabrir parcela' : 'Marcar como paga'}
+                              </button>
+                            )}
 
                             {canChangeCharge && charge && (
                               <button

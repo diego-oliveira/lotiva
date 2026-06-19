@@ -55,6 +55,26 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         },
       })
 
+      if (action === 'reject') {
+        if (proposal.reservationId) {
+          await tx.reservation.update({
+            where: { id: proposal.reservationId },
+            data: {
+              status: 'cancelled',
+              cancelledAt: new Date(),
+            },
+          })
+        }
+
+        await tx.lot.updateMany({
+          where: {
+            id: proposal.lotId,
+            status: { not: 'sold' },
+          },
+          data: { status: 'available' },
+        })
+      }
+
       await createLotEvent(tx, {
         lotId: proposal.lotId,
         userId: currentUserId,
@@ -62,7 +82,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         title: action === 'approve' ? 'Proposta aprovada' : 'Proposta rejeitada',
         description: action === 'approve'
           ? `Proposta para ${proposal.user.name} aprovada para continuidade da venda.`
-          : `Proposta para ${proposal.user.name} rejeitada.`,
+          : `Proposta para ${proposal.user.name} rejeitada. Lote liberado para venda.`,
         notes: action === 'reject' ? data.reason.trim() : null,
       })
 

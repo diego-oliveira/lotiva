@@ -80,6 +80,9 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
   if (selectedDevelopment && !(await hasDevelopmentPermission(session.user.id, selectedDevelopment.id, 'finance'))) {
     redirect('/')
   }
+  const canManagePayments = selectedDevelopment
+    ? await hasDevelopmentPermission(session.user.id, selectedDevelopment.id, 'issuePayments')
+    : false
 
   if (!selectedDevelopment) {
     return (
@@ -442,6 +445,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                       </td>
                       <td className='whitespace-nowrap px-6 py-4 text-right'>
                         <ReceivableActions
+                          canManagePayments={canManagePayments}
                           receivable={{
                             id: receivable.id,
                             amount: Number(receivable.amount),

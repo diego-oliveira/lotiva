@@ -68,6 +68,9 @@ interface Sale {
   reservation?: Reservation
   receivables?: Receivable[]
   contract?: { id: string; contractNumber: string } | null
+  canManagePayments?: boolean
+  canCancelPayments?: boolean
+  canApproveAdjustments?: boolean
 }
 
 function formatCurrency(value: number) {
@@ -108,9 +111,6 @@ function SalesContent() {
   const [contractSaleId, setContractSaleId] = useState<string>('')
   const [receivablesSale, setReceivablesSale] = useState<Sale | null>(null)
   const [canCorrectSales, setCanCorrectSales] = useState(false)
-  const [canManageFinance, setCanManageFinance] = useState(false)
-  const [canCancelPayments, setCanCancelPayments] = useState(false)
-  const [canApproveAdjustments, setCanApproveAdjustments] = useState(false)
 
   useEffect(() => {
     fetchSales()
@@ -118,15 +118,9 @@ function SalesContent() {
       .then((response) => response.ok ? response.json() : null)
       .then((payload) => {
         setCanCorrectSales(Boolean(payload?.permissions?.admin))
-        setCanManageFinance(Boolean(payload?.permissions?.issuePayments))
-        setCanCancelPayments(Boolean(payload?.permissions?.cancelPayments))
-        setCanApproveAdjustments(Boolean(payload?.permissions?.approveAdjustments))
       })
       .catch(() => {
         setCanCorrectSales(false)
-        setCanManageFinance(false)
-        setCanCancelPayments(false)
-        setCanApproveAdjustments(false)
       })
 
     const params = new URLSearchParams(window.location.search)
@@ -443,6 +437,7 @@ function SalesContent() {
         sale={editingSale}
         initialData={initialSaleData}
         isOpen={showForm}
+        developmentId={developmentFilter}
         onClose={handleFormClose}
         onSave={handleFormSave}
         correctionReason={correctionReason}
@@ -498,9 +493,9 @@ function SalesContent() {
       <ReceivablesDrawer
         sale={receivablesSale}
         isOpen={Boolean(receivablesSale)}
-        canManagePayments={canManageFinance}
-        canCancelPayments={canCancelPayments}
-        canApproveAdjustments={canApproveAdjustments}
+        canManagePayments={Boolean(receivablesSale?.canManagePayments)}
+        canCancelPayments={Boolean(receivablesSale?.canCancelPayments)}
+        canApproveAdjustments={Boolean(receivablesSale?.canApproveAdjustments)}
         onClose={() => setReceivablesSale(null)}
         onUpdated={handleReceivablesUpdated}
       />

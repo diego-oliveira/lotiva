@@ -90,7 +90,29 @@ export async function GET() {
     orderBy: { createdAt: 'desc' },
   })
 
-  return NextResponse.json(sales)
+  const developmentIds = [...new Set(sales
+    .map((sale) => sale.lot.block.developmentId)
+    .filter((developmentId): developmentId is string => Boolean(developmentId)))]
+  const permissionEntries = await Promise.all(developmentIds.map(async (developmentId) => [
+    developmentId,
+    {
+      canManagePayments: await hasDevelopmentPermission(currentUserId, developmentId, 'issuePayments'),
+      canCancelPayments: await hasDevelopmentPermission(currentUserId, developmentId, 'cancelPayments'),
+      canApproveAdjustments: await hasDevelopmentPermission(currentUserId, developmentId, 'approveAdjustments'),
+    },
+  ] as const))
+  const permissionsByDevelopment = Object.fromEntries(permissionEntries)
+
+  return NextResponse.json(sales.map((sale) => {
+    const developmentId = sale.lot.block.developmentId
+    const permissions = developmentId ? permissionsByDevelopment[developmentId] : null
+    return {
+      ...sale,
+      canManagePayments: Boolean(permissions?.canManagePayments),
+      canCancelPayments: Boolean(permissions?.canCancelPayments),
+      canApproveAdjustments: Boolean(permissions?.canApproveAdjustments),
+    }
+  }))
 }
 
 export async function POST(req: Request) {
@@ -138,22 +160,41 @@ export async function POST(req: Request) {
         },
       },
     })
-    if (!lot?.block.developmentId) return forbiddenResponse()
-    if (!(await hasDevelopmentPermission(currentUserId, lot.block.developmentId, 'sales'))) return forbiddenResponse()
+    if (!lot || !lot.block.development) return forbiddenResponse()
+    const development = lot.block.development
+    if (!(await hasDevelopmentPermission(currentUserId, development.id, 'sales'))) return forbiddenResponse()
     if (lot.sale || lot.status === 'sold') {
       return NextResponse.json({ error: 'Este lote ja foi vendido.' }, { status: 400 })
     }
 
-    const buyerMembership = await prisma.developmentUser.findUnique({
+    const buyerAccess = await prisma.user.findFirst({
       where: {
-        developmentId_userId: {
-          developmentId: lot.block.developmentId,
-          userId: data.userId,
-        },
+        id: data.userId,
+        OR: [
+          {
+            memberships: {
+              some: {
+                developmentId: development.id,
+              },
+            },
+          },
+          {
+            companyMemberships: {
+              some: {
+                companyId: development.companyId,
+              },
+            },
+          },
+        ],
       },
       select: { id: true },
     })
-    if (!buyerMembership) return forbiddenResponse()
+    if (!buyerAccess) {
+      return NextResponse.json(
+        { error: 'A pessoa selecionada nao tem acesso ao empreendimento ou a empresa deste lote.' },
+        { status: 400 },
+      )
+    }
 
     const latestProposal = await prisma.proposal.findFirst({
       where: {

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
 type ReceivableActionsProps = {
+  canManagePayments: boolean
   receivable: {
     id: string
     amount: number
@@ -21,7 +22,7 @@ function formatDateInput(date: Date) {
   return `${year}-${month}-${day}`
 }
 
-export default function ReceivableActions({ receivable }: ReceivableActionsProps) {
+export default function ReceivableActions({ canManagePayments, receivable }: ReceivableActionsProps) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -29,6 +30,8 @@ export default function ReceivableActions({ receivable }: ReceivableActionsProps
   const [paidAmount, setPaidAmount] = useState(String(receivable.balance || receivable.amount))
   const [paidAt, setPaidAt] = useState(formatDateInput(new Date()))
   const [notes, setNotes] = useState(receivable.notes ?? '')
+
+  if (!canManagePayments) return null
 
   const updateReceivable = async (status: 'paid' | 'pending') => {
     setSaving(true)

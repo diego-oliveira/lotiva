@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 interface Block {
   id: string
@@ -77,6 +77,10 @@ interface User {
     development: { id: string; name: string }
     roles: { role: { id: string; name: string } }[]
   }[]
+  companyMemberships?: {
+    company: { id: string; name: string }
+    roles: { role: { id: string; name: string } }[]
+  }[]
 }
 
 interface SaleFormData {
@@ -101,6 +105,7 @@ interface SalesFormProps {
     proposalId?: string
   } | null
   isOpen: boolean
+  developmentId?: string
   onClose: () => void
   onSave: () => void
   correctionReason?: string
@@ -186,6 +191,40 @@ function getLotStatusLabel(status: string) {
   return status
 }
 
+const lotStatusMeta: Record<string, { label: string; tile: string; badge: string; dot: string }> = {
+  available: {
+    label: 'Disponivel',
+    tile: 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100',
+    badge: 'bg-emerald-50 text-emerald-700',
+    dot: 'bg-emerald-500',
+  },
+  reserved: {
+    label: 'Reservado',
+    tile: 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100',
+    badge: 'bg-amber-50 text-amber-700',
+    dot: 'bg-amber-500',
+  },
+  on_hold: {
+    label: 'Bloqueado',
+    tile: 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200',
+    badge: 'bg-slate-100 text-slate-700',
+    dot: 'bg-slate-500',
+  },
+}
+
+function getLotCardMeta(status: string) {
+  return lotStatusMeta[status] ?? {
+    label: getLotStatusLabel(status),
+    tile: 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100',
+    badge: 'bg-slate-100 text-slate-700',
+    dot: 'bg-slate-400',
+  }
+}
+
+function compareNatural(a: string, b: string) {
+  return a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' })
+}
+
 function calculateInstallment(balance: number, installmentCount: number, monthlyInterestRate: number, interestCalculation: string) {
   if (balance <= 0 || installmentCount <= 0) return 0
 
@@ -201,6 +240,7 @@ export default function SalesForm({
   sale,
   initialData,
   isOpen,
+  developmentId,
   onClose,
   onSave,
   correctionReason,
@@ -277,7 +317,7 @@ export default function SalesForm({
     setLotSearch('')
     setDocumentNotice(null)
     setErrors({})
-  }, [isOpen, sale, initialData])
+  }, [isOpen, sale, initialData, developmentId])
 
   useEffect(() => {
     if (!isOpen || sale || !initialData) return
@@ -307,9 +347,12 @@ export default function SalesForm({
       const response = await fetch('/api/lots')
       if (!response.ok) return
       const data = await response.json()
+      const developmentLots = developmentId
+        ? data.filter((lot: Lot) => lot.block.development?.id === developmentId)
+        : data
       const availableLots = sale
-        ? data
-        : data.filter((lot: Lot) => lot.status === 'available' || lot.status === 'reserved' || lot.status === 'on_hold')
+        ? developmentLots
+        : developmentLots.filter((lot: Lot) => lot.status === 'available' || lot.status === 'reserved' || lot.status === 'on_hold')
       setLots(availableLots)
     } catch (error) {
       console.error('Error fetching lots:', error)
@@ -381,6 +424,25 @@ export default function SalesForm({
       `${lot.block.identifier}${lot.identifier}`.toLowerCase().includes(searchLower)
     )
   })
+  const lotsByBlock = useMemo(() => {
+    const map = new Map<string, { block: Block; lots: Lot[] }>()
+
+    filteredLots.forEach((lot) => {
+      const current = map.get(lot.block.id)
+      if (current) {
+        current.lots.push(lot)
+      } else {
+        map.set(lot.block.id, { block: lot.block, lots: [lot] })
+      }
+    })
+
+    return Array.from(map.values())
+      .map((group) => ({
+        ...group,
+        lots: group.lots.sort((a, b) => compareNatural(a.identifier, b.identifier)),
+      }))
+      .sort((a, b) => compareNatural(a.block.identifier, b.block.identifier))
+  }, [filteredLots])
 
   useEffect(() => {
     if (!selectedLot || sale) return
@@ -547,6 +609,10 @@ export default function SalesForm({
         developmentId: membership.development.id,
         roleId: membership.roles[0]?.role.id ?? '',
       })) ?? []
+      const companyMemberships = selectedUser.companyMemberships?.map((membership) => ({
+        companyId: membership.company.id,
+        roleId: membership.roles[0]?.role.id ?? '',
+      })) ?? []
 
       const response = await fetch(`/api/clients/${selectedUser.id}`, {
         method: 'PUT',
@@ -556,6 +622,7 @@ export default function SalesForm({
           email: selectedUser.email,
           ...documentForm,
           memberships,
+          companyMemberships,
         }),
       })
 
@@ -588,18 +655,18 @@ export default function SalesForm({
         onClick={onClose}
       />
       <aside className='fixed inset-y-0 right-0 z-50 w-full max-w-5xl border-l border-border bg-surface shadow-2xl'>
-        <div className='flex h-full flex-col'>
-          <div className='border-b border-border px-6 py-5'>
+        <div className='flex h-full min-h-0 flex-col'>
+          <div className='shrink-0 border-b border-border px-4 py-3 sm:px-6 sm:py-5'>
             <div className='flex items-start justify-between gap-4'>
-              <div>
+              <div className='min-w-0'>
                 <p className='text-xs font-semibold uppercase tracking-[0.2em] text-muted'>Fluxo guiado</p>
-                <h2 className='mt-2 text-2xl font-bold text-foreground'>{sale ? 'Editar venda' : 'Nova venda'}</h2>
-                <p className='mt-2 text-sm leading-6 text-muted'>Selecione cliente, lote, condicao de pagamento, documentos e revise antes de confirmar.</p>
+                <h2 className='mt-1 text-xl font-bold text-foreground sm:mt-2 sm:text-2xl'>{sale ? 'Editar venda' : 'Nova venda'}</h2>
+                <p className='mt-2 hidden text-sm leading-6 text-muted sm:block'>Selecione cliente, lote, condicao de pagamento, documentos e revise antes de confirmar.</p>
               </div>
               <button
                 type='button'
                 onClick={onClose}
-                className='rounded-xl border border-border bg-surface-secondary p-2 text-muted transition hover:bg-background hover:text-foreground'
+                className='shrink-0 rounded-xl border border-border bg-surface-secondary p-2 text-muted transition hover:bg-background hover:text-foreground'
               >
                 <svg className='h-5 w-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
                   <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M6 18L18 6M6 6l12 12' />
@@ -607,7 +674,7 @@ export default function SalesForm({
               </button>
             </div>
 
-            <div className='mt-5 grid gap-2 sm:grid-cols-5'>
+            <div className='mt-3 flex gap-2 overflow-x-auto pb-1 sm:mt-5 sm:grid sm:grid-cols-5 sm:overflow-visible sm:pb-0'>
               {STEPS.map((step) => (
                 <button
                   key={step.id}
@@ -615,7 +682,7 @@ export default function SalesForm({
                   onClick={() => {
                     if (step.id <= currentStep || validateStep(currentStep)) setCurrentStep(step.id)
                   }}
-                  className={`rounded-xl border px-3 py-3 text-left transition ${
+                  className={`min-w-[112px] rounded-xl border px-3 py-2 text-left transition sm:min-w-0 sm:py-3 ${
                     currentStep === step.id
                       ? 'border-primary bg-primary/8 text-primary'
                       : currentStep > step.id
@@ -630,13 +697,13 @@ export default function SalesForm({
             </div>
 
             {errors.submit && (
-              <div className='mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700'>
+              <div className='mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:mt-5'>
                 {errors.submit}
               </div>
             )}
           </div>
 
-          <div className='flex-1 overflow-y-auto px-6 py-6'>
+          <div className='min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6'>
             {currentStep === 1 && (
               <section className='space-y-5'>
                 <div>
@@ -693,48 +760,110 @@ export default function SalesForm({
               <section className='space-y-5'>
                 <div>
                   <h3 className='text-base font-semibold text-foreground'>Lote</h3>
-                  <p className='mt-1 text-sm text-muted'>Lotes reservados para outro cliente ficam ocultos.</p>
+                  <p className='mt-1 text-sm text-muted'>Escolha o lote pela quadra. Lotes reservados para outro cliente ficam ocultos.</p>
                 </div>
                 {selectedLot && (
                   <div className='rounded-2xl border border-primary/30 bg-primary/6 p-4'>
                     <p className='text-xs font-semibold uppercase text-primary'>Lote selecionado</p>
-                    <div className='mt-3 flex items-start justify-between gap-3'>
+                    <div className='mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
                       <div>
                         <p className='text-sm font-semibold text-foreground'>Quadra {selectedLot.block.identifier}, Lote {selectedLot.identifier}</p>
                         <p className='mt-1 text-sm text-muted'>{formatArea(selectedLot.totalArea)} · {getLotStatusLabel(selectedLot.status)}</p>
                       </div>
-                      <p className='text-sm font-bold text-foreground'>{formatCurrency(selectedLot.price)}</p>
+                      <div className='flex flex-wrap items-center gap-2 sm:justify-end'>
+                        <span className={`pill ${getLotCardMeta(selectedLot.status).badge}`}>{getLotCardMeta(selectedLot.status).label}</span>
+                        <p className='text-sm font-bold text-foreground'>{formatCurrency(selectedLot.price)}</p>
+                      </div>
                     </div>
                   </div>
                 )}
-                <input
-                  type='text'
-                  placeholder='Buscar por quadra ou lote...'
-                  value={lotSearch}
-                  onChange={(event) => setLotSearch(event.target.value)}
-                  className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
-                />
-                <div className='grid gap-3 md:grid-cols-2'>
-                  {filteredLots.map((lot) => (
-                    <button
-                      key={lot.id}
-                      type='button'
-                      onClick={() => handleInputChange('lotId', lot.id)}
-                      className={`rounded-2xl border p-4 text-left transition hover:bg-surface-secondary ${
-                        formData.lotId === lot.id ? 'border-primary bg-primary/6' : 'border-border bg-surface'
-                      }`}
-                    >
-                      <div className='flex items-start justify-between gap-3'>
-                        <div>
-                          <p className='text-sm font-semibold text-foreground'>Quadra {lot.block.identifier}, Lote {lot.identifier}</p>
-                          <p className='mt-1 text-sm text-muted'>{formatArea(lot.totalArea)} · {getLotStatusLabel(lot.status)}</p>
+
+                <div className='rounded-2xl border border-border bg-surface'>
+                  <div className='border-b border-border bg-surface-secondary px-4 py-4'>
+                    <label className='block'>
+                      <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Busca</span>
+                      <input
+                        type='text'
+                        placeholder='Lote, quadra ou empreendimento...'
+                        value={lotSearch}
+                        onChange={(event) => setLotSearch(event.target.value)}
+                        className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                      />
+                    </label>
+                    <div className='mt-3 flex flex-wrap gap-3'>
+                      {Object.entries(lotStatusMeta).map(([status, meta]) => (
+                        <div key={status} className='flex items-center gap-2 text-xs font-semibold text-muted'>
+                          <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
+                          {meta.label}
                         </div>
-                        <p className='text-sm font-bold text-foreground'>{formatCurrency(lot.price)}</p>
-                      </div>
-                      <p className='mt-3 text-xs text-muted'>{formatCurrency(lot.price / lot.totalArea)}/m2</p>
-                    </button>
-                  ))}
+                      ))}
+                    </div>
+                  </div>
+
+                  {filteredLots.length === 0 ? (
+                    <div className='px-5 py-10 text-center'>
+                      <h4 className='text-sm font-semibold text-foreground'>Nenhum lote encontrado</h4>
+                      <p className='mt-2 text-sm text-muted'>Ajuste a busca ou selecione outro cliente para ver lotes reservados a ele.</p>
+                    </div>
+                  ) : (
+                    <div className='max-h-[560px] space-y-5 overflow-y-auto p-4'>
+                      {lotsByBlock.map(({ block, lots: blockLots }) => (
+                        <section key={block.id} className='rounded-2xl border border-border bg-surface-secondary p-4'>
+                          <div className='mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between'>
+                            <div>
+                              <h4 className='text-base font-semibold text-foreground'>Quadra {block.identifier}</h4>
+                              <p className='text-sm text-muted'>{block.development?.name ?? 'Sem empreendimento'} · {blockLots.length} lotes</p>
+                            </div>
+                            <span className='text-sm font-semibold text-muted'>
+                              {formatCurrency(blockLots.reduce((sum, lot) => sum + lot.price, 0))}
+                            </span>
+                          </div>
+
+                          <div className='grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-3'>
+                            {blockLots.map((lot) => {
+                              const meta = getLotCardMeta(lot.status)
+                              const selected = formData.lotId === lot.id
+                              return (
+                                <button
+                                  key={lot.id}
+                                  type='button'
+                                  onClick={() => handleInputChange('lotId', lot.id)}
+                                  className={`min-h-[92px] rounded-xl border px-3 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-primary ${meta.tile} ${selected ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                                >
+                                  <span className='block text-xs font-semibold opacity-75'>Lote</span>
+                                  <span className='mt-1 block text-lg font-bold'>{lot.identifier}</span>
+                                  <span className='mt-1 block truncate text-xs font-semibold'>{formatArea(lot.totalArea)}</span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </section>
+                      ))}
+                    </div>
+                  )}
                 </div>
+
+                {filteredLots.length > 0 && (
+                  <div className='grid gap-3 sm:grid-cols-3'>
+                    <div className='rounded-xl border border-border bg-surface-secondary px-4 py-3'>
+                      <p className='text-xs font-semibold uppercase text-muted'>Lotes visiveis</p>
+                      <p className='mt-1 text-lg font-bold text-foreground'>{filteredLots.length}</p>
+                    </div>
+                    <div className='rounded-xl border border-border bg-surface-secondary px-4 py-3'>
+                      <p className='text-xs font-semibold uppercase text-muted'>Disponiveis</p>
+                      <p className='mt-1 text-lg font-bold text-emerald-700'>{filteredLots.filter((lot) => lot.status === 'available').length}</p>
+                    </div>
+                    <div className='rounded-xl border border-border bg-surface-secondary px-4 py-3'>
+                      <p className='text-xs font-semibold uppercase text-muted'>Reservados</p>
+                      <p className='mt-1 text-lg font-bold text-amber-700'>{filteredLots.filter((lot) => lot.status === 'reserved').length}</p>
+                    </div>
+                  </div>
+                )}
+                {developmentId && lots.length === 0 && (
+                  <div className='rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800'>
+                    Nenhum lote elegivel encontrado no empreendimento selecionado.
+                  </div>
+                )}
                 {errors.lotId && <p className='text-sm font-medium text-red-600'>{errors.lotId}</p>}
               </section>
             )}
@@ -995,23 +1124,23 @@ export default function SalesForm({
             )}
           </div>
 
-          <div className='border-t border-border px-6 py-5'>
-            <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
+          <div className='shrink-0 border-t border-border px-4 py-3 sm:px-6 sm:py-5'>
+            <div className='grid grid-cols-3 gap-2 md:flex md:items-center md:justify-between md:gap-3'>
               <button
                 type='button'
                 onClick={prevStep}
                 disabled={currentStep === 1}
-                className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:opacity-50'
+                className='rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:opacity-50 sm:px-4 sm:py-3'
               >
                 Anterior
               </button>
 
-              <div className='flex flex-col gap-3 md:flex-row'>
+              <div className='col-span-2 grid grid-cols-2 gap-2 md:flex md:gap-3'>
                 <button
                   type='button'
                   onClick={onClose}
                   disabled={loading}
-                  className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:opacity-60'
+                  className='rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:opacity-60 sm:px-4 sm:py-3'
                 >
                   Cancelar
                 </button>
@@ -1019,7 +1148,7 @@ export default function SalesForm({
                   <button
                     type='button'
                     onClick={nextStep}
-                    className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'
+                    className='rounded-xl bg-primary px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-strong sm:px-4 sm:py-3'
                   >
                     Proximo
                   </button>
@@ -1028,7 +1157,7 @@ export default function SalesForm({
                     type='button'
                     onClick={handleSubmit}
                     disabled={loading || proposalNeedsApproval}
-                    className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
+                    className='rounded-xl bg-primary px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60 sm:px-4 sm:py-3'
                   >
                     {loading
                       ? 'Salvando...'

@@ -46,7 +46,7 @@ export async function PATCH(req: Request, { params }: Params) {
   if (!receivable) return forbiddenResponse()
 
   const developmentId = receivable.sale.lot.block.developmentId
-  if (!developmentId || !(await hasDevelopmentPermission(currentUserId, developmentId, 'finance'))) {
+  if (!developmentId || !(await hasDevelopmentPermission(currentUserId, developmentId, 'issuePayments'))) {
     return forbiddenResponse()
   }
 
