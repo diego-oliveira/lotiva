@@ -33,6 +33,8 @@ type LotBatchDrawerProps = {
   onSave: (count: number) => void
 }
 
+type CsvRow = Record<string, string>
+
 const defaultForm = {
   blockIdentifier: 'A',
   quantity: 15,
@@ -52,6 +54,36 @@ const statusOptions = [
   { value: 'sold', label: 'Vendido' },
 ] as const
 
+const csvTemplate = [
+  'quadra;lote;frente;fundo;lateral_esquerda;lateral_direita;area;valor;status',
+  'A;01;10;10;15;15;150;75000;available',
+  'A;02;10;10;15;15;150;75000;available',
+].join('\n')
+
+const csvColumnAliases = {
+  blockIdentifier: ['quadra', 'block', 'blockidentifier'],
+  identifier: ['lote', 'lot', 'identificador', 'identifier', 'numero', 'numero_lote'],
+  front: ['frente', 'front'],
+  back: ['fundo', 'back'],
+  leftSide: ['lateralesquerda', 'lateral_esquerda', 'ladoesquerdo', 'lado_esquerdo', 'leftside'],
+  rightSide: ['lateraldireita', 'lateral_direita', 'ladodireito', 'lado_direito', 'rightside'],
+  totalArea: ['area', 'areatotal', 'area_total', 'totalarea', 'm2'],
+  price: ['valor', 'preco', 'preco_base', 'price'],
+  status: ['status', 'situacao', 'situacao_lote'],
+}
+
+const statusAliases: Record<string, string> = {
+  available: 'available',
+  disponivel: 'available',
+  reserved: 'reserved',
+  reservado: 'reserved',
+  onhold: 'on_hold',
+  on_hold: 'on_hold',
+  bloqueado: 'on_hold',
+  sold: 'sold',
+  vendido: 'sold',
+}
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
@@ -61,6 +93,159 @@ function formatCurrency(value: number) {
 
 function makeIdentifier(index: number) {
   return String(index + 1).padStart(2, '0')
+}
+
+function normalizeCsvKey(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+}
+
+function detectDelimiter(headerLine: string) {
+  const delimiters = [';', ',', '\t']
+  return delimiters
+    .map((delimiter) => ({ delimiter, count: headerLine.split(delimiter).length }))
+    .sort((left, right) => right.count - left.count)[0].delimiter
+}
+
+function splitCsvLine(line: string, delimiter: string) {
+  const cells: string[] = []
+  let current = ''
+  let quoted = false
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index]
+    const next = line[index + 1]
+    if (char === '"' && quoted && next === '"') {
+      current += '"'
+      index += 1
+    } else if (char === '"') {
+      quoted = !quoted
+    } else if (char === delimiter && !quoted) {
+      cells.push(current.trim())
+      current = ''
+    } else {
+      current += char
+    }
+  }
+
+  cells.push(current.trim())
+  return cells
+}
+
+function parseCsv(text: string) {
+  const lines = text
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .filter((line) => line.trim())
+  if (lines.length < 2) return { rows: [], errors: ['O CSV precisa ter cabecalho e pelo menos um lote.'] }
+
+  const delimiter = detectDelimiter(lines[0])
+  const headers = splitCsvLine(lines[0], delimiter).map(normalizeCsvKey)
+  const rows = lines.slice(1).map((line) => {
+    const cells = splitCsvLine(line, delimiter)
+    return headers.reduce<CsvRow>((row, header, index) => {
+      row[header] = cells[index] ?? ''
+      return row
+    }, {})
+  })
+
+  return { rows, errors: [] }
+}
+
+function getCsvValue(row: CsvRow, aliases: string[]) {
+  for (const alias of aliases) {
+    const value = row[normalizeCsvKey(alias)]
+    if (value !== undefined && value.trim()) return value.trim()
+  }
+  return ''
+}
+
+function parseCsvNumber(value: string) {
+  const normalized = value.replace(/[^\d,.-]/g, '')
+  if (!normalized) return Number.NaN
+  const comma = normalized.lastIndexOf(',')
+  const dot = normalized.lastIndexOf('.')
+
+  if (comma > dot) {
+    return Number(normalized.replace(/\./g, '').replace(',', '.'))
+  }
+  if (dot > comma) {
+    return Number(normalized.replace(/,/g, ''))
+  }
+  return Number(normalized)
+}
+
+function parseCsvStatus(value: string) {
+  if (!value.trim()) return defaultForm.status
+  return statusAliases[normalizeCsvKey(value)] ?? ''
+}
+
+function parseLotCsv(text: string) {
+  const parsed = parseCsv(text)
+  if (parsed.errors.length > 0) return { drafts: [], blockIdentifier: '', errors: parsed.errors }
+
+  const errors: string[] = []
+  const blockIdentifiers = new Set<string>()
+  const drafts = parsed.rows.map((row, index) => {
+    const rowNumber = index + 2
+    const blockIdentifier = getCsvValue(row, csvColumnAliases.blockIdentifier)
+    if (blockIdentifier) blockIdentifiers.add(blockIdentifier)
+
+    const identifier = getCsvValue(row, csvColumnAliases.identifier)
+    if (!identifier) errors.push(`Linha ${rowNumber}: informe o lote.`)
+
+    const numberFields = {
+      front: getCsvValue(row, csvColumnAliases.front),
+      back: getCsvValue(row, csvColumnAliases.back),
+      leftSide: getCsvValue(row, csvColumnAliases.leftSide),
+      rightSide: getCsvValue(row, csvColumnAliases.rightSide),
+      totalArea: getCsvValue(row, csvColumnAliases.totalArea),
+      price: getCsvValue(row, csvColumnAliases.price),
+    }
+    Object.entries(numberFields).forEach(([field, value]) => {
+      if (!value) errors.push(`Linha ${rowNumber}: coluna ${field} obrigatoria.`)
+    })
+
+    const status = parseCsvStatus(getCsvValue(row, csvColumnAliases.status))
+    if (!status) errors.push(`Linha ${rowNumber}: status invalido.`)
+
+    return {
+      identifier,
+      front: parseCsvNumber(numberFields.front),
+      back: parseCsvNumber(numberFields.back),
+      leftSide: parseCsvNumber(numberFields.leftSide),
+      rightSide: parseCsvNumber(numberFields.rightSide),
+      totalArea: parseCsvNumber(numberFields.totalArea),
+      price: parseCsvNumber(numberFields.price),
+      status: status || defaultForm.status,
+    }
+  })
+
+  drafts.forEach((draft, index) => {
+    const rowNumber = index + 2
+    if (!Number.isFinite(draft.front) || draft.front <= 0) errors.push(`Linha ${rowNumber}: frente deve ser maior que zero.`)
+    if (!Number.isFinite(draft.back) || draft.back <= 0) errors.push(`Linha ${rowNumber}: fundo deve ser maior que zero.`)
+    if (!Number.isFinite(draft.leftSide) || draft.leftSide <= 0) errors.push(`Linha ${rowNumber}: lateral esquerda deve ser maior que zero.`)
+    if (!Number.isFinite(draft.rightSide) || draft.rightSide <= 0) errors.push(`Linha ${rowNumber}: lateral direita deve ser maior que zero.`)
+    if (!Number.isFinite(draft.totalArea) || draft.totalArea <= 0) errors.push(`Linha ${rowNumber}: area deve ser maior que zero.`)
+    if (!Number.isFinite(draft.price) || draft.price < 0) errors.push(`Linha ${rowNumber}: valor nao pode ser negativo.`)
+  })
+
+  if (blockIdentifiers.size > 1) {
+    errors.push('O CSV deve conter lotes de apenas uma quadra por importacao.')
+  }
+  if (drafts.length > 300) {
+    errors.push('Importe no maximo 300 lotes por vez.')
+  }
+
+  return {
+    drafts,
+    blockIdentifier: [...blockIdentifiers][0] ?? '',
+    errors,
+  }
 }
 
 function createDrafts(form: typeof defaultForm): LotDraft[] {
@@ -86,12 +271,14 @@ export default function LotBatchDrawer({
   const [drafts, setDrafts] = useState<LotDraft[]>(() => createDrafts(defaultForm))
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
+  const [importNotice, setImportNotice] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
     setForm(defaultForm)
     setDrafts(createDrafts(defaultForm))
     setErrors([])
+    setImportNotice(null)
   }, [isOpen, development?.id])
 
   const totalValue = useMemo(() => drafts.reduce((sum, draft) => sum + Number(draft.price || 0), 0), [drafts])
@@ -105,6 +292,7 @@ export default function LotBatchDrawer({
     setForm(nextForm)
     setDrafts(createDrafts(nextForm))
     setErrors([])
+    setImportNotice(null)
   }
 
   const updateDraft = (index: number, field: keyof LotDraft, value: string) => {
@@ -116,6 +304,51 @@ export default function LotBatchDrawer({
       )),
     )
     setErrors([])
+    setImportNotice(null)
+  }
+
+  const downloadCsvTemplate = () => {
+    const blob = new Blob([csvTemplate], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'modelo-lotes.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const importCsv = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    try {
+      const result = parseLotCsv(await file.text())
+      if (result.errors.length > 0) {
+        setErrors(result.errors)
+        setImportNotice(null)
+        return
+      }
+
+      setDrafts(result.drafts)
+      setForm((current) => ({
+        ...current,
+        blockIdentifier: result.blockIdentifier || current.blockIdentifier,
+        quantity: result.drafts.length,
+        front: result.drafts[0]?.front ?? current.front,
+        back: result.drafts[0]?.back ?? current.back,
+        leftSide: result.drafts[0]?.leftSide ?? current.leftSide,
+        rightSide: result.drafts[0]?.rightSide ?? current.rightSide,
+        totalArea: result.drafts[0]?.totalArea ?? current.totalArea,
+        price: result.drafts[0]?.price ?? current.price,
+        status: result.drafts[0]?.status ?? current.status,
+      }))
+      setErrors([])
+      setImportNotice(`${result.drafts.length} lote(s) importado(s) para revisao.`)
+    } catch (error) {
+      setErrors([error instanceof Error ? error.message : 'Nao foi possivel ler o arquivo CSV.'])
+      setImportNotice(null)
+    }
   }
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -163,6 +396,12 @@ export default function LotBatchDrawer({
             <ul className='mt-2 list-disc space-y-1 pl-5'>
               {errors.map((error) => <li key={error}>{error}</li>)}
             </ul>
+          </div>
+        )}
+
+        {importNotice && (
+          <div className='rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-700'>
+            {importNotice}
           </div>
         )}
 
@@ -257,6 +496,28 @@ export default function LotBatchDrawer({
                 ))}
               </select>
             </label>
+          </div>
+        </section>
+
+        <section className='rounded-2xl border border-border bg-surface-secondary p-5'>
+          <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
+            <div>
+              <h3 className='text-base font-semibold text-foreground'>Importar CSV</h3>
+              <p className='mt-1 text-sm text-muted'>Use uma planilha para preencher a pre-visualizacao e revise antes de criar os lotes.</p>
+            </div>
+            <div className='flex flex-col gap-2 sm:flex-row'>
+              <button
+                type='button'
+                onClick={downloadCsvTemplate}
+                className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'
+              >
+                Baixar modelo
+              </button>
+              <label className='cursor-pointer rounded-xl bg-primary px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-primary-strong'>
+                Importar CSV
+                <input type='file' accept='.csv,text/csv' onChange={importCsv} className='sr-only' />
+              </label>
+            </div>
           </div>
         </section>
 
