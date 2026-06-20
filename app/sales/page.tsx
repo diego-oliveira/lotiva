@@ -72,6 +72,7 @@ interface Sale {
   canManagePayments?: boolean
   canCancelPayments?: boolean
   canApproveAdjustments?: boolean
+  canReconcilePayments?: boolean
 }
 
 function formatCurrency(value: number) {
@@ -537,6 +538,7 @@ function SalesContent() {
         canManagePayments={Boolean(receivablesSale?.canManagePayments)}
         canCancelPayments={Boolean(receivablesSale?.canCancelPayments)}
         canApproveAdjustments={Boolean(receivablesSale?.canApproveAdjustments)}
+        canReconcilePayments={Boolean(receivablesSale?.canReconcilePayments)}
         onClose={() => setReceivablesSale(null)}
         onUpdated={handleReceivablesUpdated}
       />

@@ -37,6 +37,7 @@ interface ReceivablesDrawerProps {
   canManagePayments: boolean
   canCancelPayments: boolean
   canApproveAdjustments: boolean
+  canReconcilePayments: boolean
   onClose: () => void
   onUpdated: () => Promise<void>
 }
@@ -94,6 +95,52 @@ interface BillingCycle {
     status: string
   }
   externalCharges: ExternalCharge[]
+}
+
+interface AsaasImportMatch {
+  receivableId: string
+  receivableLabel: string
+  kind: string
+  sequence: number
+  dueDate: string
+  localAmount: number
+  providerChargeId: string
+  providerDueDate: string
+  providerAmount: number
+  difference: number
+  status: string
+  billingType: string
+  invoiceUrl: string | null
+  bankSlipUrl: string | null
+  matchType: 'exact' | 'correction'
+  note: string
+}
+
+interface AsaasImportPreview {
+  connection: { id: string; provider: string; environment: string }
+  customer: { id: string; name: string; cpfCnpj: string }
+  scannedCharges: number
+  matches: AsaasImportMatch[]
+  unmatchedReceivables: Array<{
+    receivableId: string
+    receivableLabel: string
+    dueDate: string
+    amount: number
+    status: string
+  }>
+  unmatchedCharges: Array<{
+    providerChargeId: string
+    dueDate: string
+    amount: number
+    status: string
+    invoiceUrl: string | null
+    bankSlipUrl: string | null
+  }>
+  imported?: Array<{
+    externalChargeId: string
+    receivableId: string
+    matchType: 'exact' | 'correction'
+  }>
 }
 
 function formatCurrency(value: number) {
@@ -156,6 +203,7 @@ export default function ReceivablesDrawer({
   canManagePayments,
   canCancelPayments,
   canApproveAdjustments,
+  canReconcilePayments,
   onClose,
   onUpdated,
 }: ReceivablesDrawerProps) {
@@ -176,6 +224,9 @@ export default function ReceivablesDrawer({
   })
   const [chargeActionId, setChargeActionId] = useState<string | null>(null)
   const [chargeIssueId, setChargeIssueId] = useState<string | null>(null)
+  const [asaasImportLoading, setAsaasImportLoading] = useState(false)
+  const [asaasImportSaving, setAsaasImportSaving] = useState(false)
+  const [asaasImportPreview, setAsaasImportPreview] = useState<AsaasImportPreview | null>(null)
 
   const loadCycles = async () => {
     if (!sale || !canManagePayments) return
@@ -216,6 +267,7 @@ export default function ReceivablesDrawer({
     setCycleSuccess(null)
     setCycles([])
     setAdjustments([])
+    setAsaasImportPreview(null)
     void loadCycles()
     void loadAdjustments()
   }, [isOpen, sale?.id, canManagePayments])
@@ -372,6 +424,54 @@ export default function ReceivablesDrawer({
       setError(err instanceof Error ? err.message : 'Nao foi possivel gerar o boleto.')
     } finally {
       setChargeIssueId(null)
+    }
+  }
+
+  const previewAsaasImport = async () => {
+    setAsaasImportLoading(true)
+    setError(null)
+    setCycleSuccess(null)
+    try {
+      const response = await fetch(`/api/sales/${sale.id}/asaas-import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'preview' }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.details || payload.error || 'Nao foi possivel buscar boletos existentes no Asaas.')
+      setAsaasImportPreview(payload)
+      setCycleSuccess(
+        payload.matches?.length
+          ? `${payload.matches.length} boleto(s) encontrado(s) para revisar.`
+          : 'Nenhum boleto compativel foi encontrado no Asaas.',
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao foi possivel buscar boletos existentes no Asaas.')
+    } finally {
+      setAsaasImportLoading(false)
+    }
+  }
+
+  const confirmAsaasImport = async () => {
+    setAsaasImportSaving(true)
+    setError(null)
+    setCycleSuccess(null)
+    try {
+      const response = await fetch(`/api/sales/${sale.id}/asaas-import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'import' }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.details || payload.error || 'Nao foi possivel importar os boletos existentes.')
+      setAsaasImportPreview(payload)
+      setCycleSuccess(`${payload.imported?.length ?? 0} boleto(s) importado(s) do Asaas.`)
+      await loadCycles()
+      await onUpdated()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao foi possivel importar os boletos existentes.')
+    } finally {
+      setAsaasImportSaving(false)
     }
   }
 
@@ -583,18 +683,120 @@ export default function ReceivablesDrawer({
                     Acompanhe cada parcela e veja se o boleto ja foi gerado.
                   </p>
                 </div>
-                {canManagePayments && (
-                  <button
-                    type='button'
-                    onClick={issueBillingCycle}
-                    disabled={issuing}
-                    className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
-                  >
-                    {issuing ? 'Gerando...' : 'Gerar boletos das proximas 12'}
-                  </button>
+                {(canManagePayments || canReconcilePayments) && (
+                  <div className='flex flex-col gap-2 sm:flex-row'>
+                    {canReconcilePayments && (
+                      <button
+                        type='button'
+                        onClick={previewAsaasImport}
+                        disabled={asaasImportLoading || asaasImportSaving}
+                        className='rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/8 disabled:opacity-60'
+                      >
+                        {asaasImportLoading ? 'Buscando...' : 'Importar boletos Asaas'}
+                      </button>
+                    )}
+                    {canManagePayments && (
+                      <button
+                        type='button'
+                        onClick={issueBillingCycle}
+                        disabled={issuing}
+                        className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
+                      >
+                        {issuing ? 'Gerando...' : 'Gerar boletos das proximas 12'}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
+
+            {asaasImportPreview && (
+              <div className='border-b border-border bg-surface px-5 py-5'>
+                <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
+                  <div>
+                    <h4 className='text-sm font-semibold text-foreground'>Previa da importacao Asaas</h4>
+                    <p className='mt-1 text-sm text-muted'>
+                      Cliente {asaasImportPreview.customer.name} · {asaasImportPreview.scannedCharges} cobranca(s) lida(s) no Asaas.
+                    </p>
+                    <p className='mt-1 text-xs text-muted'>
+                      Valores maiores dentro da tolerancia entram como possivel correcao e atualizam a parcela ao confirmar.
+                    </p>
+                  </div>
+                  <div className='flex flex-wrap gap-2'>
+                    <span className='pill bg-blue-50 text-blue-700'>
+                      {asaasImportPreview.matches.length} compativel(is)
+                    </span>
+                    <span className='pill bg-slate-100 text-slate-600'>
+                      {asaasImportPreview.unmatchedCharges.length} sem parcela
+                    </span>
+                    <span className='pill bg-slate-100 text-slate-600'>
+                      {asaasImportPreview.unmatchedReceivables.length} sem boleto
+                    </span>
+                  </div>
+                </div>
+
+                {asaasImportPreview.matches.length > 0 && (
+                  <div className='mt-4 overflow-hidden rounded-xl border border-border'>
+                    <div className='grid grid-cols-[1.1fr_0.9fr_0.9fr_1fr] gap-3 bg-surface-secondary px-4 py-3 text-xs font-semibold uppercase text-muted'>
+                      <span>Parcela</span>
+                      <span>Local</span>
+                      <span>Asaas</span>
+                      <span>Status</span>
+                    </div>
+                    <div className='divide-y divide-border'>
+                      {asaasImportPreview.matches.map((match) => (
+                        <div key={`${match.receivableId}-${match.providerChargeId}`} className='grid grid-cols-1 gap-3 px-4 py-3 text-sm md:grid-cols-[1.1fr_0.9fr_0.9fr_1fr] md:items-center'>
+                          <div>
+                            <p className='font-semibold text-foreground'>{match.receivableLabel}</p>
+                            <p className='text-xs text-muted'>Venc. local {formatDate(match.dueDate)}</p>
+                          </div>
+                          <div>
+                            <p className='font-semibold text-foreground'>{formatCurrency(match.localAmount)}</p>
+                            <p className='text-xs text-muted'>No banco</p>
+                          </div>
+                          <div>
+                            <p className='font-semibold text-foreground'>{formatCurrency(match.providerAmount)}</p>
+                            <p className='text-xs text-muted'>Venc. Asaas {formatDate(match.providerDueDate)}</p>
+                          </div>
+                          <div className='flex flex-col gap-2 md:items-start'>
+                            <span className={`pill ${match.matchType === 'correction' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                              {match.matchType === 'correction'
+                                ? `Valor maior +${formatCurrency(match.difference)}`
+                                : 'Valor igual'}
+                            </span>
+                            <span className='text-xs text-muted'>Asaas: {match.status}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {asaasImportPreview.matches.length === 0 && (
+                  <div className='mt-4 rounded-xl border border-border bg-surface-secondary px-4 py-3 text-sm text-muted'>
+                    Nenhuma cobranca do Asaas bateu com as parcelas desta venda por vencimento e valor.
+                  </div>
+                )}
+
+                <div className='mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end'>
+                  <button
+                    type='button'
+                    onClick={() => setAsaasImportPreview(null)}
+                    className='rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'
+                  >
+                    Fechar previa
+                  </button>
+                  <button
+                    type='button'
+                    onClick={confirmAsaasImport}
+                    disabled={asaasImportSaving || asaasImportPreview.matches.length === 0}
+                    className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
+                  >
+                    {asaasImportSaving ? 'Importando...' : 'Confirmar importacao'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {receivables.length === 0 ? (
               <div className='px-5 py-10 text-center text-sm text-muted'>Nenhum recebivel gerado para esta venda.</div>

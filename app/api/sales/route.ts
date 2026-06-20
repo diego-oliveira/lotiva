@@ -99,6 +99,7 @@ export async function GET() {
       canManagePayments: await hasDevelopmentPermission(currentUserId, developmentId, 'issuePayments'),
       canCancelPayments: await hasDevelopmentPermission(currentUserId, developmentId, 'cancelPayments'),
       canApproveAdjustments: await hasDevelopmentPermission(currentUserId, developmentId, 'approveAdjustments'),
+      canReconcilePayments: await hasDevelopmentPermission(currentUserId, developmentId, 'reconcilePayments'),
     },
   ] as const))
   const permissionsByDevelopment = Object.fromEntries(permissionEntries)
@@ -111,6 +112,7 @@ export async function GET() {
       canManagePayments: Boolean(permissions?.canManagePayments),
       canCancelPayments: Boolean(permissions?.canCancelPayments),
       canApproveAdjustments: Boolean(permissions?.canApproveAdjustments),
+      canReconcilePayments: Boolean(permissions?.canReconcilePayments),
     }
   }))
 }
