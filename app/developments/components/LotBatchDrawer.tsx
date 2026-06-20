@@ -16,6 +16,7 @@ type Development = {
 }
 
 type LotDraft = {
+  blockIdentifier: string
   identifier: string
   front: number
   back: number
@@ -57,7 +58,10 @@ const statusOptions = [
 const csvTemplate = [
   'quadra;lote;frente;fundo;lateral_esquerda;lateral_direita;area;valor;status',
   'A;01;10;10;15;15;150;75000;available',
-  'A;02;10;10;15;15;150;75000;available',
+  'A;02;10;10;15;15;150;75000;reserved',
+  'A;03;10;10;15;15;150;75000;on_hold',
+  'A;04;10;10;15;15;150;75000;sold',
+  'B;01;12;12;20;20;240;98000;available',
 ].join('\n')
 
 const csvColumnAliases = {
@@ -185,7 +189,7 @@ function parseCsvStatus(value: string) {
 
 function parseLotCsv(text: string) {
   const parsed = parseCsv(text)
-  if (parsed.errors.length > 0) return { drafts: [], blockIdentifier: '', errors: parsed.errors }
+  if (parsed.errors.length > 0) return { drafts: [], blockIdentifier: '', blockCount: 0, errors: parsed.errors }
 
   const errors: string[] = []
   const blockIdentifiers = new Set<string>()
@@ -193,6 +197,7 @@ function parseLotCsv(text: string) {
     const rowNumber = index + 2
     const blockIdentifier = getCsvValue(row, csvColumnAliases.blockIdentifier)
     if (blockIdentifier) blockIdentifiers.add(blockIdentifier)
+    if (!blockIdentifier) errors.push(`Linha ${rowNumber}: informe a quadra.`)
 
     const identifier = getCsvValue(row, csvColumnAliases.identifier)
     if (!identifier) errors.push(`Linha ${rowNumber}: informe o lote.`)
@@ -213,6 +218,7 @@ function parseLotCsv(text: string) {
     if (!status) errors.push(`Linha ${rowNumber}: status invalido.`)
 
     return {
+      blockIdentifier,
       identifier,
       front: parseCsvNumber(numberFields.front),
       back: parseCsvNumber(numberFields.back),
@@ -234,22 +240,29 @@ function parseLotCsv(text: string) {
     if (!Number.isFinite(draft.price) || draft.price < 0) errors.push(`Linha ${rowNumber}: valor nao pode ser negativo.`)
   })
 
-  if (blockIdentifiers.size > 1) {
-    errors.push('O CSV deve conter lotes de apenas uma quadra por importacao.')
-  }
   if (drafts.length > 300) {
     errors.push('Importe no maximo 300 lotes por vez.')
+  }
+  const duplicateLots = drafts
+    .map((draft) => draft.blockIdentifier && draft.identifier
+      ? `${draft.blockIdentifier.toLowerCase()}::${draft.identifier.toLowerCase()}`
+      : '')
+    .filter((key, index, keys) => key && keys.indexOf(key) !== index)
+  if (duplicateLots.length > 0) {
+    errors.push('Existem lotes repetidos para a mesma quadra no CSV.')
   }
 
   return {
     drafts,
     blockIdentifier: [...blockIdentifiers][0] ?? '',
+    blockCount: blockIdentifiers.size,
     errors,
   }
 }
 
 function createDrafts(form: typeof defaultForm): LotDraft[] {
   return Array.from({ length: Math.max(0, form.quantity) }, (_, index) => ({
+    blockIdentifier: form.blockIdentifier,
     identifier: makeIdentifier(index),
     front: form.front,
     back: form.back,
@@ -299,7 +312,7 @@ export default function LotBatchDrawer({
     setDrafts((current) =>
       current.map((draft, draftIndex) => (
         draftIndex === index
-          ? { ...draft, [field]: field === 'identifier' || field === 'status' ? value : Number(value) }
+          ? { ...draft, [field]: field === 'blockIdentifier' || field === 'identifier' || field === 'status' ? value : Number(value) }
           : draft
       )),
     )
@@ -344,7 +357,7 @@ export default function LotBatchDrawer({
         status: result.drafts[0]?.status ?? current.status,
       }))
       setErrors([])
-      setImportNotice(`${result.drafts.length} lote(s) importado(s) para revisao.`)
+      setImportNotice(`${result.drafts.length} lote(s) importado(s) em ${result.blockCount} quadra(s) para revisao.`)
     } catch (error) {
       setErrors([error instanceof Error ? error.message : 'Nao foi possivel ler o arquivo CSV.'])
       setImportNotice(null)
@@ -504,6 +517,9 @@ export default function LotBatchDrawer({
             <div>
               <h3 className='text-base font-semibold text-foreground'>Importar CSV</h3>
               <p className='mt-1 text-sm text-muted'>Use uma planilha para preencher a pre-visualizacao e revise antes de criar os lotes.</p>
+              <p className='mt-2 text-xs font-semibold text-muted'>
+                Status aceitos: available, reserved, on_hold, sold. Tambem aceitamos disponivel, reservado, bloqueado e vendido.
+              </p>
             </div>
             <div className='flex flex-col gap-2 sm:flex-row'>
               <button
@@ -543,6 +559,7 @@ export default function LotBatchDrawer({
             <table className='min-w-full divide-y divide-border text-sm'>
               <thead>
                 <tr className='text-left text-xs font-semibold uppercase text-muted'>
+                  <th className='px-2 py-2'>Quadra</th>
                   <th className='px-2 py-2'>Lote</th>
                   <th className='px-2 py-2'>Area</th>
                   <th className='px-2 py-2'>Frente</th>
@@ -556,6 +573,9 @@ export default function LotBatchDrawer({
               <tbody className='divide-y divide-border'>
                 {drafts.map((draft, index) => (
                   <tr key={index}>
+                    <td className='px-2 py-2'>
+                      <input value={draft.blockIdentifier} onChange={(event) => updateDraft(index, 'blockIdentifier', event.target.value)} className='w-20 rounded-lg border border-border bg-surface px-2 py-2 text-sm font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary' />
+                    </td>
                     <td className='px-2 py-2'>
                       <input value={draft.identifier} onChange={(event) => updateDraft(index, 'identifier', event.target.value)} className='w-20 rounded-lg border border-border bg-surface px-2 py-2 text-sm font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary' />
                     </td>
