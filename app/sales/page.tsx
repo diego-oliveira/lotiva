@@ -5,6 +5,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react'
 import SalesForm from './components/SalesForm'
 import ContractViewer from './components/ContractViewer'
 import ReceivablesDrawer from './components/ReceivablesDrawer'
+import LegacySalesImportDrawer from './components/LegacySalesImportDrawer'
 
 interface Block {
   id: string
@@ -111,6 +112,7 @@ function SalesContent() {
   const [contractSaleId, setContractSaleId] = useState<string>('')
   const [receivablesSale, setReceivablesSale] = useState<Sale | null>(null)
   const [canCorrectSales, setCanCorrectSales] = useState(false)
+  const [showLegacyImport, setShowLegacyImport] = useState(false)
 
   useEffect(() => {
     fetchSales()
@@ -218,6 +220,14 @@ function SalesContent() {
     })
   }
 
+  const handleLegacyImport = async (count: number) => {
+    await fetchSales()
+    setNotice({
+      message: `${count} venda(s) legada(s) importada(s) com sucesso.`,
+      developmentId: developmentFilter,
+    })
+  }
+
   const handleViewContract = (saleId: string) => {
     setContractSaleId(saleId)
     setShowContract(true)
@@ -299,6 +309,14 @@ function SalesContent() {
           <p className='page-subtitle'>Conclua vendas, acompanhe contratos e revise as condicoes comerciais fechadas.</p>
         </div>
         <div className='flex flex-wrap gap-3'>
+          <button
+            onClick={() => setShowLegacyImport(true)}
+            disabled={!developmentFilter}
+            title={!developmentFilter ? 'Selecione um empreendimento para importar vendas legadas' : 'Importar vendas legadas'}
+            className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:cursor-not-allowed disabled:opacity-60'
+          >
+            Importar vendas
+          </button>
           <button onClick={handleAddSale} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
             Nova venda
           </button>
@@ -457,6 +475,13 @@ function SalesContent() {
         onClose={handleFormClose}
         onSave={handleFormSave}
         correctionReason={correctionReason}
+      />
+
+      <LegacySalesImportDrawer
+        developmentId={developmentFilter}
+        isOpen={showLegacyImport}
+        onClose={() => setShowLegacyImport(false)}
+        onImported={handleLegacyImport}
       />
 
       {correctionSale && (
