@@ -55,6 +55,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       company: true,
       settings: true,
       contractSettings: true,
+      map: true,
       documentTemplate: true,
       _count: {
         select: {

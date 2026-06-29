@@ -3,14 +3,23 @@
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useMemo, useState } from 'react'
+import DevelopmentLotMap from './components/DevelopmentLotMap'
 
-type ViewMode = 'map' | 'list'
+type ViewMode = 'plan' | 'map' | 'list'
 type SortField = 'identifier' | 'block' | 'totalArea' | 'price' | 'status'
 
 interface Development {
   id: string
   name: string
   settings?: DevelopmentSettings | null
+  map?: DevelopmentMap | null
+}
+
+interface DevelopmentMap {
+  id: string
+  fileUrl: string
+  fileType: string
+  pdfPageNumber: number
 }
 
 interface DevelopmentSettings {
@@ -104,6 +113,8 @@ interface Lot {
   totalArea: number
   price: number
   status: string
+  mapXPercent?: number | null
+  mapYPercent?: number | null
   createdAt: string
   updatedAt: string
   block: Block
@@ -312,6 +323,7 @@ function LotsContent() {
   const [sortBy, setSortBy] = useState<SortField>('block')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [canManageUsers, setCanManageUsers] = useState(false)
+  const [canManageSettings, setCanManageSettings] = useState(false)
 
   async function fetchLots() {
     try {
@@ -331,8 +343,14 @@ function LotsContent() {
     void fetchLots()
     fetch('/api/me/permissions', { cache: 'no-store' })
       .then((response) => response.ok ? response.json() : null)
-      .then((payload) => setCanManageUsers(Boolean(payload?.permissions?.manageUsers)))
-      .catch(() => setCanManageUsers(false))
+      .then((payload) => {
+        setCanManageUsers(Boolean(payload?.permissions?.manageUsers))
+        setCanManageSettings(Boolean(payload?.permissions?.manageSettings || payload?.permissions?.admin))
+      })
+      .catch(() => {
+        setCanManageUsers(false)
+        setCanManageSettings(false)
+      })
   }, [])
 
   useEffect(() => {
@@ -469,6 +487,27 @@ function LotsContent() {
   const selectedLot = useMemo(
     () => filteredLots.find((lot) => lot.id === selectedLotId) ?? lots.find((lot) => lot.id === selectedLotId) ?? null,
     [filteredLots, lots, selectedLotId],
+  )
+  const visibleDevelopments = useMemo(() => {
+    const map = new Map<string, Development>()
+    lots
+      .filter((lot) => !developmentFilter || lot.block.development?.id === developmentFilter)
+      .forEach((lot) => {
+      const development = lot.block.development
+      if (development) map.set(development.id, development)
+    })
+    return Array.from(map.values())
+  }, [lots, developmentFilter])
+  const selectedDevelopment = developmentFilter
+    ? visibleDevelopments.find((development) => development.id === developmentFilter) ?? null
+    : visibleDevelopments.length === 1
+      ? visibleDevelopments[0]
+      : null
+  const planLots = useMemo(
+    () => selectedDevelopment
+      ? lots.filter((lot) => lot.block.development?.id === selectedDevelopment.id)
+      : [],
+    [lots, selectedDevelopment],
   )
   const selectedLotStatus = selectedLot ? getEffectiveLotStatus(selectedLot) : null
   const selectedDevelopmentSettings = selectedLot?.block.development?.settings ?? null
@@ -617,18 +656,28 @@ function LotsContent() {
     setProposalNotice(null)
   }
 
-  const openSimulator = async () => {
-    if (!selectedLot) return
+  const openLotDetails = (lotId: string) => {
+    setSelectedLotId(lotId)
+    setShowReservationForm(false)
+    setShowSimulator(false)
+    setReservationError(null)
+    setProposalError(null)
+    setProposalNotice(null)
+  }
+
+  const openSimulator = async (lotOverride?: Lot) => {
+    const activeLot = lotOverride ?? selectedLot
+    if (!activeLot) return
 
     try {
       setProposalError(null)
       if (clients.length === 0) await fetchClients()
 
-      const settings = selectedLot.block.development?.settings
-      const salePrice = selectedLot.price
+      const settings = activeLot.block.development?.settings
+      const salePrice = activeLot.price
       const minDownPaymentPercentage = settings?.minDownPaymentPercentage ?? 10
       const maxInstallments = settings?.maxInstallments ?? 120
-      const activeReservation = getActiveReservation(selectedLot)
+      const activeReservation = getActiveReservation(activeLot)
 
       setSimulatorForm({
         salePrice,
@@ -656,13 +705,14 @@ function LotsContent() {
     }
   }
 
-  const openReservationForm = async () => {
-    if (!selectedLot) return
+  const openReservationForm = async (lotOverride?: Lot) => {
+    const activeLot = lotOverride ?? selectedLot
+    if (!activeLot) return
 
     try {
       setReservationError(null)
       if (clients.length === 0) await fetchClients()
-      const activeReservation = getActiveReservation(selectedLot)
+      const activeReservation = getActiveReservation(activeLot)
       setReservationForm({
         userId: activeReservation?.user.id ?? '',
         proposal: activeReservation?.proposal ?? '',
@@ -672,6 +722,20 @@ function LotsContent() {
     } catch (err) {
       setReservationError(err instanceof Error ? err.message : 'Erro ao carregar clientes')
     }
+  }
+
+  const openSimulatorForLot = async (lotId: string) => {
+    const lot = lots.find((item) => item.id === lotId)
+    if (!lot) return
+    setSelectedLotId(lotId)
+    await openSimulator(lot)
+  }
+
+  const openReservationForLot = async (lotId: string) => {
+    const lot = lots.find((item) => item.id === lotId)
+    if (!lot) return
+    setSelectedLotId(lotId)
+    await openReservationForm(lot)
   }
 
   const saveReservation = async () => {
@@ -914,15 +978,21 @@ function LotsContent() {
       <div className='flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'>
         <div>
           <h1 className='page-title'>Lotes</h1>
-          <p className='page-subtitle'>Consulte disponibilidade no mapa operacional ou compare os lotes pela lista.</p>
+          <p className='page-subtitle'>Consulte disponibilidade pela planta real, pelo mapa operacional de quadras ou pela lista.</p>
         </div>
         <div className='flex flex-wrap gap-3'>
           <div className='inline-flex overflow-hidden rounded-xl border border-border bg-surface p-1'>
             <button
+              onClick={() => setViewMode('plan')}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${viewMode === 'plan' ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary hover:text-foreground'}`}
+            >
+              Planta
+            </button>
+            <button
               onClick={() => setViewMode('map')}
               className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${viewMode === 'map' ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary hover:text-foreground'}`}
             >
-              Mapa
+              Quadras
             </button>
             <button
               onClick={() => setViewMode('list')}
@@ -980,32 +1050,35 @@ function LotsContent() {
         </div>
       )}
 
-      <section className='grid gap-4 md:grid-cols-2 xl:grid-cols-5'>
-        <div className='metric-card px-5 py-4'>
-          <p className='metric-label'>Lotes vendidos</p>
-          <p className='metric-value text-primary'>
-            {new Intl.NumberFormat('pt-BR', { style: 'percent', maximumFractionDigits: 1 }).format(stats.soldPercentage)}
-          </p>
-        </div>
-        <div className='metric-card px-5 py-4'>
-          <p className='metric-label'>Lotes totais</p>
-          <p className='metric-value'>{stats.total}</p>
-        </div>
-        <div className='metric-card px-5 py-4'>
-          <p className='metric-label'>Vendidos</p>
-          <p className='metric-value text-red-700'>{stats.sold}</p>
-        </div>
-        <div className='metric-card px-5 py-4'>
-          <p className='metric-label'>Reservados</p>
-          <p className='metric-value text-amber-700'>{stats.reserved}</p>
-        </div>
-        <div className='metric-card px-5 py-4'>
-          <p className='metric-label'>Disponiveis</p>
-          <p className='metric-value text-emerald-700'>{stats.available}</p>
-        </div>
-      </section>
+      {viewMode !== 'plan' && (
+        <section className='grid gap-4 md:grid-cols-2 xl:grid-cols-5'>
+          <div className='metric-card px-5 py-4'>
+            <p className='metric-label'>Lotes vendidos</p>
+            <p className='metric-value text-primary'>
+              {new Intl.NumberFormat('pt-BR', { style: 'percent', maximumFractionDigits: 1 }).format(stats.soldPercentage)}
+            </p>
+          </div>
+          <div className='metric-card px-5 py-4'>
+            <p className='metric-label'>Lotes totais</p>
+            <p className='metric-value'>{stats.total}</p>
+          </div>
+          <div className='metric-card px-5 py-4'>
+            <p className='metric-label'>Vendidos</p>
+            <p className='metric-value text-red-700'>{stats.sold}</p>
+          </div>
+          <div className='metric-card px-5 py-4'>
+            <p className='metric-label'>Reservados</p>
+            <p className='metric-value text-amber-700'>{stats.reserved}</p>
+          </div>
+          <div className='metric-card px-5 py-4'>
+            <p className='metric-label'>Disponiveis</p>
+            <p className='metric-value text-emerald-700'>{stats.available}</p>
+          </div>
+        </section>
+      )}
 
       <section className='panel overflow-hidden'>
+        {viewMode !== 'plan' && (
         <div className='panel-header px-6 py-5'>
           <div className='grid gap-4 lg:grid-cols-[minmax(220px,1.3fr)_minmax(160px,0.8fr)_minmax(160px,0.8fr)_auto] lg:items-end'>
             <label className='block'>
@@ -1048,10 +1121,11 @@ function LotsContent() {
             </button>
           </div>
         </div>
+        )}
 
         <div className='min-h-[620px]'>
           <div className='min-w-0'>
-            {filteredLots.length === 0 ? (
+            {(viewMode === 'plan' ? planLots : filteredLots).length === 0 ? (
               <div className='flex min-h-[420px] flex-col items-center justify-center px-6 py-12 text-center'>
                 <div className='flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-secondary text-muted'>
                   <svg className='h-7 w-7' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
@@ -1060,11 +1134,11 @@ function LotsContent() {
                 </div>
                 <h2 className='mt-4 text-base font-semibold text-foreground'>Nenhum lote encontrado</h2>
                 <p className='mt-2 max-w-md text-sm leading-6 text-muted'>
-                  {hasActiveLotFilters
+                  {viewMode !== 'plan' && hasActiveLotFilters
                     ? 'Ajuste ou limpe os filtros para visualizar o mapa e a lista de lotes.'
                     : 'Crie um empreendimento com quadras e lotes para iniciar a operacao comercial.'}
                 </p>
-                {hasActiveLotFilters ? (
+                {viewMode !== 'plan' && hasActiveLotFilters ? (
                   <button onClick={clearFilters} className='mt-6 rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
                     Limpar filtros
                   </button>
@@ -1072,6 +1146,31 @@ function LotsContent() {
                   <Link href='/developments' className='mt-6 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
                     Criar empreendimento
                   </Link>
+                )}
+              </div>
+            ) : viewMode === 'plan' ? (
+              <div className='space-y-6 p-6'>
+                {selectedDevelopment && (selectedDevelopment.map || canManageSettings) ? (
+                  <DevelopmentLotMap
+                    development={selectedDevelopment}
+                    lots={planLots}
+                    selectedLotId={selectedLotId}
+                    canManageMap={canManageSettings}
+                    onSelectLot={selectLot}
+                    onOpenLotDetails={openLotDetails}
+                    onReserveLot={(lotId) => void openReservationForLot(lotId)}
+                    onSimulateLot={(lotId) => void openSimulatorForLot(lotId)}
+                    onRefresh={fetchLots}
+                    getStatusMeta={getStatusMeta}
+                    formatCurrency={formatCurrency}
+                    formatArea={formatArea}
+                  />
+                ) : (
+                  <div className='rounded-2xl border border-dashed border-border bg-surface-secondary p-6 text-sm text-muted'>
+                    {selectedDevelopment
+                      ? 'A planta deste empreendimento ainda nao foi configurada por um administrador.'
+                      : 'Selecione um unico empreendimento para visualizar ou configurar a planta real.'}
+                  </div>
                 )}
               </div>
             ) : viewMode === 'map' ? (
@@ -1341,10 +1440,10 @@ function LotsContent() {
                   <div className='mt-4 space-y-3'>
                     {selectedLotStatus === 'available' && (
                       <>
-                        <button onClick={openSimulator} className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+                        <button onClick={() => void openSimulator()} className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
                           Simular venda
                         </button>
-                        <button onClick={openReservationForm} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
+                        <button onClick={() => void openReservationForm()} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
                           Reservar lote
                         </button>
                         <button onClick={() => updateLotStatus('on_hold')} disabled={reservationSaving} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background disabled:opacity-60'>
@@ -1377,7 +1476,7 @@ function LotsContent() {
                             </p>
                           </>
                         )}
-                        <button onClick={openSimulator} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
+                        <button onClick={() => void openSimulator()} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
                           Simular nova condicao
                         </button>
                         {selectedLotReservation?.canManage ? (
@@ -1403,7 +1502,7 @@ function LotsContent() {
                             Somente quem bloqueou o lote ou um administrador pode libera-lo.
                           </p>
                         )}
-                        <button onClick={openSimulator} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
+                        <button onClick={() => void openSimulator()} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
                           Simular venda
                         </button>
                       </>

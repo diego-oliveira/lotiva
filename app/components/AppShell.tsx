@@ -256,7 +256,7 @@ function WorkspaceSelectorContent({
 
   if (developments.length === 0) {
     return (
-      <div className='hidden rounded-2xl border border-border bg-surface px-4 py-2 text-sm text-muted lg:block'>
+      <div className='rounded-xl border border-border bg-surface px-3 py-2 text-xs text-muted lg:rounded-2xl lg:px-4 lg:text-sm'>
         Nenhum empreendimento acessivel
       </div>
     )
@@ -270,8 +270,8 @@ function WorkspaceSelectorContent({
   }
 
   return (
-    <div className='hidden h-12 min-w-[280px] max-w-sm items-center gap-3 rounded-xl border border-border bg-surface px-3 shadow-sm lg:flex'>
-      <div className='flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-background'>
+    <div className='flex h-11 w-full min-w-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 shadow-sm lg:h-12 lg:w-auto lg:min-w-[280px] lg:max-w-sm lg:gap-3'>
+      <div className='hidden h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-background sm:flex'>
         {selectedDevelopment?.logo ? (
           <img src={selectedDevelopment.logo} alt='' className='h-full w-full object-contain p-1' />
         ) : (
@@ -284,7 +284,7 @@ function WorkspaceSelectorContent({
         aria-label='Empreendimento ativo'
         value={selectedDevelopment?.id ?? ''}
         onChange={(event) => handleChange(event.target.value)}
-        className='min-w-0 flex-1 bg-transparent py-2 text-sm font-semibold text-foreground outline-none'
+        className='min-w-0 flex-1 bg-transparent py-2 text-xs font-semibold text-foreground outline-none lg:text-sm'
       >
         {developments.map((development) => (
           <option key={development.id} value={development.id}>
@@ -492,8 +492,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className='flex min-h-screen min-w-0 flex-1 flex-col'>
           <header className='sticky top-0 z-30 border-b border-border bg-white/95 backdrop-blur'>
-            <div className='flex h-[88px] items-center justify-between px-4 sm:px-6 lg:px-8'>
-              <div className='flex items-center gap-4'>
+            <div className='flex min-h-[88px] flex-wrap items-center gap-3 px-4 py-3 sm:px-6 lg:h-[88px] lg:flex-nowrap lg:px-8 lg:py-0'>
+              <div className='order-1 flex flex-1 items-center gap-4'>
                 <button
                   type='button'
                   onClick={() => setSidebarOpen(true)}
@@ -506,12 +506,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
                 <div>
                   <p className='text-xs font-semibold uppercase tracking-[0.2em] text-muted'>Lotiva</p>
-                  <p className='mt-1 text-sm font-medium text-foreground'>Gestao comercial de loteamentos</p>
+                  <p className='mt-1 hidden text-sm font-medium text-foreground sm:block'>Gestao comercial de loteamentos</p>
                 </div>
               </div>
 
-              <div className='flex items-center gap-4'>
+              <div className='order-3 w-full lg:order-2 lg:w-auto'>
                 <WorkspaceSelector developments={workspaceDevelopments} />
+              </div>
+
+              <div className='order-2 flex items-center gap-3 lg:order-3 lg:gap-4'>
                 <div className='relative'>
                   <button
                     type='button'

@@ -54,6 +54,7 @@ model Development {
   memberships        DevelopmentUser[]
   settings           DevelopmentSettings?
   contractSettings   DevelopmentContractSettings?
+  map                DevelopmentMap?
   documentTemplateId String?
   documentTemplate   DocumentTemplate?            @relation(fields: [documentTemplateId], references: [id], onDelete: SetNull)
   documentValues     DevelopmentDocumentValue[]
@@ -94,6 +95,18 @@ model DevelopmentContractSettings {
   additionalClauses      String   @default("") @db.Text
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
+
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+}
+
+model DevelopmentMap {
+  id            String   @id @default(uuid())
+  developmentId String   @unique
+  fileUrl       String
+  fileType      String
+  pdfPageNumber Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
 }
@@ -256,6 +269,8 @@ model Lot {
   totalArea  Float
   price      Decimal  @db.Decimal(15, 2)
   status     String   @default("available")
+  mapXPercent Float?
+  mapYPercent Float?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

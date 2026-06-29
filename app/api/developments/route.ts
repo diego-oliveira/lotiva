@@ -48,6 +48,7 @@ export async function GET() {
       company: true,
       settings: true,
       contractSettings: true,
+      map: true,
       documentTemplate: true,
       _count: {
         select: {
