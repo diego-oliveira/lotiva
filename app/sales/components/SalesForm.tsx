@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { NumberTextInput } from '@/app/components/NumberTextInput'
 
 interface Block {
   id: string
@@ -902,13 +903,12 @@ export default function SalesForm({
                     <div className='grid gap-4 md:grid-cols-2'>
                       <label className='block'>
                         <span className='mb-2 block text-sm font-semibold text-foreground'>Valor de entrada</span>
-                        <input
-                          type='number'
+                        <NumberTextInput
                           step='0.01'
                           min='0'
                           max={selectedLot?.price || 0}
                           value={formData.downPayment}
-                          onChange={(event) => handleInputChange('downPayment', parseFloat(event.target.value) || 0)}
+                          onValueChange={(value) => handleInputChange('downPayment', value)}
                           disabled={approvedTermsLocked}
                           className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:bg-surface-secondary disabled:text-muted'
                         />
@@ -919,12 +919,11 @@ export default function SalesForm({
                       </label>
                       <label className='block'>
                         <span className='mb-2 block text-sm font-semibold text-foreground'>Numero de parcelas</span>
-                        <input
-                          type='number'
+                        <NumberTextInput
                           min='1'
                           max={maximumInstallments}
                           value={formData.installmentCount}
-                          onChange={(event) => handleInputChange('installmentCount', parseInt(event.target.value) || 1)}
+                          onValueChange={(value) => handleInputChange('installmentCount', Math.trunc(value))}
                           disabled={approvedTermsLocked}
                           className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:bg-surface-secondary disabled:text-muted'
                         />

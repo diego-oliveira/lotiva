@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import FormDrawer from '@/app/components/FormDrawer'
+import { NumberTextInput } from '@/app/components/NumberTextInput'
 
 type Development = {
   id: string
@@ -297,7 +298,7 @@ export default function LotBatchDrawer({
   const totalValue = useMemo(() => drafts.reduce((sum, draft) => sum + Number(draft.price || 0), 0), [drafts])
   const totalArea = useMemo(() => drafts.reduce((sum, draft) => sum + Number(draft.totalArea || 0), 0), [drafts])
 
-  const updateForm = (field: keyof typeof defaultForm, value: string) => {
+  const updateForm = (field: keyof typeof defaultForm, value: string | number) => {
     const nextForm = {
       ...form,
       [field]: field === 'blockIdentifier' || field === 'status' ? value : Number(value),
@@ -308,7 +309,7 @@ export default function LotBatchDrawer({
     setImportNotice(null)
   }
 
-  const updateDraft = (index: number, field: keyof LotDraft, value: string) => {
+  const updateDraft = (index: number, field: keyof LotDraft, value: string | number) => {
     setDrafts((current) =>
       current.map((draft, draftIndex) => (
         draftIndex === index
@@ -468,38 +469,37 @@ export default function LotBatchDrawer({
             </label>
             <label className='block'>
               <span className='mb-2 block text-sm font-semibold text-foreground'>Quantidade de lotes</span>
-              <input
-                type='number'
+              <NumberTextInput
                 min={1}
                 max={300}
                 value={form.quantity}
-                onChange={(event) => updateForm('quantity', event.target.value)}
+                onValueChange={(value) => updateForm('quantity', Math.trunc(value))}
                 className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
               />
             </label>
             <label className='block'>
               <span className='mb-2 block text-sm font-semibold text-foreground'>Frente (m)</span>
-              <input type='number' min={0} step='0.01' value={form.front} onChange={(event) => updateForm('front', event.target.value)} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary' />
+              <NumberTextInput min={0} step='0.01' value={form.front} onValueChange={(value) => updateForm('front', value)} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary' />
             </label>
             <label className='block'>
               <span className='mb-2 block text-sm font-semibold text-foreground'>Fundo (m)</span>
-              <input type='number' min={0} step='0.01' value={form.back} onChange={(event) => updateForm('back', event.target.value)} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary' />
+              <NumberTextInput min={0} step='0.01' value={form.back} onValueChange={(value) => updateForm('back', value)} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary' />
             </label>
             <label className='block'>
               <span className='mb-2 block text-sm font-semibold text-foreground'>Lateral esquerda (m)</span>
-              <input type='number' min={0} step='0.01' value={form.leftSide} onChange={(event) => updateForm('leftSide', event.target.value)} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary' />
+              <NumberTextInput min={0} step='0.01' value={form.leftSide} onValueChange={(value) => updateForm('leftSide', value)} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary' />
             </label>
             <label className='block'>
               <span className='mb-2 block text-sm font-semibold text-foreground'>Lateral direita (m)</span>
-              <input type='number' min={0} step='0.01' value={form.rightSide} onChange={(event) => updateForm('rightSide', event.target.value)} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary' />
+              <NumberTextInput min={0} step='0.01' value={form.rightSide} onValueChange={(value) => updateForm('rightSide', value)} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary' />
             </label>
             <label className='block'>
               <span className='mb-2 block text-sm font-semibold text-foreground'>Area padrao (m2)</span>
-              <input type='number' min={0} step='0.01' value={form.totalArea} onChange={(event) => updateForm('totalArea', event.target.value)} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary' />
+              <NumberTextInput min={0} step='0.01' value={form.totalArea} onValueChange={(value) => updateForm('totalArea', value)} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary' />
             </label>
             <label className='block'>
               <span className='mb-2 block text-sm font-semibold text-foreground'>Valor padrao</span>
-              <input type='number' min={0} step='0.01' value={form.price} onChange={(event) => updateForm('price', event.target.value)} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary' />
+              <NumberTextInput min={0} step='0.01' value={form.price} onValueChange={(value) => updateForm('price', value)} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary' />
             </label>
             <label className='block'>
               <span className='mb-2 block text-sm font-semibold text-foreground'>Status padrao</span>
@@ -580,22 +580,22 @@ export default function LotBatchDrawer({
                       <input value={draft.identifier} onChange={(event) => updateDraft(index, 'identifier', event.target.value)} className='w-20 rounded-lg border border-border bg-surface px-2 py-2 text-sm font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary' />
                     </td>
                     <td className='px-2 py-2'>
-                      <input type='number' min={0} step='0.01' value={draft.totalArea} onChange={(event) => updateDraft(index, 'totalArea', event.target.value)} className='w-24 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
+                      <NumberTextInput min={0} step='0.01' value={draft.totalArea} onValueChange={(value) => updateDraft(index, 'totalArea', value)} className='w-24 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
                     </td>
                     <td className='px-2 py-2'>
-                      <input type='number' min={0} step='0.01' value={draft.front} onChange={(event) => updateDraft(index, 'front', event.target.value)} className='w-20 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
+                      <NumberTextInput min={0} step='0.01' value={draft.front} onValueChange={(value) => updateDraft(index, 'front', value)} className='w-20 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
                     </td>
                     <td className='px-2 py-2'>
-                      <input type='number' min={0} step='0.01' value={draft.back} onChange={(event) => updateDraft(index, 'back', event.target.value)} className='w-20 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
+                      <NumberTextInput min={0} step='0.01' value={draft.back} onValueChange={(value) => updateDraft(index, 'back', value)} className='w-20 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
                     </td>
                     <td className='px-2 py-2'>
-                      <input type='number' min={0} step='0.01' value={draft.leftSide} onChange={(event) => updateDraft(index, 'leftSide', event.target.value)} className='w-24 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
+                      <NumberTextInput min={0} step='0.01' value={draft.leftSide} onValueChange={(value) => updateDraft(index, 'leftSide', value)} className='w-24 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
                     </td>
                     <td className='px-2 py-2'>
-                      <input type='number' min={0} step='0.01' value={draft.rightSide} onChange={(event) => updateDraft(index, 'rightSide', event.target.value)} className='w-24 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
+                      <NumberTextInput min={0} step='0.01' value={draft.rightSide} onValueChange={(value) => updateDraft(index, 'rightSide', value)} className='w-24 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
                     </td>
                     <td className='px-2 py-2'>
-                      <input type='number' min={0} step='0.01' value={draft.price} onChange={(event) => updateDraft(index, 'price', event.target.value)} className='w-28 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
+                      <NumberTextInput min={0} step='0.01' value={draft.price} onValueChange={(value) => updateDraft(index, 'price', value)} className='w-28 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
                     </td>
                     <td className='px-2 py-2'>
                       <select value={draft.status} onChange={(event) => updateDraft(index, 'status', event.target.value)} className='w-32 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary'>

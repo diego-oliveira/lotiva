@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import FormDrawer from '@/app/components/FormDrawer'
 import ImageUploadField from '@/app/components/ImageUploadField'
+import { NumberTextInput } from '@/app/components/NumberTextInput'
 
 interface Company {
   id: string
@@ -341,12 +342,11 @@ export default function DevelopmentForm({
             <div className='mt-5 grid gap-4 md:grid-cols-2'>
               <label className='block'>
                 <span className='mb-2 block text-sm font-semibold text-foreground'>Validade da reserva</span>
-                <input
-                  type='number'
+                <NumberTextInput
                   min={1}
                   max={180}
                   value={settingsData.reservationValidityDays}
-                  onChange={(event) => updateSettingNumber('reservationValidityDays', Number(event.target.value))}
+                  onValueChange={(value) => updateSettingNumber('reservationValidityDays', value)}
                   className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary ${
                     errors.reservationValidityDays ? 'border-red-300' : 'border-border'
                   }`}
@@ -356,13 +356,12 @@ export default function DevelopmentForm({
 
               <label className='block'>
                 <span className='mb-2 block text-sm font-semibold text-foreground'>Entrada minima (%)</span>
-                <input
-                  type='number'
+                <NumberTextInput
                   min={0}
                   max={100}
                   step='0.01'
                   value={settingsData.minDownPaymentPercentage}
-                  onChange={(event) => updateSettingNumber('minDownPaymentPercentage', Number(event.target.value))}
+                  onValueChange={(value) => updateSettingNumber('minDownPaymentPercentage', value)}
                   className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary ${
                     errors.minDownPaymentPercentage ? 'border-red-300' : 'border-border'
                   }`}
@@ -372,12 +371,11 @@ export default function DevelopmentForm({
 
               <label className='block'>
                 <span className='mb-2 block text-sm font-semibold text-foreground'>Maximo de parcelas</span>
-                <input
-                  type='number'
+                <NumberTextInput
                   min={1}
                   max={240}
                   value={settingsData.maxInstallments}
-                  onChange={(event) => updateSettingNumber('maxInstallments', Number(event.target.value))}
+                  onValueChange={(value) => updateSettingNumber('maxInstallments', value)}
                   className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary ${
                     errors.maxInstallments ? 'border-red-300' : 'border-border'
                   }`}
@@ -387,13 +385,12 @@ export default function DevelopmentForm({
 
               <label className='block'>
                 <span className='mb-2 block text-sm font-semibold text-foreground'>Juros ao mes (%)</span>
-                <input
-                  type='number'
+                <NumberTextInput
                   min={0}
                   max={10}
                   step='0.01'
                   value={settingsData.defaultInterestRate}
-                  onChange={(event) => updateSettingNumber('defaultInterestRate', Number(event.target.value))}
+                  onValueChange={(value) => updateSettingNumber('defaultInterestRate', value)}
                   className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary ${
                     errors.defaultInterestRate ? 'border-red-300' : 'border-border'
                   }`}

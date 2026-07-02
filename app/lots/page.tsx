@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import DevelopmentLotMap from './components/DevelopmentLotMap'
+import { CurrencyTextInput, NumberTextInput } from '@/app/components/NumberTextInput'
 
 type ViewMode = 'plan' | 'map' | 'list'
 type SortField = 'identifier' | 'block' | 'totalArea' | 'price' | 'status'
@@ -181,27 +182,6 @@ function formatCurrency(value: number) {
     style: 'currency',
     currency: 'BRL',
   }).format(value)
-}
-
-function parseCurrencyInput(value: string) {
-  const normalized = value.replace(/[^\d,.-]/g, '').trim()
-  if (!normalized) return 0
-
-  const decimalSeparator = normalized.lastIndexOf(',')
-  if (decimalSeparator >= 0) {
-    const integerPart = normalized.slice(0, decimalSeparator).replace(/\D/g, '')
-    const decimalPart = normalized.slice(decimalSeparator + 1).replace(/\D/g, '').slice(0, 2)
-    return Number(`${integerPart || '0'}.${decimalPart.padEnd(2, '0')}`)
-  }
-
-  const dotSeparator = normalized.lastIndexOf('.')
-  if (dotSeparator >= 0 && normalized.length - dotSeparator <= 3) {
-    const integerPart = normalized.slice(0, dotSeparator).replace(/\D/g, '')
-    const decimalPart = normalized.slice(dotSeparator + 1).replace(/\D/g, '').slice(0, 2)
-    return Number(`${integerPart || '0'}.${decimalPart.padEnd(2, '0')}`)
-  }
-
-  return Number(normalized.replace(/\D/g, '')) || 0
 }
 
 function formatArea(value: number) {
@@ -1823,12 +1803,9 @@ function LotsContent() {
                         </div>
                         <label className='block md:col-span-2'>
                           <span className='mb-2 block text-sm font-semibold text-foreground'>Valor de venda</span>
-                          <input
-                            type='text'
-                            inputMode='decimal'
-                            value={formatCurrency(simulatorForm.salePrice)}
-                            onChange={(event) => {
-                              const salePrice = parseCurrencyInput(event.target.value)
+                          <CurrencyTextInput
+                            value={simulatorForm.salePrice}
+                            onValueChange={(salePrice) => {
                               setSimulatorForm((current) => ({
                                 ...current,
                                 salePrice,
@@ -1841,13 +1818,11 @@ function LotsContent() {
                         </label>
                         <label className='block'>
                           <span className='mb-2 block text-sm font-semibold text-foreground'>Entrada</span>
-                          <input
-                            type='text'
-                            inputMode='decimal'
-                            value={formatCurrency(simulatorForm.downPayment)}
-                            onChange={(event) => setSimulatorForm((current) => ({
+                          <CurrencyTextInput
+                            value={simulatorForm.downPayment}
+                            onValueChange={(downPayment) => setSimulatorForm((current) => ({
                               ...current,
-                              downPayment: Math.min(parseCurrencyInput(event.target.value), current.salePrice),
+                              downPayment: Math.min(downPayment, current.salePrice),
                             }))}
                             placeholder='R$ 0,00'
                             className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
@@ -1858,12 +1833,11 @@ function LotsContent() {
                         </label>
                         <label className='block'>
                           <span className='mb-2 block text-sm font-semibold text-foreground'>Parcelas</span>
-                          <input
-                            type='number'
+                          <NumberTextInput
                             min={1}
                             max={selectedLot.block.development?.settings?.maxInstallments ?? 240}
                             value={simulatorForm.installmentCount}
-                            onChange={(event) => setSimulatorForm((current) => ({ ...current, installmentCount: Math.max(Number(event.target.value) || 1, 1) }))}
+                            onValueChange={(value) => setSimulatorForm((current) => ({ ...current, installmentCount: Math.max(Math.trunc(value), 0) }))}
                             className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
                           />
                           <span className={`mt-2 block text-xs font-semibold ${commercialRules.aboveMaxInstallments ? 'text-amber-700' : 'text-muted'}`}>
@@ -1888,13 +1862,12 @@ function LotsContent() {
                       <div className='mt-5 grid gap-4 md:grid-cols-2'>
                         <label className='block'>
                           <span className='mb-2 block text-sm font-semibold text-foreground'>Juros ao mes</span>
-                          <input
-                            type='number'
+                          <NumberTextInput
                             min={0}
                             max={10}
                             step='0.01'
                             value={simulatorForm.interestRate}
-                            onChange={(event) => setSimulatorForm((current) => ({ ...current, interestRate: Number(event.target.value) || 0 }))}
+                            onValueChange={(value) => setSimulatorForm((current) => ({ ...current, interestRate: value }))}
                             className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
                           />
                         </label>

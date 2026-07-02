@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import FormDrawer from '@/app/components/FormDrawer'
+import { NumberTextInput } from '@/app/components/NumberTextInput'
 
 type Development = {
   id: string
@@ -72,13 +73,12 @@ function NumberInput({
     <label className='block'>
       <span className='mb-2 block text-sm font-semibold text-foreground'>{label}</span>
       <div className='relative'>
-        <input
-          type='number'
+        <NumberTextInput
           min={min}
           max={max}
           step={step}
           value={value}
-          onChange={(event) => onChange(name, Number(event.target.value))}
+          onValueChange={(nextValue) => onChange(name, nextValue)}
           className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary ${
             errors[name] ? 'border-red-300' : 'border-border'
           }`}
