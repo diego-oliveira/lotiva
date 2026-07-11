@@ -36,6 +36,11 @@ type LotBatchDrawerProps = {
 }
 
 type CsvRow = Record<string, string>
+type ParsedCsv = {
+  rows: CsvRow[]
+  headers: string[]
+  errors: string[]
+}
 
 const defaultForm = {
   blockIdentifier: 'A',
@@ -75,6 +80,26 @@ const csvColumnAliases = {
   totalArea: ['area', 'areatotal', 'area_total', 'totalarea', 'm2'],
   price: ['valor', 'preco', 'preco_base', 'price'],
   status: ['status', 'situacao', 'situacao_lote'],
+}
+
+const requiredCsvColumns = [
+  { label: 'quadra', aliases: csvColumnAliases.blockIdentifier },
+  { label: 'lote', aliases: csvColumnAliases.identifier },
+  { label: 'frente', aliases: csvColumnAliases.front },
+  { label: 'fundo', aliases: csvColumnAliases.back },
+  { label: 'lateral esquerda', aliases: csvColumnAliases.leftSide },
+  { label: 'lateral direita', aliases: csvColumnAliases.rightSide },
+  { label: 'area', aliases: csvColumnAliases.totalArea },
+  { label: 'valor', aliases: csvColumnAliases.price },
+]
+
+const csvNumberFieldLabels: Record<string, string> = {
+  front: 'frente',
+  back: 'fundo',
+  leftSide: 'lateral esquerda',
+  rightSide: 'lateral direita',
+  totalArea: 'area',
+  price: 'valor',
 }
 
 const statusAliases: Record<string, string> = {
@@ -140,12 +165,12 @@ function splitCsvLine(line: string, delimiter: string) {
   return cells
 }
 
-function parseCsv(text: string) {
+function parseCsv(text: string): ParsedCsv {
   const lines = text
     .replace(/^\uFEFF/, '')
     .split(/\r?\n/)
     .filter((line) => line.trim())
-  if (lines.length < 2) return { rows: [], errors: ['O CSV precisa ter cabecalho e pelo menos um lote.'] }
+  if (lines.length < 2) return { rows: [], headers: [], errors: ['O CSV precisa ter cabecalho e pelo menos um lote.'] }
 
   const delimiter = detectDelimiter(lines[0])
   const headers = splitCsvLine(lines[0], delimiter).map(normalizeCsvKey)
@@ -157,7 +182,7 @@ function parseCsv(text: string) {
     }, {})
   })
 
-  return { rows, errors: [] }
+  return { rows, headers, errors: [] }
 }
 
 function getCsvValue(row: CsvRow, aliases: string[]) {
@@ -192,7 +217,23 @@ function parseLotCsv(text: string) {
   const parsed = parseCsv(text)
   if (parsed.errors.length > 0) return { drafts: [], blockIdentifier: '', blockCount: 0, errors: parsed.errors }
 
+  const missingColumns = requiredCsvColumns.filter((column) => (
+    !column.aliases.some((alias) => parsed.headers.includes(normalizeCsvKey(alias)))
+  ))
+  if (missingColumns.length > 0) {
+    const missingLabels = missingColumns.map((column) => column.label).join(', ')
+    return {
+      drafts: [],
+      blockIdentifier: '',
+      blockCount: 0,
+      errors: [
+        `A planilha nao contem as colunas obrigatorias: ${missingLabels}. Baixe o modelo CSV ou adicione essas colunas antes de importar.`,
+      ],
+    }
+  }
+
   const errors: string[] = []
+  const missingNumberValues = new Set<string>()
   const blockIdentifiers = new Set<string>()
   const drafts = parsed.rows.map((row, index) => {
     const rowNumber = index + 2
@@ -212,7 +253,10 @@ function parseLotCsv(text: string) {
       price: getCsvValue(row, csvColumnAliases.price),
     }
     Object.entries(numberFields).forEach(([field, value]) => {
-      if (!value) errors.push(`Linha ${rowNumber}: coluna ${field} obrigatoria.`)
+      if (!value) {
+        missingNumberValues.add(`${index}:${field}`)
+        errors.push(`Linha ${rowNumber}: informe ${csvNumberFieldLabels[field]}.`)
+      }
     })
 
     const status = parseCsvStatus(getCsvValue(row, csvColumnAliases.status))
@@ -233,12 +277,12 @@ function parseLotCsv(text: string) {
 
   drafts.forEach((draft, index) => {
     const rowNumber = index + 2
-    if (!Number.isFinite(draft.front) || draft.front <= 0) errors.push(`Linha ${rowNumber}: frente deve ser maior que zero.`)
-    if (!Number.isFinite(draft.back) || draft.back <= 0) errors.push(`Linha ${rowNumber}: fundo deve ser maior que zero.`)
-    if (!Number.isFinite(draft.leftSide) || draft.leftSide <= 0) errors.push(`Linha ${rowNumber}: lateral esquerda deve ser maior que zero.`)
-    if (!Number.isFinite(draft.rightSide) || draft.rightSide <= 0) errors.push(`Linha ${rowNumber}: lateral direita deve ser maior que zero.`)
-    if (!Number.isFinite(draft.totalArea) || draft.totalArea <= 0) errors.push(`Linha ${rowNumber}: area deve ser maior que zero.`)
-    if (!Number.isFinite(draft.price) || draft.price < 0) errors.push(`Linha ${rowNumber}: valor nao pode ser negativo.`)
+    if (!missingNumberValues.has(`${index}:front`) && (!Number.isFinite(draft.front) || draft.front <= 0)) errors.push(`Linha ${rowNumber}: frente deve ser maior que zero.`)
+    if (!missingNumberValues.has(`${index}:back`) && (!Number.isFinite(draft.back) || draft.back <= 0)) errors.push(`Linha ${rowNumber}: fundo deve ser maior que zero.`)
+    if (!missingNumberValues.has(`${index}:leftSide`) && (!Number.isFinite(draft.leftSide) || draft.leftSide <= 0)) errors.push(`Linha ${rowNumber}: lateral esquerda deve ser maior que zero.`)
+    if (!missingNumberValues.has(`${index}:rightSide`) && (!Number.isFinite(draft.rightSide) || draft.rightSide <= 0)) errors.push(`Linha ${rowNumber}: lateral direita deve ser maior que zero.`)
+    if (!missingNumberValues.has(`${index}:totalArea`) && (!Number.isFinite(draft.totalArea) || draft.totalArea <= 0)) errors.push(`Linha ${rowNumber}: area deve ser maior que zero.`)
+    if (!missingNumberValues.has(`${index}:price`) && (!Number.isFinite(draft.price) || draft.price < 0)) errors.push(`Linha ${rowNumber}: valor nao pode ser negativo.`)
   })
 
   if (drafts.length > 300) {

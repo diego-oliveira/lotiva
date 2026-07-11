@@ -23,7 +23,7 @@ interface CompanyFormProps {
   company?: Company | null
   isOpen: boolean
   onClose: () => void
-  onSave: (mode: 'create' | 'update') => void
+  onSave: (mode: 'create' | 'update', company: Company, options: { close: boolean }) => void | Promise<void>
 }
 
 export default function CompanyForm({
@@ -37,6 +37,42 @@ export default function CompanyForm({
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
+  const onlyDigits = (value: string) => value.replace(/\D/g, '')
+
+  const formatCnpj = (value: string) => {
+    const digits = onlyDigits(value).slice(0, 14)
+    return digits
+      .replace(/^(\d{2})(\d)/, '$1.$2')
+      .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+      .replace(/\.(\d{3})(\d)/, '.$1/$2')
+      .replace(/(\d{4})(\d)/, '$1-$2')
+  }
+
+  const formatZipCode = (value: string) => {
+    const digits = onlyDigits(value).slice(0, 8)
+    return digits.replace(/^(\d{5})(\d)/, '$1-$2')
+  }
+
+  const formatPhone = (value: string) => {
+    const digits = onlyDigits(value).slice(0, 11)
+    if (digits.length <= 10) {
+      return digits
+        .replace(/^(\d{2})(\d)/, '($1) $2')
+        .replace(/(\d{4})(\d)/, '$1-$2')
+    }
+    return digits
+      .replace(/^(\d{2})(\d)/, '($1) $2')
+      .replace(/(\d{5})(\d)/, '$1-$2')
+  }
+
+  const formatFieldValue = (name: string, value: string) => {
+    if (name === 'document') return formatCnpj(value)
+    if (name === 'zipCode') return formatZipCode(value)
+    if (name === 'phone') return formatPhone(value)
+    if (name === 'state') return value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2)
+    return value
+  }
+
   useEffect(() => {
     setFormData(
       company
@@ -45,13 +81,13 @@ export default function CompanyForm({
             name: company.name,
             logo: company.logo,
             legalName: company.legalName ?? '',
-            document: company.document ?? '',
+            document: formatCnpj(company.document ?? ''),
             stateRegistration: company.stateRegistration ?? '',
             address: company.address ?? '',
             city: company.city ?? '',
-            state: company.state ?? '',
-            zipCode: company.zipCode ?? '',
-            phone: company.phone ?? '',
+            state: formatFieldValue('state', company.state ?? ''),
+            zipCode: formatZipCode(company.zipCode ?? ''),
+            phone: formatPhone(company.phone ?? ''),
             email: company.email ?? '',
           }
         : {
@@ -74,7 +110,7 @@ export default function CompanyForm({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
+    setFormData((prev) => ({ ...prev, [name]: formatFieldValue(name, value) }))
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }))
   }
 
@@ -85,13 +121,15 @@ export default function CompanyForm({
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent, closeAfterSave = false) => {
     e.preventDefault()
     if (!validateForm()) return
     setLoading(true)
     try {
-      const url = company?.id ? `/api/companies/${company.id}` : '/api/companies'
-      const method = company?.id ? 'PUT' : 'POST'
+      const companyId = formData.id || company?.id
+      const mode = companyId ? 'update' : 'create'
+      const url = companyId ? `/api/companies/${companyId}` : '/api/companies'
+      const method = companyId ? 'PUT' : 'POST'
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -114,8 +152,12 @@ export default function CompanyForm({
         const errorData = await response.json()
         throw new Error(errorData.error || 'Erro ao salvar empresa')
       }
-      onSave(company?.id ? 'update' : 'create')
-      onClose()
+      const savedCompany = await response.json()
+      setFormData((current) => ({
+        ...current,
+        ...savedCompany,
+      }))
+      await onSave(mode, savedCompany, { close: closeAfterSave })
     } catch (error) {
       setErrors({
         submit: error instanceof Error ? error.message : 'Erro ao salvar empresa',
@@ -142,7 +184,7 @@ export default function CompanyForm({
       description='Configure os dados principais da empresa proprietaria dos empreendimentos.'
       onClose={onClose}
     >
-      <form onSubmit={handleSubmit} className='space-y-6'>
+      <form onSubmit={(event) => handleSubmit(event)} className='space-y-6'>
         {errors.submit && (
           <div className='rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700'>
             {errors.submit}
@@ -196,7 +238,7 @@ export default function CompanyForm({
               <div className='grid gap-4 md:grid-cols-2'>
                 <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
                   <label className='mb-2 block text-sm font-semibold text-foreground'>CNPJ</label>
-                  <input name='document' value={formData.document ?? ''} onChange={handleInputChange} className={inputClass()} placeholder='00.000.000/0001-00' />
+                  <input name='document' value={formData.document ?? ''} onChange={handleInputChange} className={inputClass()} inputMode='numeric' placeholder='00.000.000/0001-00' />
                 </div>
                 <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
                   <label className='mb-2 block text-sm font-semibold text-foreground'>Inscricao estadual</label>
@@ -215,7 +257,7 @@ export default function CompanyForm({
                 </div>
                 <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
                   <label className='mb-2 block text-sm font-semibold text-foreground'>Telefone</label>
-                  <input name='phone' value={formData.phone ?? ''} onChange={handleInputChange} className={inputClass()} placeholder='(00) 00000-0000' />
+                  <input name='phone' value={formData.phone ?? ''} onChange={handleInputChange} className={inputClass()} inputMode='tel' placeholder='(00) 00000-0000' />
                 </div>
               </div>
               <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
@@ -240,7 +282,7 @@ export default function CompanyForm({
                 </div>
                 <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
                   <label className='mb-2 block text-sm font-semibold text-foreground'>CEP</label>
-                  <input name='zipCode' value={formData.zipCode ?? ''} onChange={handleInputChange} className={inputClass()} placeholder='00.000-000' />
+                  <input name='zipCode' value={formData.zipCode ?? ''} onChange={handleInputChange} className={inputClass()} inputMode='numeric' placeholder='00000-000' />
                 </div>
               </div>
             </>
@@ -249,8 +291,11 @@ export default function CompanyForm({
 
         <div className='flex justify-end gap-3 border-t border-border pt-6'>
           <button type='button' onClick={onClose} disabled={loading} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:opacity-50'>Cancelar</button>
-          <button type='submit' disabled={loading} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-50'>
-            {loading ? 'Salvando...' : company?.id ? 'Atualizar Empresa' : 'Criar Empresa'}
+          <button type='submit' disabled={loading} className='rounded-xl border border-primary bg-surface px-4 py-3 text-sm font-semibold text-primary transition hover:bg-primary/8 disabled:opacity-50'>
+            {loading ? 'Salvando...' : 'Salvar'}
+          </button>
+          <button type='button' onClick={(event) => handleSubmit(event, true)} disabled={loading} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-50'>
+            {loading ? 'Salvando...' : 'Salvar e fechar'}
           </button>
         </div>
       </form>

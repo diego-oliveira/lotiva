@@ -173,10 +173,12 @@ export default function CompaniesPage() {
         company={editingCompany}
         isOpen={showForm}
         onClose={() => { setShowForm(false); setEditingCompany(null) }}
-        onSave={async (mode) => {
+        onSave={async (mode, savedCompany, options) => {
           await fetchCompanies()
-          setShowForm(false)
-          setEditingCompany(null)
+          if (options.close) {
+            setShowForm(false)
+            setEditingCompany(null)
+          }
           setSuccessMessage(
             mode === 'create'
               ? 'A empresa foi criada com sucesso.'
