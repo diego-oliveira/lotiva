@@ -103,6 +103,17 @@ interface LotEvent {
   user?: Person | null
 }
 
+interface PublicLotInterest {
+  id: string
+  name: string
+  email: string
+  phone: string
+  notes?: string | null
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
 interface Lot {
   id: string
   identifier: string
@@ -121,6 +132,7 @@ interface Lot {
   block: Block
   reservations: LotReservation[]
   proposals: LotProposal[]
+  publicInterests: PublicLotInterest[]
   sale?: LotSale | null
   events: LotEvent[]
   canReleaseHold?: boolean
@@ -194,6 +206,14 @@ function formatMeasurement(value: number) {
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString('pt-BR')
+}
+
+function formatPhone(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 11)
+  if (digits.length <= 2) return digits
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`
+  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
 }
 
 function formatDateInput(value: Date) {
@@ -1357,6 +1377,32 @@ function LotsContent() {
                     {getActiveReservation(selectedLot)?.expiresAt && (
                       <p className='mt-3 text-sm font-semibold text-foreground'>Valida ate {formatDate(getActiveReservation(selectedLot)!.expiresAt!)}</p>
                     )}
+                  </div>
+                )}
+
+                {selectedLot.publicInterests.length > 0 && (
+                  <div className='rounded-2xl border border-sky-100 bg-sky-50 p-5'>
+                    <div className='flex items-start justify-between gap-3'>
+                      <div>
+                        <h3 className='text-sm font-semibold text-foreground'>Fila de interesse</h3>
+                        <p className='mt-1 text-xs font-semibold text-sky-700'>{selectedLot.publicInterests.length} solicitacao(oes) pelo mapa publico</p>
+                      </div>
+                      <span className='pill bg-white text-sky-700'>Publico</span>
+                    </div>
+                    <div className='mt-4 space-y-3'>
+                      {selectedLot.publicInterests.slice(0, 5).map((interest, index) => (
+                        <div key={interest.id} className='rounded-xl border border-sky-100 bg-white px-4 py-3'>
+                          <div className='flex items-start justify-between gap-3'>
+                            <div>
+                              <p className='text-sm font-semibold text-foreground'>{index + 1}. {interest.name}</p>
+                              <p className='mt-1 text-xs text-muted'>{interest.email} · {formatPhone(interest.phone)}</p>
+                            </div>
+                            <span className='text-xs font-semibold text-sky-700'>{formatDate(interest.createdAt)}</span>
+                          </div>
+                          {interest.notes && <p className='mt-2 text-sm leading-5 text-muted'>{interest.notes}</p>}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 

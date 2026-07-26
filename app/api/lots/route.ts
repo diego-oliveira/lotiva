@@ -34,6 +34,12 @@ export async function GET() {
         },
         orderBy: { createdAt: 'desc' },
       },
+      publicInterests: {
+        where: {
+          status: { in: ['pending', 'contacted'] },
+        },
+        orderBy: { createdAt: 'asc' },
+      },
       events: {
         where: lotEventAccessWhere(userId),
         include: {

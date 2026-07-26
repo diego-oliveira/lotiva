@@ -307,9 +307,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [workspaceDevelopments, setWorkspaceDevelopments] = useState<WorkspaceDevelopment[] | null>(null)
   const isAuthPage = pathname.startsWith('/signin') || pathname.startsWith('/auth')
+  const isPublicPage = pathname.startsWith('/p/')
 
   useEffect(() => {
-    if (isAuthPage) {
+    if (isAuthPage || isPublicPage) {
       setAccessChecked(true)
       return
     }
@@ -340,10 +341,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         setCurrentUser(null)
         window.location.replace('/signin?error=SessionRequired')
       })
-  }, [isAuthPage])
+  }, [isAuthPage, isPublicPage])
 
   useEffect(() => {
-    if (isAuthPage || !accessChecked || !currentUser) return
+    if (isAuthPage || isPublicPage || !accessChecked || !currentUser) return
 
     const fetchNotifications = () => {
       fetch('/api/notifications', { cache: 'no-store' })
@@ -355,10 +356,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     fetchNotifications()
     const interval = window.setInterval(fetchNotifications, 60000)
     return () => window.clearInterval(interval)
-  }, [accessChecked, currentUser, isAuthPage, pathname])
+  }, [accessChecked, currentUser, isAuthPage, isPublicPage, pathname])
 
   useEffect(() => {
-    if (isAuthPage || !accessChecked || !currentUser) return
+    if (isAuthPage || isPublicPage || !accessChecked || !currentUser) return
     if (!isWorkspaceRoute(pathname)) return
 
     setWorkspaceDevelopments(null)
@@ -366,7 +367,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       .then((response) => (response.ok ? response.json() : []))
       .then((payload) => setWorkspaceDevelopments(Array.isArray(payload) ? payload : []))
       .catch(() => setWorkspaceDevelopments([]))
-  }, [accessChecked, currentUser, isAuthPage, pathname])
+  }, [accessChecked, currentUser, isAuthPage, isPublicPage, pathname])
 
   useEffect(() => {
     setUserMenuOpen(false)
@@ -402,7 +403,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       .filter((section) => section.items.length > 0)
   }, [permissions])
 
-  if (isAuthPage) {
+  if (isAuthPage || isPublicPage) {
     return <>{children}</>
   }
 

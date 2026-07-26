@@ -45,6 +45,9 @@ model Development {
   name      String
   logo      String
   companyId String
+  publicMapEnabled Boolean @default(false)
+  publicMapToken   String? @unique
+  publicMapShowPrices Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime?
@@ -58,6 +61,7 @@ model Development {
   documentTemplateId String?
   documentTemplate   DocumentTemplate?            @relation(fields: [documentTemplateId], references: [id], onDelete: SetNull)
   documentValues     DevelopmentDocumentValue[]
+  publicLotInterests PublicLotInterest[]
 
   @@index([documentTemplateId])
   @@index([deletedAt])
@@ -279,6 +283,28 @@ model Lot {
   proposals    Proposal[]
   sale         Sale? // 👈 one-to-one back relation
   events       LotEvent[]
+  publicInterests PublicLotInterest[]
+}
+
+model PublicLotInterest {
+  id            String   @id @default(uuid())
+  developmentId String
+  lotId         String
+  name          String
+  email         String
+  phone         String
+  notes         String?  @db.Text
+  status        String   @default("pending")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  lot         Lot         @relation(fields: [lotId], references: [id], onDelete: Cascade)
+
+  @@index([developmentId, createdAt])
+  @@index([lotId, status, createdAt])
+  @@index([email])
+  @@index([phone])
 }
 
 model Reservation {

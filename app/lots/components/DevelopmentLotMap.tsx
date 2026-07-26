@@ -13,6 +13,9 @@ type DevelopmentMap = {
 type Development = {
   id: string
   name: string
+  publicMapEnabled?: boolean
+  publicMapToken?: string | null
+  publicMapShowPrices?: boolean
   map?: DevelopmentMap | null
 }
 
@@ -117,6 +120,7 @@ export default function DevelopmentLotMap({
 }: Props) {
   const mapAreaRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const imageRef = useRef<HTMLImageElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const dragStateRef = useRef<{ lotId: string | null; moved: boolean; startX: number; startY: number }>({
     lotId: null,
@@ -132,6 +136,9 @@ export default function DevelopmentLotMap({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pdfRendering, setPdfRendering] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const [shareMessage, setShareMessage] = useState<string | null>(null)
   const [mobileLotId, setMobileLotId] = useState<string | null>(null)
   const [mobileStatusFilter, setMobileStatusFilter] = useState<StatusFilter>('all')
 
@@ -196,6 +203,14 @@ export default function DevelopmentLotMap({
   const mobileLotMeta = mobileLotStatus ? getStatusMeta(mobileLotStatus) : null
   const mobileReservation = mobileLot ? getActiveReservation(mobileLot) : null
   const mobileContact = mobileLot?.sale?.user ?? mobileReservation?.user ?? null
+
+  const getMarkerColor = (status: string) => {
+    if (status === 'available') return '#10b981'
+    if (status === 'reserved') return '#f59e0b'
+    if (status === 'sold') return '#ef4444'
+    if (status === 'on_hold') return '#64748b'
+    return '#94a3b8'
+  }
 
   const getNextUnpositionedLotId = (currentLotId: string, nextMarkers: Record<string, Marker>) => {
     const withoutCurrent = sortedLots.filter((lot) => lot.id !== currentLotId && !hasMarker(nextMarkers[lot.id]))
@@ -365,6 +380,142 @@ export default function DevelopmentLotMap({
     setSelectedMarkerLotId(sortedLots[0]?.id ?? '')
   }
 
+  const buildExportCanvas = async () => {
+    const map = currentMap
+    if (!map) throw new Error('A planta ainda nao foi carregada.')
+
+    const sourceCanvas = map.fileType === 'pdf' ? canvasRef.current : null
+    const sourceImage = map.fileType === 'pdf' ? null : imageRef.current
+    const sourceWidth = sourceCanvas?.width ?? sourceImage?.naturalWidth ?? 0
+    const sourceHeight = sourceCanvas?.height ?? sourceImage?.naturalHeight ?? 0
+
+    if (!sourceWidth || !sourceHeight) {
+      throw new Error(map.fileType === 'pdf' && pdfRendering
+        ? 'Aguarde a planta terminar de carregar antes de exportar.'
+        : 'Nao foi possivel preparar a imagem da planta.')
+    }
+
+    if (sourceImage && !sourceImage.complete) {
+      await sourceImage.decode()
+    }
+
+    const scale = Math.min(2, Math.max(1, 1600 / Math.max(sourceWidth, sourceHeight)))
+    const padding = 32 * scale
+    const headerHeight = 118 * scale
+    const legendHeight = 50 * scale
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(sourceWidth * scale + padding * 2)
+    canvas.height = Math.round(sourceHeight * scale + padding * 2 + headerHeight + legendHeight)
+
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Nao foi possivel gerar a imagem da planta.')
+
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.fillStyle = '#0f172a'
+    context.font = `700 ${24 * scale}px Arial, sans-serif`
+    context.fillText(`Planta - ${development.name}`, padding, padding + 22 * scale)
+    context.fillStyle = '#64748b'
+    context.font = `500 ${13 * scale}px Arial, sans-serif`
+    context.fillText(`${positionedLots.length}/${sortedLots.length} lotes marcados`, padding, padding + 50 * scale)
+    context.fillText(new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date()), padding, padding + 72 * scale)
+
+    const legendItems = ['available', 'reserved', 'on_hold', 'sold']
+    let legendX = padding
+    const legendY = padding + 96 * scale
+    context.font = `600 ${13 * scale}px Arial, sans-serif`
+    legendItems.forEach((status) => {
+      const meta = getStatusMeta(status)
+      context.beginPath()
+      context.arc(legendX + 6 * scale, legendY - 4 * scale, 5 * scale, 0, Math.PI * 2)
+      context.fillStyle = getMarkerColor(status)
+      context.fill()
+      context.fillStyle = '#334155'
+      context.fillText(meta.label, legendX + 18 * scale, legendY)
+      legendX += (meta.label.length * 8 + 42) * scale
+    })
+
+    const mapX = padding
+    const mapY = padding + headerHeight
+    if (sourceCanvas) {
+      context.drawImage(sourceCanvas, mapX, mapY, sourceWidth * scale, sourceHeight * scale)
+    } else if (sourceImage) {
+      context.drawImage(sourceImage, mapX, mapY, sourceWidth * scale, sourceHeight * scale)
+    }
+
+    filteredPositionedLots.forEach((lot) => {
+      const marker = markers[lot.id]
+      if (!hasMarker(marker)) return
+      const x = mapX + ((marker.xPercent ?? 0) / 100) * sourceWidth * scale
+      const y = mapY + ((marker.yPercent ?? 0) / 100) * sourceHeight * scale
+      const status = getEffectiveLotStatus(lot)
+
+      context.beginPath()
+      context.arc(x, y, 9 * scale, 0, Math.PI * 2)
+      context.fillStyle = '#ffffff'
+      context.fill()
+      context.beginPath()
+      context.arc(x, y, 6 * scale, 0, Math.PI * 2)
+      context.fillStyle = getMarkerColor(status)
+      context.fill()
+      context.lineWidth = 2 * scale
+      context.strokeStyle = '#ffffff'
+      context.stroke()
+    })
+
+    return canvas
+  }
+
+  const exportMarkedMapImage = async () => {
+    try {
+      setExporting(true)
+      setError(null)
+      const canvas = await buildExportCanvas()
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png', 0.95))
+      if (!blob) throw new Error('Nao foi possivel gerar a imagem da planta.')
+
+      const link = document.createElement('a')
+      const url = URL.createObjectURL(blob)
+      const safeName = development.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase()
+      link.href = url
+      link.download = `planta-${safeName || 'empreendimento'}-marcada.png`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : 'Nao foi possivel exportar a planta.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const copyPublicMapLink = async () => {
+    try {
+      setSharing(true)
+      setError(null)
+      setShareMessage(null)
+      const response = await fetch(`/api/developments/${development.id}/public-map`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ showPrices: development.publicMapShowPrices !== false }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Nao foi possivel gerar o link publico.')
+
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(data.url)
+      } else {
+        window.prompt('Copie o link publico da planta:', data.url)
+      }
+      setShareMessage('Link publico copiado.')
+    } catch (shareError) {
+      setError(shareError instanceof Error ? shareError.message : 'Nao foi possivel copiar o link publico.')
+    } finally {
+      setSharing(false)
+    }
+  }
+
   if (!currentMap) {
     return (
       <div className='rounded-2xl border border-dashed border-border bg-surface-secondary p-6'>
@@ -432,6 +583,16 @@ export default function DevelopmentLotMap({
             )
           })}
         </div>
+        <div>
+          <button
+            type='button'
+            onClick={() => void exportMarkedMapImage()}
+            disabled={exporting || pdfRendering}
+            className='w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition disabled:opacity-50'
+          >
+            {exporting ? 'Gerando...' : 'Baixar imagem'}
+          </button>
+        </div>
       </div>
 
       <div className='flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
@@ -446,51 +607,70 @@ export default function DevelopmentLotMap({
             )
           })}
         </div>
-        {canManageMap && (
-          <div className='hidden flex-wrap gap-2 md:flex'>
-            <button
-              type='button'
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading || saving}
-              className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:opacity-50'
-            >
-              {uploading ? 'Enviando...' : 'Substituir planta'}
-            </button>
-            <button
-              type='button'
-              onClick={() => setEditing((current) => !current)}
-              disabled={saving}
-              className={`rounded-xl px-3 py-2 text-sm font-semibold transition disabled:opacity-50 ${
-                editing ? 'border border-primary bg-primary/8 text-primary' : 'border border-border bg-surface text-foreground hover:bg-surface-secondary'
-              }`}
-            >
-              {editing ? 'Sair da edicao' : 'Editar marcacoes'}
-            </button>
-            {editing && (
+        <div className='hidden flex-wrap gap-2 md:flex'>
+          <button
+            type='button'
+            onClick={() => void exportMarkedMapImage()}
+            disabled={exporting || pdfRendering}
+            className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:opacity-50'
+          >
+            {exporting ? 'Gerando...' : 'Baixar imagem'}
+          </button>
+          {canManageMap && (
+            <>
               <button
                 type='button'
-                onClick={() => void saveMarkers()}
-                disabled={saving}
-                className='rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-50'
+                onClick={() => void copyPublicMapLink()}
+                disabled={sharing}
+                className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:opacity-50'
               >
-                {saving ? 'Salvando...' : 'Salvar marcacoes'}
+                {sharing ? 'Copiando...' : 'Copiar link publico'}
               </button>
-            )}
-            <input
-              ref={fileInputRef}
-              type='file'
-              accept={acceptedPlanTypes.join(',')}
-              className='sr-only'
-              onChange={(event) => {
-                void uploadPlan(event.target.files?.[0])
-                event.target.value = ''
-              }}
-            />
-          </div>
-        )}
+              <button
+                type='button'
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading || saving}
+                className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:opacity-50'
+              >
+                {uploading ? 'Enviando...' : 'Substituir planta'}
+              </button>
+              <button
+                type='button'
+                onClick={() => setEditing((current) => !current)}
+                disabled={saving}
+                className={`rounded-xl px-3 py-2 text-sm font-semibold transition disabled:opacity-50 ${
+                  editing ? 'border border-primary bg-primary/8 text-primary' : 'border border-border bg-surface text-foreground hover:bg-surface-secondary'
+                }`}
+              >
+                {editing ? 'Sair da edicao' : 'Editar marcacoes'}
+              </button>
+              {editing && (
+                <button
+                  type='button'
+                  onClick={() => void saveMarkers()}
+                  disabled={saving}
+                  className='rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-50'
+                >
+                  {saving ? 'Salvando...' : 'Salvar marcacoes'}
+                </button>
+              )}
+              <input
+                ref={fileInputRef}
+                type='file'
+                accept={acceptedPlanTypes.join(',')}
+                className='sr-only'
+                onChange={(event) => {
+                  void uploadPlan(event.target.files?.[0])
+                  event.target.value = ''
+                }}
+              />
+            </>
+          )}
+        </div>
       </div>
 
       {error && <div className='rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700'>{error}</div>}
+      {shareMessage && <div className='rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700'>{shareMessage}</div>}
 
       {editing && (
         <div className='hidden gap-3 rounded-2xl border border-border bg-surface-secondary p-4 md:grid lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-start'>
@@ -554,7 +734,7 @@ export default function DevelopmentLotMap({
                 <canvas ref={canvasRef} className='block h-auto w-full' />
               </>
             ) : (
-              <img src={currentMap.fileUrl} alt={`Planta de ${development.name}`} className='block h-auto w-full select-none' draggable={false} />
+              <img ref={imageRef} src={currentMap.fileUrl} alt={`Planta de ${development.name}`} className='block h-auto w-full select-none' draggable={false} />
             )}
 
             {filteredPositionedLots.map((lot) => {
