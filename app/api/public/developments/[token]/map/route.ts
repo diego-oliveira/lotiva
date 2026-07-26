@@ -192,10 +192,8 @@ export async function POST(req: NextRequest, { params }: Params) {
         developmentId: development.id,
         lotId: lot.id,
         status: { in: activeInterestStatuses },
-        OR: [
-          { email: values.email },
-          { phone: values.phone },
-        ],
+        email: values.email,
+        phone: values.phone,
       },
       orderBy: { createdAt: 'desc' },
     })
