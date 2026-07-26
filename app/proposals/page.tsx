@@ -163,7 +163,8 @@ function ProposalsContent() {
 
   const interestsByLot = useMemo(() => {
     const map = new Map<string, { lot: PublicLotInterest['lot']; interests: PublicLotInterest[] }>()
-    filteredInterests.forEach((interest) => {
+    const sortedInterests = [...filteredInterests].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    sortedInterests.forEach((interest) => {
       const group = map.get(interest.lot.id)
       if (group) {
         group.interests.push(interest)
@@ -171,7 +172,9 @@ function ProposalsContent() {
         map.set(interest.lot.id, { lot: interest.lot, interests: [interest] })
       }
     })
-    return Array.from(map.values())
+    return Array.from(map.values()).sort((a, b) => (
+      new Date(a.interests[0]?.createdAt ?? 0).getTime() - new Date(b.interests[0]?.createdAt ?? 0).getTime()
+    ))
   }, [filteredInterests])
 
   const visibleFeedback = useMemo(() => {
