@@ -382,7 +382,7 @@ export default function PublicDevelopmentMapPage({ token }: { token: string }) {
                     />
                   </label>
                   <label className='block'>
-                    <span className='mb-1.5 block text-sm font-semibold text-foreground'>Telefone</span>
+                    <span className='mb-1.5 block text-sm font-semibold text-foreground'>WhatsApp</span>
                     <input
                       value={form.phone}
                       onChange={(event) => setForm((current) => ({ ...current, phone: formatPhone(event.target.value) }))}

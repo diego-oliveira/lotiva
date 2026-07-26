@@ -15,9 +15,18 @@ export async function PATCH(req: Request, { params }: Params) {
   const { id } = await params
 
   const data = await req.json().catch(() => ({}))
-  const status = allowedStatuses.find((item) => item === data.status)
-  if (!status) {
+  const hasStatus = data.status !== undefined
+  const status = hasStatus ? allowedStatuses.find((item) => item === data.status) : undefined
+  const hasInternalNotes = data.internalNotes !== undefined
+  const internalNotes = hasInternalNotes ? String(data.internalNotes || '').trim() : undefined
+  if (hasStatus && !status) {
     return NextResponse.json({ error: 'Status invalido.' }, { status: 400 })
+  }
+  if (!hasStatus && !hasInternalNotes) {
+    return NextResponse.json({ error: 'Informe uma alteracao para salvar.' }, { status: 400 })
+  }
+  if (internalNotes && internalNotes.length > 2000) {
+    return NextResponse.json({ error: 'A observacao interna deve ter ate 2000 caracteres.' }, { status: 400 })
   }
 
   const interest = await prisma.publicLotInterest.findFirst({
@@ -48,7 +57,10 @@ export async function PATCH(req: Request, { params }: Params) {
   const saved = await prisma.$transaction(async (tx) => {
     const updated = await tx.publicLotInterest.update({
       where: { id },
-      data: { status },
+      data: {
+        ...(status ? { status } : {}),
+        ...(hasInternalNotes ? { internalNotes: internalNotes || null } : {}),
+      },
       include: {
         lot: {
           include: {
@@ -73,8 +85,10 @@ export async function PATCH(req: Request, { params }: Params) {
       userId,
       type: 'public_interest_updated',
       title: 'Solicitacao publica atualizada',
-      description: `Solicitacao de ${interest.name} marcada como ${status}.`,
-      notes: data.notes ? String(data.notes) : null,
+      description: status
+        ? `Solicitacao de ${interest.name} marcada como ${status}.`
+        : `Observacao interna adicionada para solicitacao de ${interest.name}.`,
+      notes: hasInternalNotes ? internalNotes || null : data.notes ? String(data.notes) : null,
     })
 
     return updated

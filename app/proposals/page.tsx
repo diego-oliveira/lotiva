@@ -38,6 +38,7 @@ type PublicLotInterest = {
   email: string
   phone: string
   notes?: string | null
+  internalNotes?: string | null
   status: string
   createdAt: string
   lot: {
@@ -108,6 +109,8 @@ function ProposalsContent() {
   const [interestStatusFilter, setInterestStatusFilter] = useState('pending')
   const [reviewingId, setReviewingId] = useState<string | null>(null)
   const [updatingInterestId, setUpdatingInterestId] = useState<string | null>(null)
+  const [interestNotesSavingId, setInterestNotesSavingId] = useState<string | null>(null)
+  const [interestNotesDrafts, setInterestNotesDrafts] = useState<Record<string, string>>({})
   const [rejectionId, setRejectionId] = useState<string | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
 
@@ -121,7 +124,9 @@ function ProposalsContent() {
       if (!proposalResponse.ok) throw new Error('Nao foi possivel carregar as propostas.')
       if (!interestResponse.ok) throw new Error('Nao foi possivel carregar as solicitacoes publicas.')
       setProposals(await proposalResponse.json())
-      setInterests(await interestResponse.json())
+      const nextInterests = await interestResponse.json()
+      setInterests(nextInterests)
+      setInterestNotesDrafts(Object.fromEntries(nextInterests.map((interest: PublicLotInterest) => [interest.id, interest.internalNotes ?? ''])))
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar propostas.')
@@ -247,6 +252,37 @@ function ProposalsContent() {
     }
   }
 
+  async function saveInterestInternalNotes(interestId: string) {
+    const currentInterest = interests.find((interest) => interest.id === interestId)
+    const feedbackDevelopmentId = currentInterest?.lot.block.development?.id ?? developmentFilter
+
+    try {
+      setInterestNotesSavingId(interestId)
+      setError(null)
+      setFeedback(null)
+      const response = await fetch(`/api/public-lot-interests/${interestId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ internalNotes: interestNotesDrafts[interestId] ?? '' }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel salvar a observacao.')
+      setInterests((current) => current.map((interest) => (interest.id === payload.id ? payload : interest)))
+      setInterestNotesDrafts((current) => ({ ...current, [payload.id]: payload.internalNotes ?? '' }))
+      setFeedback({
+        type: 'success',
+        message: 'Observacao interna salva.',
+        developmentId: feedbackDevelopmentId,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Nao foi possivel salvar a observacao.'
+      setError(message)
+      setFeedback({ type: 'error', message, developmentId: feedbackDevelopmentId })
+    } finally {
+      setInterestNotesSavingId(null)
+    }
+  }
+
   if (loading) return <div className='h-72 animate-pulse rounded-2xl bg-surface-secondary' />
 
   return (
@@ -362,7 +398,31 @@ function ProposalsContent() {
                             </div>
                             <p className='mt-3 text-sm font-semibold text-foreground'>{interest.name}</p>
                             <p className='mt-1 text-sm text-muted'>{interest.email} · {formatPhone(interest.phone)}</p>
-                            {interest.notes && <p className='mt-3 rounded-xl bg-surface px-4 py-3 text-sm leading-6 text-muted'>{interest.notes}</p>}
+                            {interest.notes && (
+                              <div className='mt-3 rounded-xl bg-surface px-4 py-3 text-sm leading-6 text-muted'>
+                                <p className='text-xs font-semibold uppercase text-muted'>Observacao do cliente</p>
+                                <p className='mt-1'>{interest.notes}</p>
+                              </div>
+                            )}
+                            <div className='mt-3 rounded-xl border border-border bg-surface px-4 py-3'>
+                              <label className='block'>
+                                <span className='text-xs font-semibold uppercase text-muted'>Observacao interna</span>
+                                <textarea
+                                  value={interestNotesDrafts[interest.id] ?? ''}
+                                  onChange={(event) => setInterestNotesDrafts((current) => ({ ...current, [interest.id]: event.target.value }))}
+                                  className='mt-2 min-h-20 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                                  placeholder='Ex.: tentei contato e nao obtive retorno'
+                                />
+                              </label>
+                              <button
+                                type='button'
+                                onClick={() => void saveInterestInternalNotes(interest.id)}
+                                disabled={interestNotesSavingId === interest.id || (interestNotesDrafts[interest.id] ?? '') === (interest.internalNotes ?? '')}
+                                className='mt-3 rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-background disabled:opacity-60'
+                              >
+                                {interestNotesSavingId === interest.id ? 'Salvando...' : 'Salvar observacao'}
+                              </button>
+                            </div>
                           </div>
                           <div className='flex shrink-0 flex-col gap-2 sm:flex-row xl:flex-col'>
                             {interest.status !== 'contacted' && (

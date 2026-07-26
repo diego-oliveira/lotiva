@@ -294,6 +294,7 @@ model PublicLotInterest {
   email         String
   phone         String
   notes         String?  @db.Text
+  internalNotes String?  @db.Text
   status        String   @default("pending")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
