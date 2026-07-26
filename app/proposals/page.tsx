@@ -32,6 +32,27 @@ type Proposal = {
   }
 }
 
+type PublicLotInterest = {
+  id: string
+  name: string
+  email: string
+  phone: string
+  notes?: string | null
+  status: string
+  createdAt: string
+  lot: {
+    id: string
+    identifier: string
+    status: string
+    sale?: { id: string } | null
+    reservations: Array<{ id: string }>
+    block: {
+      identifier: string
+      development?: { id: string; name: string } | null
+    }
+  }
+}
+
 type Feedback = {
   type: 'success' | 'error'
   message: string
@@ -45,6 +66,12 @@ const statusMeta: Record<string, { label: string; className: string }> = {
   converted: { label: 'Convertida em venda', className: 'bg-blue-50 text-blue-700' },
 }
 
+const interestStatusMeta: Record<string, { label: string; className: string }> = {
+  pending: { label: 'Pendente', className: 'bg-amber-50 text-amber-700' },
+  contacted: { label: 'Contactada', className: 'bg-sky-50 text-sky-700' },
+  dismissed: { label: 'Descartada', className: 'bg-slate-100 text-slate-700' },
+}
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
 }
@@ -53,24 +80,48 @@ function formatDate(value: string) {
   return new Date(value).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
 }
 
+function formatPhone(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 11)
+  if (digits.length <= 2) return digits
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`
+  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
+}
+
+function getLotAvailability(lot: PublicLotInterest['lot']) {
+  if (lot.sale || lot.status === 'sold') return 'Vendido'
+  if (lot.reservations.length > 0 || lot.status === 'reserved') return 'Reservado'
+  if (lot.status === 'on_hold') return 'Bloqueado'
+  return 'Disponivel'
+}
+
 function ProposalsContent() {
   const searchParams = useSearchParams()
   const developmentFilter = searchParams.get('developmentId') ?? ''
+  const [viewMode, setViewMode] = useState<'interests' | 'proposals'>('interests')
   const [proposals, setProposals] = useState<Proposal[]>([])
+  const [interests, setInterests] = useState<PublicLotInterest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') ?? '')
+  const [interestStatusFilter, setInterestStatusFilter] = useState('pending')
   const [reviewingId, setReviewingId] = useState<string | null>(null)
+  const [updatingInterestId, setUpdatingInterestId] = useState<string | null>(null)
   const [rejectionId, setRejectionId] = useState<string | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
 
   async function fetchData() {
     try {
       setLoading(true)
-      const proposalResponse = await fetch('/api/proposals', { cache: 'no-store' })
+      const [proposalResponse, interestResponse] = await Promise.all([
+        fetch('/api/proposals', { cache: 'no-store' }),
+        fetch('/api/public-lot-interests', { cache: 'no-store' }),
+      ])
       if (!proposalResponse.ok) throw new Error('Nao foi possivel carregar as propostas.')
+      if (!interestResponse.ok) throw new Error('Nao foi possivel carregar as solicitacoes publicas.')
       setProposals(await proposalResponse.json())
+      setInterests(await interestResponse.json())
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar propostas.')
@@ -102,6 +153,26 @@ function ProposalsContent() {
       .filter((proposal) => !statusFilter || proposal.status === statusFilter),
     [developmentFilter, proposals, statusFilter],
   )
+
+  const filteredInterests = useMemo(
+    () => interests
+      .filter((interest) => !developmentFilter || interest.lot.block.development?.id === developmentFilter)
+      .filter((interest) => !interestStatusFilter || interest.status === interestStatusFilter),
+    [developmentFilter, interestStatusFilter, interests],
+  )
+
+  const interestsByLot = useMemo(() => {
+    const map = new Map<string, { lot: PublicLotInterest['lot']; interests: PublicLotInterest[] }>()
+    filteredInterests.forEach((interest) => {
+      const group = map.get(interest.lot.id)
+      if (group) {
+        group.interests.push(interest)
+      } else {
+        map.set(interest.lot.id, { lot: interest.lot, interests: [interest] })
+      }
+    })
+    return Array.from(map.values())
+  }, [filteredInterests])
 
   const visibleFeedback = useMemo(() => {
     if (!feedback) return null
@@ -143,26 +214,87 @@ function ProposalsContent() {
     }
   }
 
+  async function updateInterestStatus(interestId: string, status: 'pending' | 'contacted' | 'dismissed') {
+    const currentInterest = interests.find((interest) => interest.id === interestId)
+    const feedbackDevelopmentId = currentInterest?.lot.block.development?.id ?? developmentFilter
+
+    try {
+      setUpdatingInterestId(interestId)
+      setError(null)
+      setFeedback(null)
+      const response = await fetch(`/api/public-lot-interests/${interestId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel atualizar a solicitacao.')
+      setInterests((current) => current.map((interest) => (interest.id === payload.id ? payload : interest)))
+      setFeedback({
+        type: 'success',
+        message: 'Solicitacao atualizada.',
+        developmentId: feedbackDevelopmentId,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Nao foi possivel atualizar a solicitacao.'
+      setError(message)
+      setFeedback({ type: 'error', message, developmentId: feedbackDevelopmentId })
+    } finally {
+      setUpdatingInterestId(null)
+    }
+  }
+
   if (loading) return <div className='h-72 animate-pulse rounded-2xl bg-surface-secondary' />
 
   return (
     <div className='space-y-6'>
       <div className='flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'>
         <div>
-          <h1 className='page-title'>Propostas</h1>
-          <p className='page-subtitle'>Acompanhe aprovacoes automaticas, excecoes comerciais e continuidade das vendas.</p>
+          <h1 className='page-title'>Funil comercial</h1>
+          <p className='page-subtitle'>Acompanhe solicitacoes do mapa publico, aprovacoes comerciais e continuidade das vendas.</p>
         </div>
-        <select
-          value={statusFilter}
-          onChange={(event) => setStatusFilter(event.target.value)}
-          className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground'
-        >
-          <option value=''>Todos os status</option>
-          <option value='pending_approval'>Aguardando aprovacao</option>
-          <option value='approved'>Aprovadas</option>
-          <option value='rejected'>Rejeitadas</option>
-          <option value='converted'>Convertidas em venda</option>
-        </select>
+        <div className='flex flex-col gap-3 sm:flex-row'>
+          <div className='inline-flex rounded-xl border border-border bg-surface p-1'>
+            <button
+              type='button'
+              onClick={() => setViewMode('interests')}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${viewMode === 'interests' ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary'}`}
+            >
+              Solicitacoes ({filteredInterests.length})
+            </button>
+            <button
+              type='button'
+              onClick={() => setViewMode('proposals')}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${viewMode === 'proposals' ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary'}`}
+            >
+              Propostas ({filteredProposals.length})
+            </button>
+          </div>
+          {viewMode === 'interests' ? (
+            <select
+              value={interestStatusFilter}
+              onChange={(event) => setInterestStatusFilter(event.target.value)}
+              className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground'
+            >
+              <option value=''>Todos os status</option>
+              <option value='pending'>Pendentes</option>
+              <option value='contacted'>Contactadas</option>
+              <option value='dismissed'>Descartadas</option>
+            </select>
+          ) : (
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground'
+            >
+              <option value=''>Todos os status</option>
+              <option value='pending_approval'>Aguardando aprovacao</option>
+              <option value='approved'>Aprovadas</option>
+              <option value='rejected'>Rejeitadas</option>
+              <option value='converted'>Convertidas em venda</option>
+            </select>
+          )}
+        </div>
       </div>
 
       {error && <div className='rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700'>{error}</div>}
@@ -189,7 +321,78 @@ function ProposalsContent() {
         </div>
       )}
 
-      {filteredProposals.length === 0 ? (
+      {viewMode === 'interests' ? (
+        interestsByLot.length === 0 ? (
+          <div className='panel px-6 py-12 text-center text-sm text-muted'>Nenhuma solicitacao publica encontrada neste filtro.</div>
+        ) : (
+          <div className='grid gap-4'>
+            {interestsByLot.map(({ lot, interests: lotInterests }) => (
+              <article key={lot.id} className='panel p-6'>
+                <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
+                  <div>
+                    <div className='flex flex-wrap items-center gap-2'>
+                      <span className='pill bg-sky-50 text-sky-700'>{lotInterests.length} na fila</span>
+                      <span className='pill bg-surface-secondary text-muted'>{getLotAvailability(lot)}</span>
+                    </div>
+                    <h2 className='mt-3 text-lg font-bold text-foreground'>
+                      {lot.block.development?.name ?? 'Empreendimento'} · Quadra {lot.block.identifier}, Lote {lot.identifier}
+                    </h2>
+                  </div>
+                  <Link
+                    href={`/lots?developmentId=${lot.block.development?.id ?? developmentFilter}&lotId=${lot.id}`}
+                    className='rounded-xl border border-border bg-surface px-4 py-3 text-center text-sm font-semibold text-foreground transition hover:bg-background'
+                  >
+                    Ver lote
+                  </Link>
+                </div>
+
+                <div className='mt-5 grid gap-3'>
+                  {lotInterests.map((interest, index) => {
+                    const meta = interestStatusMeta[interest.status] ?? { label: interest.status, className: 'bg-surface-secondary text-muted' }
+                    return (
+                      <div key={interest.id} className='rounded-2xl border border-border bg-surface-secondary p-4'>
+                        <div className='flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between'>
+                          <div className='min-w-0'>
+                            <div className='flex flex-wrap items-center gap-2'>
+                              <span className={`pill ${meta.className}`}>{meta.label}</span>
+                              <span className='text-xs font-semibold text-muted'>#{index + 1} · {formatDate(interest.createdAt)}</span>
+                            </div>
+                            <p className='mt-3 text-sm font-semibold text-foreground'>{interest.name}</p>
+                            <p className='mt-1 text-sm text-muted'>{interest.email} · {formatPhone(interest.phone)}</p>
+                            {interest.notes && <p className='mt-3 rounded-xl bg-surface px-4 py-3 text-sm leading-6 text-muted'>{interest.notes}</p>}
+                          </div>
+                          <div className='flex shrink-0 flex-col gap-2 sm:flex-row xl:flex-col'>
+                            {interest.status !== 'contacted' && (
+                              <button
+                                type='button'
+                                onClick={() => void updateInterestStatus(interest.id, 'contacted')}
+                                disabled={updatingInterestId === interest.id}
+                                className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
+                              >
+                                Marcar contato
+                              </button>
+                            )}
+                            {interest.status !== 'dismissed' && (
+                              <button
+                                type='button'
+                                onClick={() => void updateInterestStatus(interest.id, 'dismissed')}
+                                disabled={updatingInterestId === interest.id}
+                                className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background disabled:opacity-60'
+                              >
+                                Descartar
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </article>
+            ))}
+          </div>
+        )
+      ) : filteredProposals.length === 0 ? (
         <div className='panel px-6 py-12 text-center text-sm text-muted'>Nenhuma proposta encontrada neste filtro.</div>
       ) : (
         <div className='grid gap-4'>
