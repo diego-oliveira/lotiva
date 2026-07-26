@@ -32,6 +32,12 @@ export async function GET() {
           },
         },
       },
+      internalNoteEntries: {
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      },
     },
     orderBy: { createdAt: 'asc' },
   })

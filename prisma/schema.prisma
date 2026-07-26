@@ -139,6 +139,7 @@ model User {
   createdProposals    Proposal[]                @relation("ProposalCreator")
   reviewedProposals   Proposal[]                @relation("ProposalReviewer")
   notifications       Notification[]
+  publicLotInterestNotes PublicLotInterestNote[]
   memberships         DevelopmentUser[]
   companyMemberships  CompanyUser[]
   createdCompanies    Company[]                  @relation("CompanyCreator")
@@ -301,11 +302,26 @@ model PublicLotInterest {
 
   development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
   lot         Lot         @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  internalNoteEntries PublicLotInterestNote[]
 
   @@index([developmentId, createdAt])
   @@index([lotId, status, createdAt])
   @@index([email])
   @@index([phone])
+}
+
+model PublicLotInterestNote {
+  id         String   @id @default(uuid())
+  interestId String
+  userId     String?
+  note       String   @db.Text
+  createdAt  DateTime @default(now())
+
+  interest PublicLotInterest @relation(fields: [interestId], references: [id], onDelete: Cascade)
+  user     User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([interestId, createdAt])
+  @@index([userId])
 }
 
 model Reservation {

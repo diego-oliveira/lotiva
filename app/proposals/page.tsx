@@ -39,6 +39,12 @@ type PublicLotInterest = {
   phone: string
   notes?: string | null
   internalNotes?: string | null
+  internalNoteEntries: Array<{
+    id: string
+    note: string
+    createdAt: string
+    user?: { id: string; name: string; email: string } | null
+  }>
   status: string
   createdAt: string
   lot: {
@@ -126,7 +132,7 @@ function ProposalsContent() {
       setProposals(await proposalResponse.json())
       const nextInterests = await interestResponse.json()
       setInterests(nextInterests)
-      setInterestNotesDrafts(Object.fromEntries(nextInterests.map((interest: PublicLotInterest) => [interest.id, interest.internalNotes ?? ''])))
+      setInterestNotesDrafts(Object.fromEntries(nextInterests.map((interest: PublicLotInterest) => [interest.id, ''])))
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar propostas.')
@@ -268,7 +274,7 @@ function ProposalsContent() {
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error || 'Nao foi possivel salvar a observacao.')
       setInterests((current) => current.map((interest) => (interest.id === payload.id ? payload : interest)))
-      setInterestNotesDrafts((current) => ({ ...current, [payload.id]: payload.internalNotes ?? '' }))
+      setInterestNotesDrafts((current) => ({ ...current, [payload.id]: '' }))
       setFeedback({
         type: 'success',
         message: 'Observacao interna salva.',
@@ -406,7 +412,7 @@ function ProposalsContent() {
                             )}
                             <div className='mt-3 rounded-xl border border-border bg-surface px-4 py-3'>
                               <label className='block'>
-                                <span className='text-xs font-semibold uppercase text-muted'>Observacao interna</span>
+                                <span className='text-xs font-semibold uppercase text-muted'>Nova observacao interna</span>
                                 <textarea
                                   value={interestNotesDrafts[interest.id] ?? ''}
                                   onChange={(event) => setInterestNotesDrafts((current) => ({ ...current, [interest.id]: event.target.value }))}
@@ -417,11 +423,24 @@ function ProposalsContent() {
                               <button
                                 type='button'
                                 onClick={() => void saveInterestInternalNotes(interest.id)}
-                                disabled={interestNotesSavingId === interest.id || (interestNotesDrafts[interest.id] ?? '') === (interest.internalNotes ?? '')}
+                                disabled={interestNotesSavingId === interest.id || !(interestNotesDrafts[interest.id] ?? '').trim()}
                                 className='mt-3 rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-background disabled:opacity-60'
                               >
                                 {interestNotesSavingId === interest.id ? 'Salvando...' : 'Salvar observacao'}
                               </button>
+                              {interest.internalNoteEntries.length > 0 && (
+                                <div className='mt-4 space-y-2 border-t border-border pt-4'>
+                                  {interest.internalNoteEntries.map((entry) => (
+                                    <div key={entry.id} className='rounded-xl bg-background px-3 py-2'>
+                                      <div className='flex flex-wrap items-center gap-2 text-xs font-semibold text-muted'>
+                                        <span>{formatDate(entry.createdAt)}</span>
+                                        {entry.user?.name && <span>por {entry.user.name}</span>}
+                                      </div>
+                                      <p className='mt-1 whitespace-pre-line text-sm leading-5 text-foreground'>{entry.note}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
                           <div className='flex shrink-0 flex-col gap-2 sm:flex-row xl:flex-col'>

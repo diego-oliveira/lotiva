@@ -8,6 +8,30 @@ type Params = { params: Promise<{ id: string }> }
 
 const allowedStatuses = ['pending', 'contacted', 'dismissed'] as const
 
+const interestInclude = {
+  lot: {
+    include: {
+      block: { include: { development: true } },
+      sale: { select: { id: true } },
+      reservations: {
+        where: {
+          cancelledAt: null,
+          status: { not: 'cancelled' },
+          sale: null,
+        },
+        select: { id: true },
+        take: 1,
+      },
+    },
+  },
+  internalNoteEntries: {
+    include: {
+      user: { select: { id: true, name: true, email: true } },
+    },
+    orderBy: { createdAt: 'desc' as const },
+  },
+}
+
 export async function PATCH(req: Request, { params }: Params) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
@@ -34,23 +58,7 @@ export async function PATCH(req: Request, { params }: Params) {
       id,
       lot: lotAccessWhere(userId),
     },
-    include: {
-      lot: {
-        include: {
-          block: { include: { development: true } },
-          sale: { select: { id: true } },
-          reservations: {
-            where: {
-              cancelledAt: null,
-              status: { not: 'cancelled' },
-              sale: null,
-            },
-            select: { id: true },
-            take: 1,
-          },
-        },
-      },
-    },
+    include: interestInclude,
   })
   if (!interest) return forbiddenResponse()
 
@@ -61,24 +69,18 @@ export async function PATCH(req: Request, { params }: Params) {
         ...(status ? { status } : {}),
         ...(hasInternalNotes ? { internalNotes: internalNotes || null } : {}),
       },
-      include: {
-        lot: {
-          include: {
-            block: { include: { development: true } },
-            sale: { select: { id: true } },
-            reservations: {
-              where: {
-                cancelledAt: null,
-                status: { not: 'cancelled' },
-                sale: null,
-              },
-              select: { id: true },
-              take: 1,
-            },
-          },
-        },
-      },
+      include: interestInclude,
     })
+
+    if (internalNotes) {
+      await tx.publicLotInterestNote.create({
+        data: {
+          interestId: interest.id,
+          userId,
+          note: internalNotes,
+        },
+      })
+    }
 
     await createLotEvent(tx, {
       lotId: interest.lotId,
@@ -91,7 +93,10 @@ export async function PATCH(req: Request, { params }: Params) {
       notes: hasInternalNotes ? internalNotes || null : data.notes ? String(data.notes) : null,
     })
 
-    return updated
+    return tx.publicLotInterest.findUnique({
+      where: { id: updated.id },
+      include: interestInclude,
+    })
   })
 
   return NextResponse.json(saved)
