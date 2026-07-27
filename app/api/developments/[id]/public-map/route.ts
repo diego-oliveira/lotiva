@@ -12,6 +12,18 @@ function createShareToken() {
 }
 
 function buildPublicUrl(req: NextRequest, token: string) {
+  const configuredOrigin = process.env.NEXTAUTH_URL || process.env.AUTH_URL
+  if (configuredOrigin) {
+    const url = new URL(configuredOrigin)
+    return `${url.origin}/p/${token}`
+  }
+
+  const forwardedHost = req.headers.get('x-forwarded-host')
+  if (forwardedHost) {
+    const forwardedProto = req.headers.get('x-forwarded-proto') ?? 'https'
+    return `${forwardedProto.split(',')[0]}://${forwardedHost.split(',')[0]}/p/${token}`
+  }
+
   const url = new URL(req.url)
   return `${url.origin}/p/${token}`
 }
