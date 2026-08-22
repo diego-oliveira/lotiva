@@ -7,6 +7,7 @@ import { hasDevelopmentPermission } from '@/lib/permissions'
 
 type Params = { params: Promise<{ id: string }> }
 
+const allowedStatuses = new Set(['available', 'reserved', 'on_hold', 'sold'])
 
 export async function GET(_: Request, { params }: Params) {
   const auth = await requireAuthenticatedUser()
@@ -37,6 +38,11 @@ export async function PUT(req: Request, { params }: Params) {
 
   const { id } = await params
   const data = await req.json()
+  const nextStatus = String(data.status || '')
+  if (!allowedStatuses.has(nextStatus)) {
+    return NextResponse.json({ error: 'Status do lote invalido.' }, { status: 400 })
+  }
+
   const lot = await prisma.lot.findFirst({
     where: {
       id,
@@ -95,12 +101,19 @@ export async function PUT(req: Request, { params }: Params) {
     lot.rightSide !== data.rightSide ||
     lot.totalArea !== data.totalArea ||
     Number(lot.price) !== Number(data.price)
+  const hasStatusChange = lot.status !== nextStatus
+  const statusChangeRequiresAdmin = hasStatusChange && (
+    lot.status === 'sold' ||
+    nextStatus === 'sold' ||
+    lot.status === 'reserved' ||
+    nextStatus === 'reserved'
+  )
 
-  if (hasLotDataChanges) {
+  if (hasLotDataChanges || statusChangeRequiresAdmin) {
     const developmentId = lot.block.developmentId
     const canEditLot = Boolean(developmentId && await hasDevelopmentPermission(userId, developmentId, 'admin'))
     if (!canEditLot) {
-      return NextResponse.json({ error: 'Somente administradores podem alterar dados do lote.' }, { status: 403 })
+      return NextResponse.json({ error: 'Somente administradores podem alterar dados cadastrais ou marcar lote como vendido.' }, { status: 403 })
     }
   }
 
@@ -126,7 +139,7 @@ export async function PUT(req: Request, { params }: Params) {
         rightSide: data.rightSide,
         totalArea: data.totalArea,
         price: data.price,
-        status: data.status,
+        status: nextStatus,
         updatedAt: new Date(),
       },
     })

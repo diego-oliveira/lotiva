@@ -153,6 +153,7 @@ interface LotEditForm {
   rightSide: number
   totalArea: number
   price: number
+  status: string
 }
 
 interface ProposalOutcome {
@@ -190,6 +191,8 @@ const statusMeta: Record<string, { label: string; tile: string; badge: string; d
     dot: 'bg-red-500',
   },
 }
+
+const manualLotStatuses = ['available', 'on_hold', 'sold']
 
 function getStatusMeta(status: string) {
   return statusMeta[status] ?? {
@@ -346,6 +349,7 @@ function LotsContent() {
     rightSide: 0,
     totalArea: 0,
     price: 0,
+    status: 'available',
   })
   const [lotEditSaving, setLotEditSaving] = useState(false)
   const [lotEditError, setLotEditError] = useState<string | null>(null)
@@ -537,6 +541,7 @@ function LotsContent() {
       rightSide: selectedLot.rightSide,
       totalArea: selectedLot.totalArea,
       price: selectedLot.price,
+      status: selectedLot.sale ? 'sold' : selectedLot.status,
     })
     setEditingLot(false)
     setLotEditError(null)
@@ -907,6 +912,11 @@ function LotsContent() {
       setLotEditSuccess(null)
       return
     }
+    if (!manualLotStatuses.includes(lotEditForm.status)) {
+      setLotEditError('Selecione um status valido para o lote.')
+      setLotEditSuccess(null)
+      return
+    }
     if (
       lotEditForm.front <= 0 ||
       lotEditForm.back <= 0 ||
@@ -940,7 +950,7 @@ function LotsContent() {
           rightSide: lotEditForm.rightSide,
           totalArea: lotEditForm.totalArea,
           price: lotEditForm.price,
-          status: selectedLot.status,
+          status: lotEditForm.status,
         }),
       })
 
@@ -1433,6 +1443,7 @@ function LotsContent() {
                               rightSide: selectedLot.rightSide,
                               totalArea: selectedLot.totalArea,
                               price: selectedLot.price,
+                              status: selectedLot.sale ? 'sold' : selectedLot.status,
                             })
                             setLotEditError(null)
                             setLotEditSuccess(null)
@@ -1514,6 +1525,20 @@ function LotsContent() {
                       </label>
 
                       <label className='block'>
+                        <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Status</span>
+                        <select
+                          value={lotEditForm.status}
+                          onChange={(event) => setLotEditForm((current) => ({ ...current, status: event.target.value }))}
+                          disabled={Boolean(selectedLot.sale)}
+                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary disabled:opacity-60'
+                        >
+                          {manualLotStatuses.map((status) => (
+                            <option key={status} value={status}>{getStatusMeta(status).label}</option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className='block'>
                         <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Frente</span>
                         <NumberTextInput
                           value={lotEditForm.front}
@@ -1581,6 +1606,7 @@ function LotsContent() {
                             rightSide: selectedLot.rightSide,
                             totalArea: selectedLot.totalArea,
                             price: selectedLot.price,
+                            status: selectedLot.sale ? 'sold' : selectedLot.status,
                           })
                           setLotEditError(null)
                           setLotEditSuccess(null)
