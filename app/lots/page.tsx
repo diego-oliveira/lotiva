@@ -144,6 +144,17 @@ interface Lot {
   } | null
 }
 
+interface LotEditForm {
+  identifier: string
+  blockId: string
+  front: number
+  back: number
+  leftSide: number
+  rightSide: number
+  totalArea: number
+  price: number
+}
+
 interface ProposalOutcome {
   id: string
   status: string
@@ -324,6 +335,21 @@ function LotsContent() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [canManageUsers, setCanManageUsers] = useState(false)
   const [canManageSettings, setCanManageSettings] = useState(false)
+  const [canAdmin, setCanAdmin] = useState(false)
+  const [editingLot, setEditingLot] = useState(false)
+  const [lotEditForm, setLotEditForm] = useState<LotEditForm>({
+    identifier: '',
+    blockId: '',
+    front: 0,
+    back: 0,
+    leftSide: 0,
+    rightSide: 0,
+    totalArea: 0,
+    price: 0,
+  })
+  const [lotEditSaving, setLotEditSaving] = useState(false)
+  const [lotEditError, setLotEditError] = useState<string | null>(null)
+  const [lotEditSuccess, setLotEditSuccess] = useState<string | null>(null)
 
   async function fetchLots() {
     try {
@@ -346,10 +372,12 @@ function LotsContent() {
       .then((payload) => {
         setCanManageUsers(Boolean(payload?.permissions?.manageUsers))
         setCanManageSettings(Boolean(payload?.permissions?.manageSettings || payload?.permissions?.admin))
+        setCanAdmin(Boolean(payload?.permissions?.admin))
       })
       .catch(() => {
         setCanManageUsers(false)
         setCanManageSettings(false)
+        setCanAdmin(false)
       })
   }, [])
 
@@ -370,6 +398,9 @@ function LotsContent() {
     setProposalError(null)
     setProposalNotice(null)
     setEventError(null)
+    setEditingLot(false)
+    setLotEditError(null)
+    setLotEditSuccess(null)
     setProposalOutcome((current) => {
       if (!current || !developmentFilter || current.developmentId === developmentFilter) return current
       return null
@@ -488,6 +519,30 @@ function LotsContent() {
     () => filteredLots.find((lot) => lot.id === selectedLotId) ?? lots.find((lot) => lot.id === selectedLotId) ?? null,
     [filteredLots, lots, selectedLotId],
   )
+
+  useEffect(() => {
+    if (!selectedLot) {
+      setEditingLot(false)
+      setLotEditError(null)
+      setLotEditSuccess(null)
+      return
+    }
+
+    setLotEditForm({
+      identifier: selectedLot.identifier,
+      blockId: selectedLot.blockId,
+      front: selectedLot.front,
+      back: selectedLot.back,
+      leftSide: selectedLot.leftSide,
+      rightSide: selectedLot.rightSide,
+      totalArea: selectedLot.totalArea,
+      price: selectedLot.price,
+    })
+    setEditingLot(false)
+    setLotEditError(null)
+    setLotEditSuccess(null)
+  }, [selectedLot?.id])
+
   const visibleDevelopments = useMemo(() => {
     const map = new Map<string, Development>()
     lots
@@ -832,6 +887,76 @@ function LotsContent() {
       setReservationError(err instanceof Error ? err.message : 'Nao foi possivel atualizar o status do lote')
     } finally {
       setReservationSaving(false)
+    }
+  }
+
+  const saveLotEdit = async () => {
+    if (!selectedLot) return
+    if (!canAdmin) {
+      setLotEditError('Somente administradores podem alterar dados do lote.')
+      setLotEditSuccess(null)
+      return
+    }
+    if (!lotEditForm.identifier.trim()) {
+      setLotEditError('Informe a identificacao do lote.')
+      setLotEditSuccess(null)
+      return
+    }
+    if (!lotEditForm.blockId) {
+      setLotEditError('Selecione a quadra do lote.')
+      setLotEditSuccess(null)
+      return
+    }
+    if (
+      lotEditForm.front <= 0 ||
+      lotEditForm.back <= 0 ||
+      lotEditForm.leftSide <= 0 ||
+      lotEditForm.rightSide <= 0 ||
+      lotEditForm.totalArea <= 0
+    ) {
+      setLotEditError('Medidas e area precisam ser maiores que zero.')
+      setLotEditSuccess(null)
+      return
+    }
+    if (lotEditForm.price < 0) {
+      setLotEditError('O valor do lote nao pode ser negativo.')
+      setLotEditSuccess(null)
+      return
+    }
+
+    try {
+      setLotEditSaving(true)
+      setLotEditError(null)
+      setLotEditSuccess(null)
+      const response = await fetch(`/api/lots/${selectedLot.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identifier: lotEditForm.identifier.trim(),
+          blockId: lotEditForm.blockId,
+          front: lotEditForm.front,
+          back: lotEditForm.back,
+          leftSide: lotEditForm.leftSide,
+          rightSide: lotEditForm.rightSide,
+          totalArea: lotEditForm.totalArea,
+          price: lotEditForm.price,
+          status: selectedLot.status,
+        }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload.error || 'Nao foi possivel salvar as alteracoes do lote')
+      }
+
+      await fetchLots()
+      setEditingLot(false)
+      setLotEditSuccess('Lote atualizado com sucesso. A alteracao foi registrada no historico.')
+    } catch (err) {
+      setLotEditError(err instanceof Error ? err.message : 'Nao foi possivel salvar as alteracoes do lote')
+      setLotEditSuccess(null)
+    } finally {
+      setLotEditSaving(false)
     }
   }
 
@@ -1293,16 +1418,46 @@ function LotsContent() {
                     <h2 className='mt-2 text-2xl font-bold text-foreground'>Quadra {selectedLot.block.identifier}, Lote {selectedLot.identifier}</h2>
                     <p className='mt-1 text-sm text-muted'>{selectedLot.block.development?.name ?? 'Sem empreendimento'}</p>
                   </div>
-                  <button
-                    type='button'
-                    onClick={() => setSelectedLotId(null)}
-                    className='rounded-xl border border-border bg-surface-secondary p-2 text-muted transition hover:bg-background hover:text-foreground'
-                    aria-label='Fechar'
-                  >
-                    <svg className='h-5 w-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M6 18L18 6M6 6l12 12' />
-                    </svg>
-                  </button>
+                  <div className='flex shrink-0 items-center gap-2'>
+                    {canAdmin && (
+                      <button
+                        type='button'
+                        onClick={() => {
+                          if (editingLot) {
+                            setLotEditForm({
+                              identifier: selectedLot.identifier,
+                              blockId: selectedLot.blockId,
+                              front: selectedLot.front,
+                              back: selectedLot.back,
+                              leftSide: selectedLot.leftSide,
+                              rightSide: selectedLot.rightSide,
+                              totalArea: selectedLot.totalArea,
+                              price: selectedLot.price,
+                            })
+                            setLotEditError(null)
+                            setLotEditSuccess(null)
+                            setEditingLot(false)
+                          } else {
+                            setLotEditSuccess(null)
+                            setEditingLot(true)
+                          }
+                        }}
+                        className='rounded-xl border border-border bg-surface-secondary px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-background'
+                      >
+                        {editingLot ? 'Cancelar edicao' : 'Editar lote'}
+                      </button>
+                    )}
+                    <button
+                      type='button'
+                      onClick={() => setSelectedLotId(null)}
+                      className='rounded-xl border border-border bg-surface-secondary p-2 text-muted transition hover:bg-background hover:text-foreground'
+                      aria-label='Fechar'
+                    >
+                      <svg className='h-5 w-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.8' d='M6 18L18 6M6 6l12 12' />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
 
                 <div className='flex flex-wrap items-center gap-2'>
@@ -1311,6 +1466,142 @@ function LotsContent() {
                     <span className='pill bg-emerald-50 text-emerald-700'>Contrato {selectedLot.sale.contract.contractNumber}</span>
                   )}
                 </div>
+
+                {lotEditSuccess && (
+                  <div className='rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700'>
+                    {lotEditSuccess}
+                  </div>
+                )}
+
+                {editingLot && (
+                  <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                    <div className='flex items-start justify-between gap-3'>
+                      <div>
+                        <h3 className='text-sm font-semibold text-foreground'>Editar lote</h3>
+                        <p className='mt-1 text-xs text-muted'>Alteracoes salvas aqui entram no historico do lote.</p>
+                      </div>
+                      <span className='pill bg-surface text-muted'>Admin</span>
+                    </div>
+
+                    {lotEditError && (
+                      <div className='mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700'>
+                        {lotEditError}
+                      </div>
+                    )}
+
+                    <div className='mt-4 grid gap-4 md:grid-cols-2'>
+                      <label className='block'>
+                        <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Identificacao</span>
+                        <input
+                          value={lotEditForm.identifier}
+                          onChange={(event) => setLotEditForm((current) => ({ ...current, identifier: event.target.value }))}
+                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                        />
+                      </label>
+
+                      <label className='block'>
+                        <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Quadra</span>
+                        <select
+                          value={lotEditForm.blockId}
+                          onChange={(event) => setLotEditForm((current) => ({ ...current, blockId: event.target.value }))}
+                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                        >
+                          <option value=''>Selecione...</option>
+                          {blocks.map((block) => (
+                            <option key={block.id} value={block.id}>Quadra {block.identifier}</option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className='block'>
+                        <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Frente</span>
+                        <NumberTextInput
+                          value={lotEditForm.front}
+                          onValueChange={(value) => setLotEditForm((current) => ({ ...current, front: value }))}
+                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                        />
+                      </label>
+
+                      <label className='block'>
+                        <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Fundo</span>
+                        <NumberTextInput
+                          value={lotEditForm.back}
+                          onValueChange={(value) => setLotEditForm((current) => ({ ...current, back: value }))}
+                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                        />
+                      </label>
+
+                      <label className='block'>
+                        <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Lateral esquerda</span>
+                        <NumberTextInput
+                          value={lotEditForm.leftSide}
+                          onValueChange={(value) => setLotEditForm((current) => ({ ...current, leftSide: value }))}
+                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                        />
+                      </label>
+
+                      <label className='block'>
+                        <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Lateral direita</span>
+                        <NumberTextInput
+                          value={lotEditForm.rightSide}
+                          onValueChange={(value) => setLotEditForm((current) => ({ ...current, rightSide: value }))}
+                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                        />
+                      </label>
+
+                      <label className='block'>
+                        <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Area total</span>
+                        <NumberTextInput
+                          value={lotEditForm.totalArea}
+                          onValueChange={(value) => setLotEditForm((current) => ({ ...current, totalArea: value }))}
+                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                        />
+                      </label>
+
+                      <label className='block'>
+                        <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Valor</span>
+                        <CurrencyTextInput
+                          value={lotEditForm.price}
+                          onValueChange={(value) => setLotEditForm((current) => ({ ...current, price: value }))}
+                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                        />
+                      </label>
+                    </div>
+
+                    <div className='mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end'>
+                      <button
+                        type='button'
+                        onClick={() => {
+                          setLotEditForm({
+                            identifier: selectedLot.identifier,
+                            blockId: selectedLot.blockId,
+                            front: selectedLot.front,
+                            back: selectedLot.back,
+                            leftSide: selectedLot.leftSide,
+                            rightSide: selectedLot.rightSide,
+                            totalArea: selectedLot.totalArea,
+                            price: selectedLot.price,
+                          })
+                          setLotEditError(null)
+                          setLotEditSuccess(null)
+                          setEditingLot(false)
+                        }}
+                        disabled={lotEditSaving}
+                        className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background disabled:opacity-60'
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type='button'
+                        onClick={() => void saveLotEdit()}
+                        disabled={lotEditSaving}
+                        className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
+                      >
+                        {lotEditSaving ? 'Salvando...' : 'Salvar alteracoes'}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className='grid grid-cols-2 gap-3'>
                   <div className='rounded-xl border border-border bg-surface-secondary p-4'>

@@ -44,9 +44,15 @@ export async function PUT(req: Request, { params }: Params) {
     },
     select: {
       id: true,
+      identifier: true,
       status: true,
+      front: true,
+      back: true,
+      leftSide: true,
+      rightSide: true,
+      totalArea: true,
       price: true,
-      block: { select: { developmentId: true } },
+      block: { select: { id: true, identifier: true, developmentId: true } },
       events: {
         where: { type: 'lot_blocked' },
         select: { userId: true },
@@ -76,9 +82,37 @@ export async function PUT(req: Request, { params }: Params) {
       id: data.blockId,
       ...blockAccessWhere(userId),
     },
-    select: { id: true },
+    select: { id: true, identifier: true, developmentId: true },
   })
   if (!block) return forbiddenResponse()
+
+  const hasLotDataChanges =
+    lot.identifier !== data.identifier ||
+    lot.block.id !== data.blockId ||
+    lot.front !== data.front ||
+    lot.back !== data.back ||
+    lot.leftSide !== data.leftSide ||
+    lot.rightSide !== data.rightSide ||
+    lot.totalArea !== data.totalArea ||
+    Number(lot.price) !== Number(data.price)
+
+  if (hasLotDataChanges) {
+    const developmentId = lot.block.developmentId
+    const canEditLot = Boolean(developmentId && await hasDevelopmentPermission(userId, developmentId, 'admin'))
+    if (!canEditLot) {
+      return NextResponse.json({ error: 'Somente administradores podem alterar dados do lote.' }, { status: 403 })
+    }
+  }
+
+  if (hasLotDataChanges && block.developmentId !== lot.block.developmentId) {
+    if (!block.developmentId) {
+      return NextResponse.json({ error: 'Quadra de destino sem empreendimento.' }, { status: 400 })
+    }
+    const canEditTargetDevelopment = await hasDevelopmentPermission(userId, block.developmentId, 'admin')
+    if (!canEditTargetDevelopment) {
+      return NextResponse.json({ error: 'Somente administradores do empreendimento de destino podem mover o lote.' }, { status: 403 })
+    }
+  }
 
   const updated = await prisma.$transaction(async (tx) => {
     const updatedLot = await tx.lot.update({
@@ -97,6 +131,25 @@ export async function PUT(req: Request, { params }: Params) {
       },
     })
 
+    const changes: string[] = []
+    if (lot.identifier !== updatedLot.identifier) changes.push(`identificacao de ${lot.identifier} para ${updatedLot.identifier}`)
+    if (lot.block.id !== updatedLot.blockId) changes.push(`quadra de ${lot.block.identifier} para ${block.identifier}`)
+    if (lot.front !== updatedLot.front) changes.push(`frente de ${lot.front} m para ${updatedLot.front} m`)
+    if (lot.back !== updatedLot.back) changes.push(`fundo de ${lot.back} m para ${updatedLot.back} m`)
+    if (lot.leftSide !== updatedLot.leftSide) changes.push(`lateral esquerda de ${lot.leftSide} m para ${updatedLot.leftSide} m`)
+    if (lot.rightSide !== updatedLot.rightSide) changes.push(`lateral direita de ${lot.rightSide} m para ${updatedLot.rightSide} m`)
+    if (lot.totalArea !== updatedLot.totalArea) changes.push(`area de ${lot.totalArea} m2 para ${updatedLot.totalArea} m2`)
+
+    if (changes.length > 0) {
+      await createLotEvent(tx, {
+        lotId: id,
+        userId,
+        type: 'lot_updated',
+        title: 'Dados do lote alterados',
+        description: `Alterado: ${changes.join('; ')}.`,
+      })
+    }
+
     if (lot.status !== updatedLot.status) {
       const blocked = updatedLot.status === 'on_hold'
       await createLotEvent(tx, {
@@ -108,7 +161,7 @@ export async function PUT(req: Request, { params }: Params) {
       })
     }
 
-    if (lot.price !== updatedLot.price) {
+    if (Number(lot.price) !== Number(updatedLot.price)) {
       await createLotEvent(tx, {
         lotId: id,
         userId,
