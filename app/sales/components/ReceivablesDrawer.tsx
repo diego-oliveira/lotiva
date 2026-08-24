@@ -154,12 +154,21 @@ function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString('pt-BR')
 }
 
+function startOfDay(value: Date | string) {
+  const date = new Date(value)
+  date.setHours(0, 0, 0, 0)
+  return date
+}
+
+function getDaysBetween(left: Date, right: Date) {
+  const millisecondsPerDay = 24 * 60 * 60 * 1000
+  return Math.round((left.getTime() - right.getTime()) / millisecondsPerDay)
+}
+
 function isOverdue(receivable: Receivable) {
   if (receivable.status === 'paid') return false
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const dueDate = new Date(receivable.dueDate)
-  dueDate.setHours(0, 0, 0, 0)
+  const today = startOfDay(new Date())
+  const dueDate = startOfDay(receivable.dueDate)
   return dueDate < today
 }
 
@@ -173,11 +182,49 @@ function getStatusMeta(receivable: Receivable) {
     return { label: 'Paga', className: 'bg-emerald-50 text-emerald-700' }
   }
 
+  const today = startOfDay(new Date())
+  const dueDate = startOfDay(receivable.dueDate)
+
   if (isOverdue(receivable)) {
-    return { label: 'Vencida', className: 'bg-red-50 text-red-700' }
+    const overdueDays = getDaysBetween(today, dueDate)
+    return {
+      label: overdueDays === 1 ? 'Vencida ha 1 dia' : `Vencida ha ${overdueDays} dias`,
+      className: 'bg-red-50 text-red-700',
+    }
+  }
+
+  if (dueDate.getTime() === today.getTime()) {
+    return { label: 'Vence hoje', className: 'bg-amber-50 text-amber-700' }
   }
 
   return { label: 'Em aberto', className: 'bg-amber-50 text-amber-700' }
+}
+
+function getReceivableSortGroup(receivable: Receivable, currentReceivableId: string | null) {
+  if (isOverdue(receivable)) return 0
+  if (receivable.id === currentReceivableId) return 1
+  if (receivable.status !== 'paid') return 2
+  return 3
+}
+
+function getAttentionMeta(receivable: Receivable, currentReceivableId: string | null) {
+  if (isOverdue(receivable)) {
+    return {
+      label: 'Prioridade',
+      className: 'border-red-200 bg-red-50 text-red-700',
+      cardClassName: 'border-red-200 bg-red-50/45 shadow-sm ring-1 ring-red-100 hover:border-red-300',
+    }
+  }
+
+  if (receivable.id === currentReceivableId) {
+    return {
+      label: 'Parcela atual',
+      className: 'border-primary/20 bg-primary/10 text-primary',
+      cardClassName: 'border-primary/25 bg-blue-50/35 shadow-sm ring-1 ring-primary/10 hover:border-primary/40',
+    }
+  }
+
+  return null
 }
 
 function getChargeMeta(charge?: ExternalCharge) {
@@ -285,6 +332,36 @@ export default function ReceivablesDrawer({
       { total: 0, paid: 0, balance: 0, overdue: 0 },
     )
   }, [receivables])
+  const currentReceivableId = useMemo(() => {
+    const today = startOfDay(new Date())
+    const nextOpenReceivable = receivables
+      .filter((receivable) => receivable.status !== 'paid' && startOfDay(receivable.dueDate) >= today)
+      .sort((left, right) => {
+        const dueDateDiff = startOfDay(left.dueDate).getTime() - startOfDay(right.dueDate).getTime()
+        if (dueDateDiff !== 0) return dueDateDiff
+        return left.sequence - right.sequence
+      })[0]
+
+    return nextOpenReceivable?.id ?? null
+  }, [receivables])
+  const prioritizedReceivables = useMemo(() => {
+    return [...receivables].sort((left, right) => {
+      const leftGroup = getReceivableSortGroup(left, currentReceivableId)
+      const rightGroup = getReceivableSortGroup(right, currentReceivableId)
+      if (leftGroup !== rightGroup) return leftGroup - rightGroup
+
+      const leftDueDate = startOfDay(left.dueDate).getTime()
+      const rightDueDate = startOfDay(right.dueDate).getTime()
+
+      if (leftGroup === 3) {
+        if (leftDueDate !== rightDueDate) return rightDueDate - leftDueDate
+        return right.sequence - left.sequence
+      }
+
+      if (leftDueDate !== rightDueDate) return leftDueDate - rightDueDate
+      return left.sequence - right.sequence
+    })
+  }, [receivables, currentReceivableId])
   const chargesByReceivable = useMemo(() => {
     const map = new Map<string, ExternalCharge>()
     cycles
@@ -680,7 +757,7 @@ export default function ReceivablesDrawer({
                 <div>
                   <h3 className='text-base font-semibold text-foreground'>Parcelas e recebimentos</h3>
                   <p className='mt-1 text-sm text-muted'>
-                    Acompanhe cada parcela e veja se o boleto ja foi gerado.
+                    Vencidas aparecem primeiro, depois a parcela atual e os proximos vencimentos.
                   </p>
                 </div>
                 {(canManagePayments || canReconcilePayments) && (
@@ -802,8 +879,9 @@ export default function ReceivablesDrawer({
               <div className='px-5 py-10 text-center text-sm text-muted'>Nenhum recebivel gerado para esta venda.</div>
             ) : (
               <div className='space-y-4 bg-surface-secondary/40 px-5 py-5'>
-                {receivables.map((receivable) => {
+                {prioritizedReceivables.map((receivable) => {
                   const status = getStatusMeta(receivable)
+                  const attentionMeta = getAttentionMeta(receivable, currentReceivableId)
                   const paid = receivable.status === 'paid'
                   const hasRemainingBalance = !paid && Math.abs(receivable.balance - receivable.amount) > 0.009
                   const charge = chargesByReceivable.get(receivable.id)
@@ -812,13 +890,17 @@ export default function ReceivablesDrawer({
                   const chargeActionLabel = charge && ['cancelled', 'refunded'].includes(charge.status) ? 'Reemitir boleto' : 'Cancelar boleto'
 
                   return (
-                    <article key={receivable.id} className='rounded-2xl border border-border bg-surface px-5 py-5 shadow-sm transition hover:border-primary/25 hover:shadow-md'>
+                    <article
+                      key={receivable.id}
+                      className={`rounded-2xl border px-5 py-5 transition hover:shadow-md ${attentionMeta?.cardClassName ?? 'border-border bg-surface shadow-sm hover:border-primary/25'}`}
+                    >
                       <div className='grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(220px,0.55fr)] xl:items-start'>
                         <div className='min-w-0'>
                           <div className='flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between'>
                             <div className='min-w-0'>
                               <div className='flex flex-wrap items-center gap-2'>
                                 <p className='text-base font-semibold text-foreground'>{getReceivableLabel(receivable)}</p>
+                                {attentionMeta && <span className={`pill border ${attentionMeta.className}`}>{attentionMeta.label}</span>}
                                 <span className={`pill ${status.className}`}>{status.label}</span>
                               </div>
                               <div className='mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted'>
