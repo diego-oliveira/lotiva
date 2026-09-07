@@ -102,3 +102,83 @@ test('rejeita emissao de boleto para vencimento passado antes do provedor', asyn
   )
   assert.deepEqual(calls, [])
 })
+
+test('permite boleto Inter futuro para parcela vencida sem alterar o vencimento original', async () => {
+  let chargeInput: any = null
+  const originalDueDate = new Date(Date.UTC(2020, 0, 15))
+  const db = {
+    paymentProviderConnection: {
+      findUnique: async () => ({ id: 'conn-1', status: 'active', provider: 'inter', companyId: 'company-1', environment: 'production' }),
+    },
+    receivable: {
+      findUnique: async () => ({
+        id: 'rec-1',
+        kind: 'installment',
+        sequence: 1,
+        dueDate: originalDueDate,
+        amount: { toString: () => '637.50' },
+        status: 'pending',
+        externalCharges: [],
+        saleId: 'sale-1',
+        sale: {
+          userId: 'user-1',
+          user: {
+            id: 'user-1',
+            name: 'Cliente',
+            email: 'cliente@example.com',
+            cpf: '02100000001',
+          },
+          lot: {
+            block: {
+              development: { companyId: 'company-1' },
+            },
+          },
+        },
+      }),
+    },
+    externalCustomer: {
+      upsert: async () => ({ providerCustomerId: 'customer-1' }),
+    },
+    externalCharge: {
+      findUnique: async () => null,
+      upsert: async ({ create }: any) => create,
+    },
+    financialAuditLog: {
+      create: async () => ({}),
+    },
+  }
+  const provider = {
+    name: 'inter' as const,
+    createCustomer: async (input: any) => ({ ...input, id: 'customer-1' }),
+    findCustomerByDocument: async () => null,
+    listCharges: async () => ({ charges: [], hasMore: false, totalCount: 0 }),
+    createCharge: async (input: any) => {
+      chargeInput = input
+      return {
+        ...input,
+        id: 'charge-1',
+        status: 'pending' as const,
+        invoiceUrl: 'https://inter.example/cobranca',
+        bankSlipUrl: '00190',
+      }
+    },
+    updateCharge: async () => { throw new Error('nao implementado') },
+    getCharge: async () => { throw new Error('nao implementado') },
+    cancelCharge: async () => { throw new Error('nao implementado') },
+    getPixQrCode: async () => { throw new Error('qr indisponivel') },
+    listChargesByCustomer: async () => { throw new Error('nao implementado') },
+    ensurePaymentWebhook: async () => { throw new Error('nao implementado') },
+  }
+
+  const result = await issueReceivableCharge({
+    connectionId: 'conn-1',
+    receivableId: 'rec-1',
+    provider,
+    db: db as any,
+    chargeDueDate: '2099-01-20',
+  })
+
+  assert.equal(chargeInput.dueDate, '2099-01-20')
+  assert.equal(result.charge.dueDate.toISOString().slice(0, 10), '2099-01-20')
+  assert.equal(originalDueDate.toISOString().slice(0, 10), '2020-01-15')
+})

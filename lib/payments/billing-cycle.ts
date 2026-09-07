@@ -32,14 +32,20 @@ function dateOnly(date: Date) {
   return date.toISOString().slice(0, 10)
 }
 
+function parseDateOnly(value: string) {
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) throw new Error('Data de vencimento invalida.')
+  return new Date(Date.UTC(year, month - 1, day, 12))
+}
+
 function todayDateOnly() {
   return dateOnly(new Date())
 }
 
-function assertChargeDueDateCanBeIssued(receivable: ReceivableCandidate, providerName: string) {
+export function assertChargeDueDateCanBeIssued(receivable: ReceivableCandidate, providerName: string, chargeDueDate?: Date) {
   if (providerName !== 'inter') return
 
-  const dueDate = dateOnly(receivable.dueDate)
+  const dueDate = dateOnly(chargeDueDate ?? receivable.dueDate)
   if (dueDate < todayDateOnly()) {
     const label = receivable.kind === 'down_payment'
       ? 'entrada'
@@ -48,11 +54,12 @@ function assertChargeDueDateCanBeIssued(receivable: ReceivableCandidate, provide
   }
 }
 
-export function buildChargeExternalReference(receivableId: string, providerName: string) {
+export function buildChargeExternalReference(receivableId: string, providerName: string, version = 1) {
   if (providerName === 'inter') {
-    return `r${createHash('sha256').update(receivableId).digest('hex').slice(0, 14)}`
+    const value = version === 1 ? receivableId : `${receivableId}:v${version}`
+    return `r${createHash('sha256').update(value).digest('hex').slice(0, 14)}`
   }
-  return `receivable:${receivableId}:v1`
+  return `receivable:${receivableId}:v${version}`
 }
 
 async function findOrCreateExternalCustomer(input: {
@@ -120,6 +127,7 @@ async function findOrCreateCharge(input: {
   receivable: ReceivableCandidate
   saleId: string
   billingType: BillingType
+  chargeDueDate?: Date
   interestPercentage?: string
   finePercentage?: string
 }) {
@@ -141,7 +149,7 @@ async function findOrCreateCharge(input: {
   const charge = listed.charges[0] ?? await input.provider.createCharge({
     customerId: input.providerCustomerId,
     amount: input.receivable.amount.toString(),
-    dueDate: dateOnly(input.receivable.dueDate),
+    dueDate: dateOnly(input.chargeDueDate ?? input.receivable.dueDate),
     billingType: input.billingType,
     description: `${receivableLabel} da venda ${input.saleId}`,
     externalReference,
@@ -176,7 +184,7 @@ async function findOrCreateCharge(input: {
       billingType: input.billingType,
       status: charge.status,
       amount: input.receivable.amount.toString(),
-      dueDate: input.receivable.dueDate,
+      dueDate: input.chargeDueDate ?? input.receivable.dueDate,
       invoiceUrl: charge.invoiceUrl,
       bankSlipUrl: charge.bankSlipUrl,
       pixPayload: pix?.payload,
@@ -375,6 +383,7 @@ export async function issueReceivableCharge(input: {
   receivableId: string
   provider: PaymentProvider
   billingType?: BillingType
+  chargeDueDate?: string
   interestPercentage?: string
   finePercentage?: string
   db?: PaymentDatabase
@@ -423,7 +432,8 @@ export async function issueReceivableCharge(input: {
 
   const existing = receivable.externalCharges.find((charge) => !['cancelled', 'refunded'].includes(charge.status))
   if (existing) return { charge: existing, alreadyComplete: true }
-  assertChargeDueDateCanBeIssued(receivable, input.provider.name)
+  const chargeDueDate = input.chargeDueDate ? parseDateOnly(input.chargeDueDate) : undefined
+  assertChargeDueDateCanBeIssued(receivable, input.provider.name, chargeDueDate)
 
   const customer = await findOrCreateExternalCustomer({
     db,
@@ -440,6 +450,7 @@ export async function issueReceivableCharge(input: {
     receivable,
     saleId: receivable.saleId,
     billingType,
+    chargeDueDate,
     interestPercentage: input.interestPercentage,
     finePercentage: input.finePercentage,
   })

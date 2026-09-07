@@ -162,6 +162,19 @@ function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString('pt-BR')
 }
 
+function formatDateInput(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function defaultChargeDueDate() {
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  return formatDateInput(tomorrow)
+}
+
 function startOfDay(value: Date | string) {
   const date = new Date(value)
   date.setHours(0, 0, 0, 0)
@@ -260,6 +273,14 @@ function environmentLabel(environment: string) {
   return environment === 'production' ? 'Conta real' : 'Conta de teste'
 }
 
+type ChargeDueDateDialog = {
+  mode: 'issue' | 'reissue'
+  receivable: Receivable
+  charge?: ExternalCharge
+  reason?: string
+  dueDate: string
+}
+
 export default function ReceivablesDrawer({
   sale,
   isOpen,
@@ -289,6 +310,7 @@ export default function ReceivablesDrawer({
   const [chargeIssueId, setChargeIssueId] = useState<string | null>(null)
   const [chargeProvider, setChargeProvider] = useState('')
   const [chargeEnvironment, setChargeEnvironment] = useState('')
+  const [chargeDueDateDialog, setChargeDueDateDialog] = useState<ChargeDueDateDialog | null>(null)
   const [asaasImportLoading, setAsaasImportLoading] = useState(false)
   const [asaasImportSaving, setAsaasImportSaving] = useState(false)
   const [asaasImportPreview, setAsaasImportPreview] = useState<AsaasImportPreview | null>(null)
@@ -505,26 +527,25 @@ export default function ReceivablesDrawer({
     }
   }
 
-  const runChargeAction = async (charge: ExternalCharge, action: 'cancel' | 'reissue') => {
-    const reason = window.prompt(
-      action === 'cancel'
-        ? 'Informe o motivo do cancelamento:'
-        : 'Informe o motivo da reemissao:',
-    )
-    if (!reason?.trim()) return
-
+  const submitChargeAction = async (
+    charge: ExternalCharge,
+    action: 'cancel' | 'reissue',
+    reason: string,
+    chargeDueDate?: string,
+  ) => {
     setChargeActionId(charge.id)
     setError(null)
     try {
       const response = await fetch(`/api/external-charges/${charge.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, reason }),
+        body: JSON.stringify({ action, reason, chargeDueDate }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error || 'Nao foi possivel alterar a cobranca.')
       setCycleSuccess(action === 'cancel' ? 'Cobranca cancelada.' : 'Cobranca reemitida.')
       await loadCycles()
+      await onUpdated()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nao foi possivel alterar a cobranca.')
     } finally {
@@ -532,7 +553,33 @@ export default function ReceivablesDrawer({
     }
   }
 
-  const issueReceivableCharge = async (receivable: Receivable) => {
+  const runChargeAction = async (receivable: Receivable, charge: ExternalCharge, action: 'cancel' | 'reissue') => {
+    const reason = window.prompt(
+      action === 'cancel'
+        ? 'Informe o motivo do cancelamento:'
+        : 'Informe o motivo da reemissao:',
+    )
+    if (!reason?.trim()) return
+
+    if (
+      action === 'reissue' &&
+      charge.provider === 'inter' &&
+      (isOverdue(receivable) || startOfDay(charge.dueDate) < startOfDay(new Date()))
+    ) {
+      setChargeDueDateDialog({
+        mode: 'reissue',
+        receivable,
+        charge,
+        reason,
+        dueDate: defaultChargeDueDate(),
+      })
+      return
+    }
+
+    await submitChargeAction(charge, action, reason)
+  }
+
+  const issueReceivableCharge = async (receivable: Receivable, chargeDueDate?: string) => {
     setChargeIssueId(receivable.id)
     setError(null)
     setCycleSuccess(null)
@@ -540,7 +587,7 @@ export default function ReceivablesDrawer({
       const response = await fetch(`/api/receivables/${receivable.id}/charge`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ billingType: 'BOLETO', provider: chargeProvider, environment: chargeEnvironment }),
+        body: JSON.stringify({ billingType: 'BOLETO', provider: chargeProvider, environment: chargeEnvironment, chargeDueDate }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.details || payload.error || 'Nao foi possivel gerar o boleto.')
@@ -552,6 +599,34 @@ export default function ReceivablesDrawer({
     } finally {
       setChargeIssueId(null)
     }
+  }
+
+  const startIssueReceivableCharge = async (receivable: Receivable) => {
+    if (chargeProvider === 'inter' && isOverdue(receivable)) {
+      setChargeDueDateDialog({
+        mode: 'issue',
+        receivable,
+        dueDate: defaultChargeDueDate(),
+      })
+      return
+    }
+
+    await issueReceivableCharge(receivable)
+  }
+
+  const submitChargeDueDateDialog = async () => {
+    if (!chargeDueDateDialog) return
+    if (startOfDay(chargeDueDateDialog.dueDate) < startOfDay(new Date())) {
+      setError('Informe um vencimento de boleto para hoje ou uma data futura.')
+      return
+    }
+    const dialog = chargeDueDateDialog
+    setChargeDueDateDialog(null)
+    if (dialog.mode === 'reissue' && dialog.charge) {
+      await submitChargeAction(dialog.charge, 'reissue', dialog.reason ?? 'Reemissao com novo vencimento', dialog.dueDate)
+      return
+    }
+    await issueReceivableCharge(dialog.receivable, dialog.dueDate)
   }
 
   const previewAsaasImport = async () => {
@@ -634,6 +709,55 @@ export default function ReceivablesDrawer({
         onClick={onClose}
         className='fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-[1px] lg:left-[290px]'
       />
+      {chargeDueDateDialog && (
+        <div className='fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/35 px-4'>
+          <div className='w-full max-w-md rounded-2xl border border-border bg-surface shadow-2xl'>
+            <div className='border-b border-border px-5 py-4'>
+              <h3 className='text-base font-semibold text-foreground'>
+                Novo vencimento do boleto
+              </h3>
+              <p className='mt-1 text-sm text-muted'>
+                {getReceivableLabel(chargeDueDateDialog.receivable)} venceu em {formatDate(chargeDueDateDialog.receivable.dueDate)}.
+              </p>
+            </div>
+            <div className='space-y-4 px-5 py-5'>
+              <label className='block'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Vencimento para cobranca</span>
+                <input
+                  type='date'
+                  min={formatDateInput(new Date())}
+                  value={chargeDueDateDialog.dueDate}
+                  onChange={(event) => setChargeDueDateDialog((current) => current
+                    ? { ...current, dueDate: event.target.value }
+                    : current)}
+                  className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                />
+              </label>
+              <div className='rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800'>
+                O vencimento original da parcela sera mantido. Apenas o novo boleto sera emitido com esta data.
+              </div>
+            </div>
+            <div className='flex justify-end gap-3 border-t border-border px-5 py-4'>
+              <button
+                type='button'
+                onClick={() => setChargeDueDateDialog(null)}
+                disabled={Boolean(chargeIssueId || chargeActionId)}
+                className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:opacity-60'
+              >
+                Cancelar
+              </button>
+              <button
+                type='button'
+                onClick={submitChargeDueDateDialog}
+                disabled={Boolean(chargeIssueId || chargeActionId)}
+                className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
+              >
+                {chargeIssueId || chargeActionId ? 'Gerando...' : 'Gerar boleto'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <aside className='fixed inset-y-0 right-0 z-50 flex w-full max-w-4xl flex-col border-l border-border bg-surface shadow-2xl'>
         <div className='border-b border-border px-6 py-5'>
           <div className='flex items-start justify-between gap-4'>
@@ -960,7 +1084,14 @@ export default function ReceivablesDrawer({
                   const charge = chargesByReceivable.get(receivable.id)
                   const chargeMeta = getChargeMeta(charge)
                   const canChangeCharge = Boolean(charge && canCancelPayments && !['confirmed', 'received'].includes(charge.status))
-                  const chargeActionLabel = charge && ['cancelled', 'refunded'].includes(charge.status) ? 'Reemitir boleto' : 'Cancelar boleto'
+                  const shouldReissueCharge = Boolean(
+                    charge &&
+                    (
+                      ['cancelled', 'refunded', 'overdue'].includes(charge.status) ||
+                      startOfDay(charge.dueDate) < startOfDay(new Date())
+                    ),
+                  )
+                  const chargeActionLabel = shouldReissueCharge ? 'Reemitir boleto' : 'Cancelar boleto'
 
                   return (
                     <article
@@ -1080,7 +1211,7 @@ export default function ReceivablesDrawer({
                             {canManagePayments && !paid && !charge && (
                               <button
                                 type='button'
-                                onClick={() => issueReceivableCharge(receivable)}
+                                onClick={() => startIssueReceivableCharge(receivable)}
                                 disabled={chargeIssueId === receivable.id || activePaymentConnections.length === 0}
                                 className='rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/8 disabled:opacity-60'
                               >
@@ -1097,8 +1228,9 @@ export default function ReceivablesDrawer({
                                 type='button'
                                 disabled={chargeActionId === charge.id}
                                 onClick={() => runChargeAction(
+                                  receivable,
                                   charge,
-                                  ['cancelled', 'refunded'].includes(charge.status) ? 'reissue' : 'cancel',
+                                  shouldReissueCharge ? 'reissue' : 'cancel',
                                 )}
                                 className='rounded-xl border border-red-200 bg-surface px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-60'
                               >

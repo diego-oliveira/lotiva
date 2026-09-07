@@ -34,7 +34,12 @@ export async function POST(req: Request, { params }: Params) {
     const data = await req.json()
     const reason = String(data.reason || '')
     const result = data.action === 'reissue'
-      ? await reissueExternalCharge({ externalChargeId: id, actorId: auth.session.user.id, reason })
+      ? await reissueExternalCharge({
+          externalChargeId: id,
+          actorId: auth.session.user.id,
+          reason,
+          chargeDueDate: typeof data.chargeDueDate === 'string' ? data.chargeDueDate : undefined,
+        })
       : await cancelExternalCharge({ externalChargeId: id, actorId: auth.session.user.id, reason })
     return NextResponse.json(result)
   } catch (error) {

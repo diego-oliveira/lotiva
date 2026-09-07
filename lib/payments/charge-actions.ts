@@ -3,6 +3,13 @@ import { prisma } from '@/lib/prisma'
 import { getPaymentProviderForConnection } from './factory'
 import { synchronizeExternalCharge } from './synchronize-charge'
 import { createFinancialAuditLog } from './audit'
+import { assertChargeDueDateCanBeIssued, buildChargeExternalReference } from './billing-cycle'
+
+function parseDateOnly(value: string) {
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) throw new Error('Data de vencimento invalida.')
+  return new Date(Date.UTC(year, month - 1, day, 12))
+}
 
 async function getChargeContext(externalChargeId: string) {
   const charge = await prisma.externalCharge.findUnique({
@@ -77,6 +84,7 @@ export async function reissueExternalCharge(input: {
   externalChargeId: string
   actorId: string
   reason: string
+  chargeDueDate?: string
 }) {
   let saved = await getChargeContext(input.externalChargeId)
   if (!['cancelled', 'refunded'].includes(saved.status)) {
@@ -88,6 +96,8 @@ export async function reissueExternalCharge(input: {
   }
 
   const { provider } = await getPaymentProviderForConnection(saved.connectionId)
+  const chargeDueDate = input.chargeDueDate ? parseDateOnly(input.chargeDueDate) : saved.receivable.dueDate
+  assertChargeDueDateCanBeIssued(saved.receivable, provider.name, chargeDueDate)
   const customer = await prisma.externalCustomer.findUnique({
     where: {
       connectionId_userId: {
@@ -104,11 +114,11 @@ export async function reissueExternalCharge(input: {
       .map((charge) => charge.version),
     0,
   ) + 1
-  const externalReference = `receivable:${saved.receivableId}:v${version}`
+  const externalReference = buildChargeExternalReference(saved.receivableId, provider.name, version)
   const providerCharge = await provider.createCharge({
     customerId: customer.providerCustomerId,
     amount: saved.receivable.amount.toString(),
-    dueDate: saved.receivable.dueDate.toISOString().slice(0, 10),
+    dueDate: chargeDueDate.toISOString().slice(0, 10),
     billingType: saved.billingType === 'PIX' ? 'PIX' : 'BOLETO',
     description: `Parcela ${saved.receivable.sequence} da venda ${saved.receivable.saleId}`,
     externalReference,
@@ -154,6 +164,7 @@ export async function reissueExternalCharge(input: {
         providerChargeId: created.providerChargeId,
         version,
         reason: input.reason.trim(),
+        chargeDueDate: providerCharge.dueDate,
       },
     })
     return created

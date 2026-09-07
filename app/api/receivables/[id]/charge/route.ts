@@ -94,6 +94,7 @@ export async function POST(req: Request, { params }: Params) {
         receivableId: id,
         provider: payment.provider,
         billingType: data.billingType === 'PIX' ? 'PIX' : 'BOLETO',
+        chargeDueDate: typeof data.chargeDueDate === 'string' ? data.chargeDueDate : undefined,
         interestPercentage: data.interestPercentage
           ? String(data.interestPercentage)
           : undefined,
