@@ -74,6 +74,12 @@ type ClientProfile = {
   cpf?: string | null
   rg?: string | null
   address?: string | null
+  addressNumber?: string | null
+  addressComplement?: string | null
+  neighborhood?: string | null
+  city?: string | null
+  state?: string | null
+  zipCode?: string | null
   birthDate?: string | null
   profession?: string | null
   birthplace?: string | null
@@ -102,6 +108,12 @@ const legalFields: { key: keyof ClientProfile; label: string }[] = [
   { key: 'birthplace', label: 'Naturalidade' },
   { key: 'maritalStatus', label: 'Estado civil' },
   { key: 'address', label: 'Endereco' },
+  { key: 'addressNumber', label: 'Numero' },
+  { key: 'addressComplement', label: 'Complemento' },
+  { key: 'neighborhood', label: 'Bairro' },
+  { key: 'city', label: 'Cidade' },
+  { key: 'state', label: 'UF' },
+  { key: 'zipCode', label: 'CEP' },
 ]
 
 const formatCurrency = (value: number) =>

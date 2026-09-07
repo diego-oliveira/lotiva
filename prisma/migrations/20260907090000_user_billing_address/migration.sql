@@ -1,0 +1,6 @@
+ALTER TABLE "User" ADD COLUMN "addressNumber" TEXT;
+ALTER TABLE "User" ADD COLUMN "addressComplement" TEXT;
+ALTER TABLE "User" ADD COLUMN "neighborhood" TEXT;
+ALTER TABLE "User" ADD COLUMN "city" TEXT;
+ALTER TABLE "User" ADD COLUMN "state" TEXT;
+ALTER TABLE "User" ADD COLUMN "zipCode" TEXT;

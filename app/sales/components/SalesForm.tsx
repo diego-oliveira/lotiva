@@ -70,6 +70,12 @@ interface User {
   cpf?: string | null
   rg?: string | null
   address?: string | null
+  addressNumber?: string | null
+  addressComplement?: string | null
+  neighborhood?: string | null
+  city?: string | null
+  state?: string | null
+  zipCode?: string | null
   birthDate?: string | null
   profession?: string | null
   birthplace?: string | null
@@ -124,6 +130,10 @@ const REQUIRED_DOCUMENT_FIELDS: { key: keyof User; label: string }[] = [
   { key: 'cpf', label: 'CPF' },
   { key: 'rg', label: 'RG' },
   { key: 'address', label: 'Endereco' },
+  { key: 'neighborhood', label: 'Bairro' },
+  { key: 'city', label: 'Cidade' },
+  { key: 'state', label: 'UF' },
+  { key: 'zipCode', label: 'CEP' },
   { key: 'birthDate', label: 'Data de nascimento' },
   { key: 'profession', label: 'Profissao' },
   { key: 'birthplace', label: 'Naturalidade' },
@@ -260,6 +270,12 @@ export default function SalesForm({
     cpf: '',
     rg: '',
     address: '',
+    addressNumber: '',
+    addressComplement: '',
+    neighborhood: '',
+    city: '',
+    state: '',
+    zipCode: '',
     birthDate: '',
     profession: '',
     birthplace: '',
@@ -394,6 +410,12 @@ export default function SalesForm({
       cpf: selectedUser.cpf ?? '',
       rg: selectedUser.rg ?? '',
       address: selectedUser.address ?? '',
+      addressNumber: selectedUser.addressNumber ?? '',
+      addressComplement: selectedUser.addressComplement ?? '',
+      neighborhood: selectedUser.neighborhood ?? '',
+      city: selectedUser.city ?? '',
+      state: selectedUser.state ?? '',
+      zipCode: selectedUser.zipCode ?? '',
       birthDate: selectedUser.birthDate ? selectedUser.birthDate.slice(0, 10) : '',
       profession: selectedUser.profession ?? '',
       birthplace: selectedUser.birthplace ?? '',
@@ -1061,11 +1083,61 @@ export default function SalesForm({
                     </select>
                   </label>
                   <label className='block md:col-span-2'>
-                    <span className='mb-2 block text-sm font-semibold text-foreground'>Endereco</span>
+                    <span className='mb-2 block text-sm font-semibold text-foreground'>Endereco / logradouro</span>
                     <textarea
-                      rows={3}
+                      rows={2}
                       value={documentForm.address}
                       onChange={(event) => updateDocumentField('address', event.target.value)}
+                      className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                    />
+                  </label>
+                  <label className='block'>
+                    <span className='mb-2 block text-sm font-semibold text-foreground'>Numero</span>
+                    <input
+                      value={documentForm.addressNumber}
+                      onChange={(event) => updateDocumentField('addressNumber', event.target.value)}
+                      className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                    />
+                  </label>
+                  <label className='block'>
+                    <span className='mb-2 block text-sm font-semibold text-foreground'>Complemento</span>
+                    <input
+                      value={documentForm.addressComplement}
+                      onChange={(event) => updateDocumentField('addressComplement', event.target.value)}
+                      className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                    />
+                  </label>
+                  <label className='block'>
+                    <span className='mb-2 block text-sm font-semibold text-foreground'>Bairro</span>
+                    <input
+                      value={documentForm.neighborhood}
+                      onChange={(event) => updateDocumentField('neighborhood', event.target.value)}
+                      className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                    />
+                  </label>
+                  <label className='block'>
+                    <span className='mb-2 block text-sm font-semibold text-foreground'>Cidade</span>
+                    <input
+                      value={documentForm.city}
+                      onChange={(event) => updateDocumentField('city', event.target.value)}
+                      className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                    />
+                  </label>
+                  <label className='block'>
+                    <span className='mb-2 block text-sm font-semibold text-foreground'>UF</span>
+                    <input
+                      value={documentForm.state}
+                      onChange={(event) => updateDocumentField('state', event.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2))}
+                      maxLength={2}
+                      className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                    />
+                  </label>
+                  <label className='block'>
+                    <span className='mb-2 block text-sm font-semibold text-foreground'>CEP</span>
+                    <input
+                      value={documentForm.zipCode}
+                      onChange={(event) => updateDocumentField('zipCode', event.target.value.replace(/\D/g, '').slice(0, 8))}
+                      inputMode='numeric'
                       className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
                     />
                   </label>

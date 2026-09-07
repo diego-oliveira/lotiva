@@ -182,9 +182,36 @@ function parseInterCustomer(value: string) {
       cpfCnpj: String(parsed.cpfCnpj || value).replace(/\D/g, ''),
       name: String(parsed.name || 'Pagador'),
       email: parsed.email ? String(parsed.email) : undefined,
+      address: parsed.address ? String(parsed.address) : '',
+      addressNumber: parsed.addressNumber ? String(parsed.addressNumber) : '',
+      addressComplement: parsed.addressComplement ? String(parsed.addressComplement) : '',
+      neighborhood: parsed.neighborhood ? String(parsed.neighborhood) : '',
+      city: parsed.city ? String(parsed.city) : '',
+      state: parsed.state ? String(parsed.state).toUpperCase() : '',
+      zipCode: parsed.zipCode ? String(parsed.zipCode).replace(/\D/g, '') : '',
     }
   } catch {
-    return { cpfCnpj: value.replace(/\D/g, ''), name: 'Pagador', email: undefined }
+    return { cpfCnpj: value.replace(/\D/g, ''), name: 'Pagador', email: undefined, address: '', addressNumber: '', addressComplement: '', neighborhood: '', city: '', state: '', zipCode: '' }
+  }
+}
+
+function validateInterPayer(customer: ReturnType<typeof parseInterCustomer>) {
+  const missing = [
+    ['address', customer.address],
+    ['neighborhood', customer.neighborhood],
+    ['city', customer.city],
+    ['state', customer.state],
+    ['zipCode', customer.zipCode],
+  ].filter(([, value]) => !String(value || '').trim()).map(([field]) => field)
+
+  if (missing.length > 0) {
+    throw new Error(`Para emitir boleto pelo Inter, complete o endereco do cliente: ${missing.join(', ')}.`)
+  }
+  if (!/^\d{8}$/.test(customer.zipCode)) {
+    throw new Error('Para emitir boleto pelo Inter, informe o CEP do cliente com 8 digitos.')
+  }
+  if (!/^[A-Z]{2}$/.test(customer.state)) {
+    throw new Error('Para emitir boleto pelo Inter, informe a UF do cliente com 2 letras.')
   }
 }
 
@@ -348,7 +375,21 @@ export class InterPaymentProvider implements PaymentProvider {
   }
 
   async createCustomer(input: PaymentCustomerInput): Promise<PaymentCustomer> {
-    return { ...input, id: JSON.stringify({ cpfCnpj: input.cpfCnpj, name: input.name, email: input.email }) }
+    return {
+      ...input,
+      id: JSON.stringify({
+        cpfCnpj: input.cpfCnpj,
+        name: input.name,
+        email: input.email,
+        address: input.address,
+        addressNumber: input.addressNumber,
+        addressComplement: input.addressComplement,
+        neighborhood: input.neighborhood,
+        city: input.city,
+        state: input.state,
+        zipCode: input.zipCode,
+      }),
+    }
   }
 
   async findCustomerByDocument(cpfCnpj: string): Promise<PaymentCustomer | null> {
@@ -357,6 +398,7 @@ export class InterPaymentProvider implements PaymentProvider {
 
   async createCharge(input: PaymentChargeInput): Promise<PaymentCharge> {
     const customer = parseInterCustomer(input.customerId)
+    validateInterPayer(customer)
     const response = await this.request<{ codigoSolicitacao: string }>('/cobrancas', {
       method: 'POST',
       scope: 'boleto-cobranca.write',
@@ -370,6 +412,13 @@ export class InterPaymentProvider implements PaymentProvider {
           tipoPessoa: customer.cpfCnpj.length > 11 ? 'JURIDICA' : 'FISICA',
           nome: customer.name,
           email: customer.email,
+          endereco: customer.address,
+          numero: customer.addressNumber || undefined,
+          complemento: customer.addressComplement || undefined,
+          bairro: customer.neighborhood,
+          cidade: customer.city,
+          uf: customer.state,
+          cep: customer.zipCode,
         },
         multa: input.fine ? { taxa: Number(input.fine.percentage), codigo: 'PERCENTUAL' } : undefined,
         mora: input.interest ? { taxa: Number(input.interest.percentage), codigo: 'TAXAMENSAL' } : undefined,

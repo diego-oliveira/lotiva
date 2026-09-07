@@ -78,6 +78,13 @@ test('envia payload de emissao de cobranca Inter', async () => {
     name: 'Carmen',
     cpfCnpj: '94273928515',
     email: 'carmen@example.com',
+    address: 'Avenida Brasil',
+    addressNumber: '1200',
+    addressComplement: 'Sala 1',
+    neighborhood: 'Centro',
+    city: 'Camaçari',
+    state: 'BA',
+    zipCode: '42800000',
     externalReference: 'user:1',
   })
 
@@ -100,7 +107,38 @@ test('envia payload de emissao de cobranca Inter', async () => {
     tipoPessoa: 'FISICA',
     nome: 'Carmen',
     email: 'carmen@example.com',
+    endereco: 'Avenida Brasil',
+    numero: '1200',
+    complemento: 'Sala 1',
+    bairro: 'Centro',
+    cidade: 'Camaçari',
+    uf: 'BA',
+    cep: '42800000',
   })
+})
+
+test('exige endereco completo para emitir cobranca Inter', async () => {
+  const provider = new InterPaymentProvider(credentials, 'sandbox', async <T>() => {
+    throw new Error('nao deve chamar a API')
+  })
+  const customer = await provider.createCustomer({
+    name: 'Carmen',
+    cpfCnpj: '94273928515',
+    email: 'carmen@example.com',
+    externalReference: 'user:1',
+  })
+
+  await assert.rejects(
+    provider.createCharge({
+      customerId: customer.id,
+      amount: '663.75',
+      dueDate: '2026-10-20',
+      billingType: 'BOLETO',
+      description: 'Parcela 1',
+      externalReference: 'r12345678901234',
+    }),
+    /complete o endereco do cliente/,
+  )
 })
 
 test('lista cobrancas Inter com paginacao esperada pela API v3', async () => {

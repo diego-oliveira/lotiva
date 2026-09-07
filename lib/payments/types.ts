@@ -6,6 +6,13 @@ export type PaymentCustomerInput = {
   name: string
   cpfCnpj: string
   email?: string
+  address?: string | null
+  addressNumber?: string | null
+  addressComplement?: string | null
+  neighborhood?: string | null
+  city?: string | null
+  state?: string | null
+  zipCode?: string | null
   mobilePhone?: string
   externalReference: string
   notificationDisabled?: boolean

@@ -121,6 +121,12 @@ model User {
   email         String    @unique
   cpf           String?   @unique
   address       String?
+  addressNumber String?
+  addressComplement String?
+  neighborhood  String?
+  city          String?
+  state         String?
+  zipCode       String?
   birthDate     DateTime?
   rg            String?
   emailVerified DateTime?

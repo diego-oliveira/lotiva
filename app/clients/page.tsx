@@ -21,6 +21,12 @@ interface Client {
   cpf?: string | null
   rg?: string | null
   address?: string | null
+  addressNumber?: string | null
+  addressComplement?: string | null
+  neighborhood?: string | null
+  city?: string | null
+  state?: string | null
+  zipCode?: string | null
   birthDate?: string | null
   profession?: string | null
   birthplace?: string | null
@@ -36,7 +42,7 @@ interface Client {
 }
 
 function profileComplete(c: Client) {
-  return !!(c.cpf && c.rg && c.address && c.birthDate && c.profession && c.birthplace && c.maritalStatus)
+  return !!(c.cpf && c.rg && c.address && c.neighborhood && c.city && c.state && c.zipCode && c.birthDate && c.profession && c.birthplace && c.maritalStatus)
 }
 
 function getInitials(name: string) {

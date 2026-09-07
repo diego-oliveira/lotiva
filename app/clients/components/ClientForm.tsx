@@ -35,6 +35,12 @@ interface Client {
   cpf?: string | null
   rg?: string | null
   address?: string | null
+  addressNumber?: string | null
+  addressComplement?: string | null
+  neighborhood?: string | null
+  city?: string | null
+  state?: string | null
+  zipCode?: string | null
   birthDate?: string | null
   profession?: string | null
   birthplace?: string | null
@@ -72,6 +78,12 @@ export default function ClientForm({ client, isOpen, onClose, onSave }: ClientFo
   const [cpf, setCpf] = useState('')
   const [rg, setRg] = useState('')
   const [address, setAddress] = useState('')
+  const [addressNumber, setAddressNumber] = useState('')
+  const [addressComplement, setAddressComplement] = useState('')
+  const [neighborhood, setNeighborhood] = useState('')
+  const [city, setCity] = useState('')
+  const [state, setState] = useState('')
+  const [zipCode, setZipCode] = useState('')
   const [birthDate, setBirthDate] = useState('')
   const [profession, setProfession] = useState('')
   const [birthplace, setBirthplace] = useState('')
@@ -102,11 +114,17 @@ export default function ClientForm({ client, isOpen, onClose, onSave }: ClientFo
       setCpf(client.cpf ?? '')
       setRg(client.rg ?? '')
       setAddress(client.address ?? '')
+      setAddressNumber(client.addressNumber ?? '')
+      setAddressComplement(client.addressComplement ?? '')
+      setNeighborhood(client.neighborhood ?? '')
+      setCity(client.city ?? '')
+      setState(client.state ?? '')
+      setZipCode(client.zipCode ?? '')
       setBirthDate(client.birthDate ? new Date(client.birthDate).toISOString().split('T')[0] : '')
       setProfession(client.profession ?? '')
       setBirthplace(client.birthplace ?? '')
       setMaritalStatus(client.maritalStatus ?? '')
-      const hasLegal = !!(client.cpf || client.rg || client.address || client.birthDate)
+      const hasLegal = !!(client.cpf || client.rg || client.address || client.birthDate || client.city || client.zipCode)
       setShowLegal(hasLegal)
       setMemberships(
         (client.memberships ?? []).map((m) => ({
@@ -126,6 +144,12 @@ export default function ClientForm({ client, isOpen, onClose, onSave }: ClientFo
       setCpf('')
       setRg('')
       setAddress('')
+      setAddressNumber('')
+      setAddressComplement('')
+      setNeighborhood('')
+      setCity('')
+      setState('')
+      setZipCode('')
       setBirthDate('')
       setProfession('')
       setBirthplace('')
@@ -199,6 +223,12 @@ export default function ClientForm({ client, isOpen, onClose, onSave }: ClientFo
         cpf: cpf.trim() || null,
         rg: rg.trim() || null,
         address: address.trim() || null,
+        addressNumber: addressNumber.trim() || null,
+        addressComplement: addressComplement.trim() || null,
+        neighborhood: neighborhood.trim() || null,
+        city: city.trim() || null,
+        state: state.trim().toUpperCase() || null,
+        zipCode: zipCode.replace(/\D/g, '') || null,
         birthDate: birthDate || null,
         profession: profession.trim() || null,
         birthplace: birthplace.trim() || null,
@@ -498,14 +528,44 @@ export default function ClientForm({ client, isOpen, onClose, onSave }: ClientFo
               </div>
 
               <div className='rounded-2xl border border-border bg-surface-secondary p-5 md:col-span-2'>
-                <label className='mb-2 block text-sm font-semibold text-foreground'>Endereco</label>
+                <label className='mb-2 block text-sm font-semibold text-foreground'>Endereco / logradouro</label>
                 <textarea
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
-                  rows={3}
+                  rows={2}
                   className={fieldClass()}
-                  placeholder='Endereco completo'
+                  placeholder='Rua, avenida ou logradouro'
                 />
+              </div>
+
+              <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                <label className='mb-2 block text-sm font-semibold text-foreground'>Numero</label>
+                <input value={addressNumber} onChange={(e) => setAddressNumber(e.target.value)} className={fieldClass()} placeholder='Ex.: 1200' />
+              </div>
+
+              <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                <label className='mb-2 block text-sm font-semibold text-foreground'>Complemento</label>
+                <input value={addressComplement} onChange={(e) => setAddressComplement(e.target.value)} className={fieldClass()} placeholder='Opcional' />
+              </div>
+
+              <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                <label className='mb-2 block text-sm font-semibold text-foreground'>Bairro</label>
+                <input value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} className={fieldClass()} placeholder='Centro' />
+              </div>
+
+              <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                <label className='mb-2 block text-sm font-semibold text-foreground'>Cidade</label>
+                <input value={city} onChange={(e) => setCity(e.target.value)} className={fieldClass()} placeholder='Cidade' />
+              </div>
+
+              <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                <label className='mb-2 block text-sm font-semibold text-foreground'>UF</label>
+                <input value={state} onChange={(e) => setState(e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2))} className={fieldClass()} placeholder='BA' maxLength={2} />
+              </div>
+
+              <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                <label className='mb-2 block text-sm font-semibold text-foreground'>CEP</label>
+                <input value={zipCode} onChange={(e) => setZipCode(e.target.value.replace(/\D/g, '').slice(0, 8))} className={fieldClass()} inputMode='numeric' placeholder='00000000' />
               </div>
             </div>
           )}

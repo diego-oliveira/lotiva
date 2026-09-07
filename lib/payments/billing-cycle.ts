@@ -48,6 +48,13 @@ async function findOrCreateExternalCustomer(input: {
     name: string
     email: string
     cpf: string | null
+    address?: string | null
+    addressNumber?: string | null
+    addressComplement?: string | null
+    neighborhood?: string | null
+    city?: string | null
+    state?: string | null
+    zipCode?: string | null
   }
 }) {
   const saved = await input.db.externalCustomer.findUnique({
@@ -67,6 +74,13 @@ async function findOrCreateExternalCustomer(input: {
       name: input.user.name,
       email: input.user.email,
       cpfCnpj: input.user.cpf,
+      address: input.user.address,
+      addressNumber: input.user.addressNumber,
+      addressComplement: input.user.addressComplement,
+      neighborhood: input.user.neighborhood,
+      city: input.user.city,
+      state: input.user.state,
+      zipCode: input.user.zipCode,
       externalReference,
     })
 
