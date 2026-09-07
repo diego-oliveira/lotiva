@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { selectNextCycleReceivables } from '../lib/payments/billing-cycle'
+import { buildChargeExternalReference, selectNextCycleReceivables } from '../lib/payments/billing-cycle'
 
 function receivable(sequence: number) {
   return {
@@ -28,4 +28,13 @@ test('aceita ciclo menor e rejeita tamanho acima de 12', () => {
     () => selectNextCycleReceivables([receivable(1)], 13),
     /entre 1 e 12/,
   )
+})
+
+test('usa seuNumero curto para cobrancas Inter', () => {
+  const receivableId = '1e027f15-e578-4bf8-866c-01cf731e6006'
+  const interReference = buildChargeExternalReference(receivableId, 'inter')
+
+  assert.equal(interReference.length, 15)
+  assert.match(interReference, /^r[0-9a-f]{14}$/)
+  assert.equal(buildChargeExternalReference(receivableId, 'asaas'), `receivable:${receivableId}:v1`)
 })

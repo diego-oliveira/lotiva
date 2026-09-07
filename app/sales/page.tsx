@@ -73,6 +73,11 @@ interface Sale {
   canCancelPayments?: boolean
   canApproveAdjustments?: boolean
   canReconcilePayments?: boolean
+  paymentConnections?: Array<{
+    provider: string
+    environment: string
+    status: string
+  }>
 }
 
 function formatCurrency(value: number) {

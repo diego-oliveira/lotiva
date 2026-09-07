@@ -29,6 +29,13 @@ interface Sale {
     }
   }
   receivables?: Receivable[]
+  paymentConnections?: PaymentConnection[]
+}
+
+interface PaymentConnection {
+  provider: string
+  environment: string
+  status: string
 }
 
 interface ReceivablesDrawerProps {
@@ -245,6 +252,14 @@ function getChargeMeta(charge?: ExternalCharge) {
   return { label: 'Boleto gerado', className: 'bg-blue-50 text-blue-700' }
 }
 
+function providerLabel(provider: string) {
+  return provider === 'inter' ? 'Banco Inter' : provider === 'asaas' ? 'Asaas' : provider
+}
+
+function environmentLabel(environment: string) {
+  return environment === 'production' ? 'Conta real' : 'Conta de teste'
+}
+
 export default function ReceivablesDrawer({
   sale,
   isOpen,
@@ -272,7 +287,8 @@ export default function ReceivablesDrawer({
   })
   const [chargeActionId, setChargeActionId] = useState<string | null>(null)
   const [chargeIssueId, setChargeIssueId] = useState<string | null>(null)
-  const [chargeProvider, setChargeProvider] = useState<'asaas' | 'inter'>('asaas')
+  const [chargeProvider, setChargeProvider] = useState('')
+  const [chargeEnvironment, setChargeEnvironment] = useState('')
   const [asaasImportLoading, setAsaasImportLoading] = useState(false)
   const [asaasImportSaving, setAsaasImportSaving] = useState(false)
   const [asaasImportPreview, setAsaasImportPreview] = useState<AsaasImportPreview | null>(null)
@@ -320,6 +336,33 @@ export default function ReceivablesDrawer({
     void loadCycles()
     void loadAdjustments()
   }, [isOpen, sale?.id, canManagePayments])
+
+  const activePaymentConnections = useMemo(() => {
+    const connections = (sale?.paymentConnections ?? [])
+      .filter((connection) => connection.status === 'active')
+      .sort((left, right) => {
+        if (left.environment !== right.environment) return left.environment === 'production' ? -1 : 1
+        return left.provider.localeCompare(right.provider)
+      })
+    const seen = new Set<string>()
+    return connections.filter((connection) => {
+      const key = `${connection.provider}:${connection.environment}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [sale?.paymentConnections])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const preferred = activePaymentConnections.find((connection) =>
+      connection.provider === chargeProvider && connection.environment === chargeEnvironment
+    )
+    if (preferred) return
+    const next = activePaymentConnections[0]
+    setChargeProvider(next?.provider ?? '')
+    setChargeEnvironment(next?.environment ?? '')
+  }, [activePaymentConnections, chargeEnvironment, chargeProvider, isOpen])
 
   const receivables = sale?.receivables ?? []
   const summary = useMemo(() => {
@@ -392,6 +435,7 @@ export default function ReceivablesDrawer({
           cycleSize: 12,
           billingType: 'BOLETO',
           provider: chargeProvider,
+          environment: chargeEnvironment,
         }),
       })
       const payload = await response.json().catch(() => ({}))
@@ -421,7 +465,7 @@ export default function ReceivablesDrawer({
       const response = await fetch(`/api/sales/${sale.id}/adjustments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...adjustmentForm, provider: chargeProvider }),
+        body: JSON.stringify({ ...adjustmentForm, provider: chargeProvider, environment: chargeEnvironment }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error || 'Nao foi possivel criar o reajuste.')
@@ -496,7 +540,7 @@ export default function ReceivablesDrawer({
       const response = await fetch(`/api/receivables/${receivable.id}/charge`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ billingType: 'BOLETO', provider: chargeProvider }),
+        body: JSON.stringify({ billingType: 'BOLETO', provider: chargeProvider, environment: chargeEnvironment }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.details || payload.error || 'Nao foi possivel gerar o boleto.')
@@ -699,7 +743,7 @@ export default function ReceivablesDrawer({
                   <button
                     type='button'
                     onClick={createAdjustment}
-                    disabled={adjustmentSaving || !adjustmentForm.percentage || !adjustmentForm.source.trim() || !adjustmentForm.reason.trim()}
+                    disabled={adjustmentSaving || activePaymentConnections.length === 0 || !adjustmentForm.percentage || !adjustmentForm.source.trim() || !adjustmentForm.reason.trim()}
                     className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-60'
                   >
                     {adjustmentSaving ? 'Salvando...' : 'Simular e enviar para aprovacao'}
@@ -770,12 +814,20 @@ export default function ReceivablesDrawer({
                   <div className='flex flex-col gap-2 sm:flex-row'>
                     {canManagePayments && (
                       <select
-                        value={chargeProvider}
-                        onChange={(event) => setChargeProvider(event.target.value as 'asaas' | 'inter')}
+                        value={chargeProvider && chargeEnvironment ? `${chargeProvider}:${chargeEnvironment}` : ''}
+                        onChange={(event) => {
+                          const [provider, environment] = event.target.value.split(':')
+                          setChargeProvider(provider || '')
+                          setChargeEnvironment(environment || '')
+                        }}
                         className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary'
                       >
-                        <option value='asaas'>Asaas</option>
-                        <option value='inter'>Banco Inter</option>
+                        {activePaymentConnections.length === 0 && <option value=''>Nenhum provedor configurado</option>}
+                        {activePaymentConnections.map((connection) => (
+                          <option key={`${connection.provider}:${connection.environment}`} value={`${connection.provider}:${connection.environment}`}>
+                            {providerLabel(connection.provider)} - {environmentLabel(connection.environment)}
+                          </option>
+                        ))}
                       </select>
                     )}
                     {canReconcilePayments && (
@@ -792,7 +844,7 @@ export default function ReceivablesDrawer({
                       <button
                         type='button'
                         onClick={issueBillingCycle}
-                        disabled={issuing}
+                        disabled={issuing || activePaymentConnections.length === 0}
                         className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
                       >
                         {issuing ? 'Gerando...' : 'Gerar boletos das proximas 12'}
@@ -802,6 +854,11 @@ export default function ReceivablesDrawer({
                 )}
               </div>
             </div>
+            {canManagePayments && activePaymentConnections.length === 0 && (
+              <div className='border-b border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800'>
+                Configure uma conta de pagamento ativa na empresa deste empreendimento para gerar boletos.
+              </div>
+            )}
 
             {asaasImportPreview && (
               <div className='border-b border-border bg-surface px-5 py-5'>
@@ -1024,7 +1081,7 @@ export default function ReceivablesDrawer({
                               <button
                                 type='button'
                                 onClick={() => issueReceivableCharge(receivable)}
-                                disabled={chargeIssueId === receivable.id}
+                                disabled={chargeIssueId === receivable.id || activePaymentConnections.length === 0}
                                 className='rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/8 disabled:opacity-60'
                               >
                                 {chargeIssueId === receivable.id

@@ -46,7 +46,10 @@ export async function POST(req: Request, { params }: Params) {
 
   try {
     const data = await req.json().catch(() => ({}))
-    const providerName = data.provider === 'inter' ? 'inter' : 'asaas'
+    if (!['asaas', 'inter'].includes(data.provider)) {
+      return NextResponse.json({ error: 'Selecione uma conta de pagamento configurada.' }, { status: 400 })
+    }
+    const providerName = data.provider as 'asaas' | 'inter'
     const requestedEnvironment = data.environment === 'production'
       ? 'production'
       : data.environment === 'sandbox'

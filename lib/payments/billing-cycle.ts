@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import type { PaymentProvider } from './provider'
 import type { BillingType } from './types'
 import { createFinancialAuditLog } from './audit'
+import { createHash } from 'crypto'
 
 type ReceivableCandidate = {
   id: string
@@ -29,6 +30,13 @@ export function selectNextCycleReceivables<T extends ReceivableCandidate>(
 
 function dateOnly(date: Date) {
   return date.toISOString().slice(0, 10)
+}
+
+export function buildChargeExternalReference(receivableId: string, providerName: string) {
+  if (providerName === 'inter') {
+    return `r${createHash('sha256').update(receivableId).digest('hex').slice(0, 14)}`
+  }
+  return `receivable:${receivableId}:v1`
 }
 
 async function findOrCreateExternalCustomer(input: {
@@ -95,7 +103,7 @@ async function findOrCreateCharge(input: {
   interestPercentage?: string
   finePercentage?: string
 }) {
-  const externalReference = `receivable:${input.receivable.id}:v1`
+  const externalReference = buildChargeExternalReference(input.receivable.id, input.provider.name)
   const saved = await input.db.externalCharge.findUnique({
     where: {
       connectionId_externalReference: {

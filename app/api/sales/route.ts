@@ -103,9 +103,39 @@ export async function GET() {
     },
   ] as const))
   const permissionsByDevelopment = Object.fromEntries(permissionEntries)
+  const companyIds = [...new Set(sales
+    .map((sale) => sale.lot.block.development?.companyId)
+    .filter((companyId): companyId is string => Boolean(companyId)))]
+  const paymentConnections = await prisma.paymentProviderConnection.findMany({
+    where: {
+      companyId: { in: companyIds },
+      status: 'active',
+    },
+    select: {
+      companyId: true,
+      provider: true,
+      environment: true,
+      status: true,
+    },
+    orderBy: [{ provider: 'asc' }, { environment: 'asc' }],
+  })
+  const paymentConnectionsByCompany = paymentConnections.reduce<Record<string, Array<{
+    provider: string
+    environment: string
+    status: string
+  }>>>((acc, connection) => {
+    acc[connection.companyId] ??= []
+    acc[connection.companyId].push({
+      provider: connection.provider,
+      environment: connection.environment,
+      status: connection.status,
+    })
+    return acc
+  }, {})
 
   return NextResponse.json(sales.map((sale) => {
     const developmentId = sale.lot.block.developmentId
+    const companyId = sale.lot.block.development?.companyId
     const permissions = developmentId ? permissionsByDevelopment[developmentId] : null
     return {
       ...sale,
@@ -113,6 +143,7 @@ export async function GET() {
       canCancelPayments: Boolean(permissions?.canCancelPayments),
       canApproveAdjustments: Boolean(permissions?.canApproveAdjustments),
       canReconcilePayments: Boolean(permissions?.canReconcilePayments),
+      paymentConnections: companyId ? paymentConnectionsByCompany[companyId] ?? [] : [],
     }
   }))
 }
