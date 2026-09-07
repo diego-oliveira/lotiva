@@ -57,8 +57,14 @@ export type InterCharge = {
   pixCopiaECola?: string
 }
 
+type InterChargeListItem = InterCharge | {
+  cobranca?: InterCharge
+  boleto?: InterCharge['boleto']
+  pix?: InterCharge['pix']
+}
+
 type InterChargeList = {
-  cobrancas?: InterCharge[]
+  cobrancas?: InterChargeListItem[]
   totalElementos?: number
   ultimaPagina?: boolean
   last?: boolean
@@ -158,6 +164,17 @@ export function mapInterCharge(charge: InterCharge): PaymentCharge {
   } as PaymentCharge & { pixPayload?: string }
 }
 
+function mapInterChargeListItem(item: InterChargeListItem) {
+  if ('codigoSolicitacao' in item) {
+    return mapInterCharge(item)
+  }
+  return mapInterCharge({
+    ...item.cobranca,
+    boleto: item.boleto ?? item.cobranca?.boleto,
+    pix: item.pix ?? item.cobranca?.pix,
+  } as InterCharge)
+}
+
 function parseInterCustomer(value: string) {
   try {
     const parsed = JSON.parse(value) as Partial<PaymentCustomer>
@@ -208,6 +225,10 @@ function sanitizeInterPayload(body: unknown) {
 function responseStatusText(statusMessage: string | undefined, responseText: string) {
   if (responseText && responseText.length < 500) return responseText
   return statusMessage || 'erro desconhecido'
+}
+
+function sanitizeInterPath(path: string) {
+  return path.replace(/(cpfCnpjPessoaPagadora=)[^&]+/g, '$1[mascarado]')
 }
 
 async function httpsJsonRequest<T>(url: string, options: {
@@ -272,9 +293,9 @@ async function defaultInterRequest<T>(input: Parameters<InterRequest>[0]): Promi
   })
 
   const body = input.body === undefined ? undefined : JSON.stringify(input.body)
-  if (shouldLogPaymentPayloads() && input.path === '/cobrancas' && input.method === 'POST') {
-    console.info('payment_inter_request_payload', {
-      path: input.path,
+  if (shouldLogPaymentPayloads() && input.path.startsWith('/cobrancas')) {
+    console.info('payment_inter_request', {
+      safePath: sanitizeInterPath(input.path),
       method: input.method,
       scope: input.scope,
       payload: sanitizeInterPayload(input.body),
@@ -388,8 +409,8 @@ export class InterPaymentProvider implements PaymentProvider {
     const query = new URLSearchParams({
       dataInicial: initialDate,
       dataFinal: finalDate,
-      tamanhoPagina: String(filter.limit ?? 20),
-      pagina: String(filter.offset ?? 0),
+      'paginacao.itensPorPagina': String(filter.limit ?? 20),
+      'paginacao.paginaAtual': String(filter.offset ?? 0),
     })
     if (filter.externalReference) query.set('seuNumero', filter.externalReference)
     if (filter.customerId) query.set('cpfCnpjPessoaPagadora', filter.customerId)
@@ -397,7 +418,7 @@ export class InterPaymentProvider implements PaymentProvider {
       scope: 'boleto-cobranca.read',
     })
     return {
-      charges: (result.cobrancas ?? []).map(mapInterCharge),
+      charges: (result.cobrancas ?? []).map(mapInterChargeListItem),
       totalCount: result.totalElementos ?? result.cobrancas?.length ?? 0,
       hasMore: result.ultimaPagina === false || result.last === false,
     }

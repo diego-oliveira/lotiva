@@ -102,3 +102,40 @@ test('envia payload de emissao de cobranca Inter', async () => {
     email: 'carmen@example.com',
   })
 })
+
+test('lista cobrancas Inter com paginacao esperada pela API v3', async () => {
+  const calls: Array<{ path: string; scope?: string }> = []
+  const provider = new InterPaymentProvider(credentials, 'sandbox', async <T>(input: {
+    path: string
+    scope?: string
+  }) => {
+    calls.push({ path: input.path, scope: input.scope })
+    return {
+      totalElementos: 1,
+      ultimaPagina: true,
+      cobrancas: [
+        {
+          cobranca: {
+            codigoSolicitacao: 'sol-123',
+            seuNumero: 'r12345678901234',
+            valorNominal: '663.75',
+            dataVencimento: '2026-10-20',
+            situacao: 'A_RECEBER',
+          },
+          boleto: { linhaDigitavel: 'linha' },
+          pix: { pixCopiaECola: 'pix' },
+        },
+      ],
+    } as T
+  })
+
+  const result = await provider.listCharges({ externalReference: 'r12345678901234', limit: 1 })
+
+  assert.equal(calls[0].scope, 'boleto-cobranca.read')
+  assert.match(calls[0].path, /paginacao\.itensPorPagina=1/)
+  assert.match(calls[0].path, /paginacao\.paginaAtual=0/)
+  assert.match(calls[0].path, /seuNumero=r12345678901234/)
+  assert.equal(result.charges[0].id, 'sol-123')
+  assert.equal(result.charges[0].bankSlipUrl, 'linha')
+  assert.equal((result.charges[0] as { pixPayload?: string }).pixPayload, 'pix')
+})
