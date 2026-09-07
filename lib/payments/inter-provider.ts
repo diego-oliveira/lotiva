@@ -197,11 +197,11 @@ function parseInterCustomer(value: string) {
 
 function validateInterPayer(customer: ReturnType<typeof parseInterCustomer>) {
   const missing = [
-    ['address', customer.address],
-    ['neighborhood', customer.neighborhood],
-    ['city', customer.city],
-    ['state', customer.state],
-    ['zipCode', customer.zipCode],
+    ['logradouro', customer.address],
+    ['bairro', customer.neighborhood],
+    ['cidade', customer.city],
+    ['UF', customer.state],
+    ['CEP', customer.zipCode],
   ].filter(([, value]) => !String(value || '').trim()).map(([field]) => field)
 
   if (missing.length > 0) {

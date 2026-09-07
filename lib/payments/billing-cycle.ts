@@ -57,32 +57,22 @@ async function findOrCreateExternalCustomer(input: {
     zipCode?: string | null
   }
 }) {
-  const saved = await input.db.externalCustomer.findUnique({
-    where: {
-      connectionId_userId: {
-        connectionId: input.connectionId,
-        userId: input.user.id,
-      },
-    },
-  })
-  if (saved) return saved
   if (!input.user.cpf) throw new Error('O comprador precisa ter CPF ou CNPJ para emitir cobrancas.')
 
   const externalReference = `user:${input.user.id}`
-  const customer = await input.provider.findCustomerByDocument(input.user.cpf)
-    ?? await input.provider.createCustomer({
-      name: input.user.name,
-      email: input.user.email,
-      cpfCnpj: input.user.cpf,
-      address: input.user.address,
-      addressNumber: input.user.addressNumber,
-      addressComplement: input.user.addressComplement,
-      neighborhood: input.user.neighborhood,
-      city: input.user.city,
-      state: input.user.state,
-      zipCode: input.user.zipCode,
-      externalReference,
-    })
+  const customer = await input.provider.createCustomer({
+    name: input.user.name,
+    email: input.user.email,
+    cpfCnpj: input.user.cpf,
+    address: input.user.address,
+    addressNumber: input.user.addressNumber,
+    addressComplement: input.user.addressComplement,
+    neighborhood: input.user.neighborhood,
+    city: input.user.city,
+    state: input.user.state,
+    zipCode: input.user.zipCode,
+    externalReference,
+  })
 
   return input.db.externalCustomer.upsert({
     where: {
