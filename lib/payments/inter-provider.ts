@@ -171,6 +171,45 @@ function parseInterCustomer(value: string) {
   }
 }
 
+function maskDocument(value?: string) {
+  const digits = String(value || '').replace(/\D/g, '')
+  if (digits.length <= 4) return digits ? '****' : ''
+  return `${digits.slice(0, 3)}***${digits.slice(-2)}`
+}
+
+function shouldLogPaymentPayloads() {
+  return process.env.PAYMENT_DEBUG_LOG_PAYLOADS === 'true'
+}
+
+function sanitizeInterPayload(body: unknown) {
+  if (!body || typeof body !== 'object') return body
+  const payload = body as Record<string, unknown>
+  const payer = payload.pagador && typeof payload.pagador === 'object'
+    ? payload.pagador as Record<string, unknown>
+    : null
+
+  return {
+    ...payload,
+    pagador: payer
+      ? {
+          ...payer,
+          cpfCnpj: maskDocument(String(payer.cpfCnpj || '')),
+          nome: payer.nome ? '[informado]' : '',
+          email: payer.email ? '[informado]' : undefined,
+          endereco: payer.endereco ? '[informado]' : undefined,
+          bairro: payer.bairro ? '[informado]' : undefined,
+          cidade: payer.cidade ? '[informado]' : undefined,
+          cep: payer.cep ? maskDocument(String(payer.cep || '')) : undefined,
+        }
+      : payload.pagador,
+  }
+}
+
+function responseStatusText(statusMessage: string | undefined, responseText: string) {
+  if (responseText && responseText.length < 500) return responseText
+  return statusMessage || 'erro desconhecido'
+}
+
 async function httpsJsonRequest<T>(url: string, options: {
   method?: string
   cert: string
@@ -189,7 +228,12 @@ async function httpsJsonRequest<T>(url: string, options: {
       response.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
       response.on('end', () => {
         const text = Buffer.concat(chunks).toString('utf8')
-        const body = text ? JSON.parse(text) as T | InterProblem : null
+        let body: T | InterProblem | null = null
+        try {
+          body = text ? JSON.parse(text) as T | InterProblem : null
+        } catch {
+          body = null
+        }
         if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
           resolve(body as T)
           return
@@ -199,7 +243,7 @@ async function httpsJsonRequest<T>(url: string, options: {
           ?.map((item) => [item.propriedade, item.razao].filter(Boolean).join(': '))
           .filter(Boolean)
           .join('; ')
-        reject(new Error(`Inter ${response.statusCode}: ${problem?.detail || problem?.title || violations || response.statusMessage || 'erro desconhecido'}`))
+        reject(new Error(`Inter ${response.statusCode}: ${problem?.detail || problem?.title || violations || responseStatusText(response.statusMessage, text)}`))
       })
     })
     request.on('error', reject)
@@ -228,6 +272,14 @@ async function defaultInterRequest<T>(input: Parameters<InterRequest>[0]): Promi
   })
 
   const body = input.body === undefined ? undefined : JSON.stringify(input.body)
+  if (shouldLogPaymentPayloads() && input.path === '/cobrancas' && input.method === 'POST') {
+    console.info('payment_inter_request_payload', {
+      path: input.path,
+      method: input.method,
+      scope: input.scope,
+      payload: sanitizeInterPayload(input.body),
+    })
+  }
   return httpsJsonRequest<T>(`${input.baseUrl}${input.path}`, {
     method: input.method,
     cert: input.credentials.certificate,
