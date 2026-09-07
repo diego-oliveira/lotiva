@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildChargeExternalReference, selectNextCycleReceivables } from '../lib/payments/billing-cycle'
+import { buildChargeExternalReference, issueReceivableCharge, selectNextCycleReceivables } from '../lib/payments/billing-cycle'
 
 function receivable(sequence: number) {
   return {
@@ -37,4 +37,68 @@ test('usa seuNumero curto para cobrancas Inter', () => {
   assert.equal(interReference.length, 15)
   assert.match(interReference, /^r[0-9a-f]{14}$/)
   assert.equal(buildChargeExternalReference(receivableId, 'asaas'), `receivable:${receivableId}:v1`)
+})
+
+test('rejeita emissao de boleto para vencimento passado antes do provedor', async () => {
+  const calls: string[] = []
+  const db = {
+    paymentProviderConnection: {
+      findUnique: async () => ({ id: 'conn-1', status: 'active', provider: 'inter', companyId: 'company-1' }),
+    },
+    receivable: {
+      findUnique: async () => ({
+        id: 'rec-1',
+        kind: 'installment',
+        sequence: 1,
+        dueDate: new Date(Date.UTC(2020, 0, 15)),
+        amount: { toString: () => '637.50' },
+        status: 'pending',
+        externalCharges: [],
+        saleId: 'sale-1',
+        sale: {
+          user: {
+            id: 'user-1',
+            name: 'Cliente',
+            email: 'cliente@example.com',
+            cpf: '02100000001',
+          },
+          lot: {
+            block: {
+              development: { companyId: 'company-1' },
+            },
+          },
+        },
+      }),
+    },
+  }
+  const provider = {
+    name: 'inter' as const,
+    createCustomer: async (input: any) => ({ ...input, id: 'customer-1' }),
+    findCustomerByDocument: async () => null,
+    listCharges: async () => {
+      calls.push('listCharges')
+      return { charges: [], hasMore: false, totalCount: 0 }
+    },
+    createCharge: async () => {
+      calls.push('createCharge')
+      throw new Error('nao deve chamar o provedor')
+    },
+    updateCharge: async () => { throw new Error('nao implementado') },
+    getCharge: async () => { throw new Error('nao implementado') },
+    cancelCharge: async () => { throw new Error('nao implementado') },
+    getPixQrCode: async () => { throw new Error('nao implementado') },
+    listChargesByCustomer: async () => { throw new Error('nao implementado') },
+    ensurePaymentWebhook: async () => { throw new Error('nao implementado') },
+  }
+
+  await assert.rejects(
+    issueReceivableCharge({
+      connectionId: 'conn-1',
+      receivableId: 'rec-1',
+      provider,
+      db: db as any,
+    }),
+    /vencimento em 2020-01-15/,
+  )
+  assert.deepEqual(calls, [])
 })

@@ -32,6 +32,22 @@ function dateOnly(date: Date) {
   return date.toISOString().slice(0, 10)
 }
 
+function todayDateOnly() {
+  return dateOnly(new Date())
+}
+
+function assertChargeDueDateCanBeIssued(receivable: ReceivableCandidate, providerName: string) {
+  if (providerName !== 'inter') return
+
+  const dueDate = dateOnly(receivable.dueDate)
+  if (dueDate < todayDateOnly()) {
+    const label = receivable.kind === 'down_payment'
+      ? 'entrada'
+      : `parcela ${receivable.sequence}`
+    throw new Error(`Nao e possivel emitir boleto pelo Inter para ${label} com vencimento em ${dueDate}. Atualize o vencimento para hoje ou uma data futura antes de gerar a cobranca.`)
+  }
+}
+
 export function buildChargeExternalReference(receivableId: string, providerName: string) {
   if (providerName === 'inter') {
     return `r${createHash('sha256').update(receivableId).digest('hex').slice(0, 14)}`
@@ -257,6 +273,9 @@ export async function issueNextBillingCycle(input: {
   if (cycleReceivables.length === 0) {
     return { cycle: null, charges: [], alreadyComplete: true }
   }
+  cycleReceivables
+    .filter((receivable) => receivable.externalCharges.length === 0)
+    .forEach((receivable) => assertChargeDueDateCanBeIssued(receivable, input.provider.name))
 
   const nextCycleNumber = retryingCycle?.cycleNumber ?? (previousCycle?.cycleNumber ?? 0) + 1
   const adjustmentReview = sale.annualAdjustment && nextCycleNumber > 1
@@ -404,6 +423,7 @@ export async function issueReceivableCharge(input: {
 
   const existing = receivable.externalCharges.find((charge) => !['cancelled', 'refunded'].includes(charge.status))
   if (existing) return { charge: existing, alreadyComplete: true }
+  assertChargeDueDateCanBeIssued(receivable, input.provider.name)
 
   const customer = await findOrCreateExternalCustomer({
     db,
