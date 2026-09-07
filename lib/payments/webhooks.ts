@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from '@/app/generated/prisma'
 import { prisma } from '@/lib/prisma'
 import { mapAsaasPayment, type AsaasPayment } from './asaas-provider'
+import { mapInterCharge, type InterCharge } from './inter-provider'
 import { synchronizeExternalCharge } from './synchronize-charge'
 import type { PaymentCharge, PaymentChargeStatus } from './types'
 
@@ -9,6 +10,15 @@ export type AsaasWebhookPayload = {
   event: string
   dateCreated?: string
   payment?: AsaasPayment
+}
+
+export type InterWebhookItem = InterCharge & {
+  dataHoraSituacao?: string
+  nossoNumero?: string
+  codigoBarras?: string
+  linhaDigitavel?: string
+  txid?: string
+  pixCopiaECola?: string
 }
 
 function eventStatus(eventType: string): PaymentChargeStatus | null {
@@ -34,6 +44,20 @@ export function mapAsaasWebhookCharge(payload: AsaasWebhookPayload): PaymentChar
   const charge = mapAsaasPayment(payload.payment)
   const status = eventStatus(payload.event)
   return status ? { ...charge, status, deleted: status === 'cancelled' } : charge
+}
+
+export function mapInterWebhookCharge(payload: InterWebhookItem): PaymentCharge | null {
+  if (!payload.codigoSolicitacao) return null
+  return mapInterCharge({
+    codigoSolicitacao: payload.codigoSolicitacao,
+    seuNumero: payload.seuNumero,
+    situacao: payload.situacao,
+    valorNominal: payload.valorNominal,
+    valorTotalRecebido: payload.valorTotalRecebido,
+    origemRecebimento: payload.origemRecebimento,
+    linhaDigitavel: payload.linhaDigitavel,
+    pixCopiaECola: payload.pixCopiaECola,
+  })
 }
 
 function parseEventDate(value?: string) {
@@ -80,11 +104,58 @@ export async function persistAsaasWebhookEvent(input: {
   }
 }
 
+export async function persistInterWebhookEvents(input: {
+  connectionId: string
+  payload: InterWebhookItem[]
+}) {
+  const result = { created: 0, duplicates: 0 }
+  for (const item of input.payload) {
+    try {
+      await prisma.paymentWebhookEvent.create({
+        data: {
+          connectionId: input.connectionId,
+          providerEventId: `${item.codigoSolicitacao}:${item.situacao}:${item.dataHoraSituacao || ''}`,
+          eventType: item.situacao || 'UNKNOWN',
+          payload: JSON.parse(JSON.stringify(item)) as Prisma.InputJsonValue,
+        },
+      })
+      result.created += 1
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        result.duplicates += 1
+        continue
+      }
+      throw error
+    }
+  }
+  await prisma.paymentProviderConnection.update({
+    where: { id: input.connectionId },
+    data: {
+      lastWebhookAt: new Date(),
+      webhookStatus: 'active',
+    },
+  })
+  return result
+}
+
 async function processEvent(db: PrismaClient, eventId: string) {
-  const event = await db.paymentWebhookEvent.findUniqueOrThrow({ where: { id: eventId } })
-  const payload = event.payload as unknown as AsaasWebhookPayload
-  const charge = mapAsaasWebhookCharge(payload)
-  if (!charge || !payload.payment?.id) {
+  const event = await db.paymentWebhookEvent.findUniqueOrThrow({
+    where: { id: eventId },
+    include: { connection: { select: { provider: true } } },
+  })
+  const payload = event.payload as unknown
+  const asaasPayload = payload as AsaasWebhookPayload
+  const interPayload = payload as InterWebhookItem
+  const charge = event.connection.provider === 'inter'
+    ? mapInterWebhookCharge(interPayload)
+    : mapAsaasWebhookCharge(asaasPayload)
+  const providerChargeId = event.connection.provider === 'inter'
+    ? interPayload.codigoSolicitacao
+    : asaasPayload.payment?.id
+  const externalReference = event.connection.provider === 'inter'
+    ? interPayload.seuNumero
+    : asaasPayload.payment?.externalReference
+  if (!charge || !providerChargeId) {
     await db.paymentWebhookEvent.update({
       where: { id: event.id },
       data: { status: 'ignored', processedAt: new Date(), errorMessage: null },
@@ -96,9 +167,9 @@ async function processEvent(db: PrismaClient, eventId: string) {
     where: {
       connectionId: event.connectionId,
       OR: [
-        { providerChargeId: payload.payment.id },
-        ...(payload.payment.externalReference
-          ? [{ externalReference: payload.payment.externalReference }]
+        { providerChargeId },
+        ...(externalReference
+          ? [{ externalReference }]
           : []),
       ],
     },
@@ -122,8 +193,12 @@ async function processEvent(db: PrismaClient, eventId: string) {
       externalChargeId: externalCharge.id,
       charge,
       source: 'webhook',
-      eventAt: parseEventDate(payload.dateCreated),
-      providerPayload: payload.payment,
+      eventAt: parseEventDate(
+        event.connection.provider === 'inter'
+          ? interPayload.dataHoraSituacao
+          : asaasPayload.dateCreated,
+      ),
+      providerPayload: event.connection.provider === 'inter' ? interPayload : asaasPayload.payment,
     })
     await tx.paymentWebhookEvent.update({
       where: { id: event.id },

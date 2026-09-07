@@ -46,6 +46,7 @@ export async function POST(req: Request, { params }: Params) {
 
   try {
     const data = await req.json().catch(() => ({}))
+    const providerName = data.provider === 'inter' ? 'inter' : 'asaas'
     const requestedEnvironment = data.environment === 'production'
       ? 'production'
       : data.environment === 'sandbox'
@@ -56,7 +57,7 @@ export async function POST(req: Request, { params }: Params) {
           where: {
             companyId_provider_environment: {
               companyId,
-              provider: 'asaas',
+              provider: providerName,
               environment: requestedEnvironment,
             },
           },
@@ -64,21 +65,21 @@ export async function POST(req: Request, { params }: Params) {
       : await prisma.paymentProviderConnection.findFirst({
           where: {
             companyId,
-            provider: 'asaas',
+            provider: providerName,
             status: 'active',
             environment: 'production',
           },
         }) || await prisma.paymentProviderConnection.findFirst({
           where: {
             companyId,
-            provider: 'asaas',
+            provider: providerName,
             status: 'active',
             environment: 'sandbox',
           },
         })
     if (!connection || connection.status !== 'active') {
       return NextResponse.json(
-        { error: 'A empresa ainda nao possui uma conta Asaas configurada.' },
+        { error: `A empresa ainda nao possui uma conta ${providerName === 'inter' ? 'Banco Inter' : 'Asaas'} configurada.` },
         { status: 409 },
       )
     }

@@ -5,6 +5,7 @@ import { useState } from 'react'
 
 type Connection = {
   id: string
+  provider: string
   environment: string
   status: string
   webhookStatus: string | null
@@ -16,6 +17,10 @@ type Connection = {
     resolvedCount: number
     startedAt: string
   } | null
+}
+
+function providerLabel(provider: string) {
+  return provider === 'inter' ? 'Banco Inter' : provider === 'asaas' ? 'Asaas' : provider
 }
 
 export default function PaymentOperationsPanel({
@@ -78,7 +83,7 @@ export default function PaymentOperationsPanel({
       <div className='panel-header px-6 py-5'>
         <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
           <div>
-            <h2 className='text-lg font-semibold text-foreground'>Operacao Asaas</h2>
+            <h2 className='text-lg font-semibold text-foreground'>Operacao de pagamentos</h2>
             <p className='mt-1 text-sm text-muted'>Saude dos webhooks e confirmacao periodica das cobrancas.</p>
           </div>
           <div className='flex gap-2'>
@@ -93,7 +98,7 @@ export default function PaymentOperationsPanel({
       </div>
       {message && <div className='border-b border-border bg-blue-50 px-6 py-3 text-sm text-blue-800'>{message}</div>}
       {connections.length === 0 ? (
-        <div className='px-6 py-6 text-sm text-muted'>Nenhuma conexao Asaas ativa para esta empresa.</div>
+        <div className='px-6 py-6 text-sm text-muted'>Nenhuma conexao de pagamentos ativa para esta empresa.</div>
       ) : (
         <div className='divide-y divide-border'>
           {connections.map((connection) => (
@@ -101,7 +106,7 @@ export default function PaymentOperationsPanel({
               <div>
                 <div className='flex flex-wrap items-center gap-2'>
                   <p className='text-sm font-semibold text-foreground'>
-                    {connection.environment === 'production' ? 'Conta real' : 'Conta de teste'}
+                    {providerLabel(connection.provider)} - {connection.environment === 'production' ? 'Conta real' : 'Conta de teste'}
                   </p>
                   <span className={`pill ${connection.webhookStatus === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
                     Webhook {connection.webhookStatus === 'active' ? 'ativo' : connection.webhookStatus || 'nao configurado'}

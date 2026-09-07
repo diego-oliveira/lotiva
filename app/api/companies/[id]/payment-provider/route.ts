@@ -7,6 +7,10 @@ import {
   normalizeAsaasApiKey,
   normalizeWebhookEmail,
 } from '@/lib/payments/asaas-provider'
+import {
+  InterPaymentProvider,
+  serializeInterCredentials,
+} from '@/lib/payments/inter-provider'
 import { encryptPaymentCredential } from '@/lib/payments/credentials'
 import { NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
@@ -67,20 +71,31 @@ export async function PUT(req: Request, { params }: Params) {
 
   try {
     const data = await req.json()
+    const providerName = data.provider === 'inter' ? 'inter' : 'asaas'
     const environment = data.environment === 'production' ? 'production' : 'sandbox'
-    const apiKey = normalizeAsaasApiKey(String(data.apiKey || ''))
-    if (!apiKey) {
-      return NextResponse.json({ error: 'Informe a chave da API Asaas.' }, { status: 400 })
+    const credential = providerName === 'inter'
+      ? serializeInterCredentials({
+          clientId: String(data.clientId || ''),
+          clientSecret: String(data.clientSecret || ''),
+          certificate: String(data.certificate || ''),
+          privateKey: String(data.privateKey || ''),
+          accountNumber: String(data.accountNumber || ''),
+        })
+      : normalizeAsaasApiKey(String(data.apiKey || ''))
+    if (!credential) {
+      return NextResponse.json({ error: providerName === 'inter' ? 'Informe as credenciais Inter.' : 'Informe a chave da API Asaas.' }, { status: 400 })
     }
 
-    const provider = new AsaasPaymentProvider(apiKey, environment)
+    const provider = providerName === 'inter'
+      ? new InterPaymentProvider(JSON.parse(credential), environment)
+      : new AsaasPaymentProvider(credential, environment)
     await provider.listCharges({ limit: 1 })
 
     const existing = await prisma.paymentProviderConnection.findUnique({
       where: {
         companyId_provider_environment: {
           companyId: id,
-          provider: 'asaas',
+          provider: providerName,
           environment,
         },
       },
@@ -93,25 +108,29 @@ export async function PUT(req: Request, { params }: Params) {
       where: {
         companyId_provider_environment: {
           companyId: id,
-          provider: 'asaas',
+          provider: providerName,
           environment,
         },
       },
       create: {
         companyId: id,
-        provider: 'asaas',
+        provider: providerName,
         environment,
         status: 'active',
-        credentialCiphertext: encryptPaymentCredential(apiKey),
-        credentialHint: `${apiKey.slice(0, 11)}...${apiKey.slice(-4)}`,
+        credentialCiphertext: encryptPaymentCredential(credential),
+        credentialHint: providerName === 'inter'
+          ? `${String(data.clientId || '').slice(0, 8)}...`
+          : `${credential.slice(0, 11)}...${credential.slice(-4)}`,
         lastValidatedAt: new Date(),
         webhookAuthCiphertext: encryptPaymentCredential(webhookAuthToken),
         webhookAuthHint: `${webhookAuthToken.slice(0, 10)}...${webhookAuthToken.slice(-4)}`,
       },
       update: {
         status: 'active',
-        credentialCiphertext: encryptPaymentCredential(apiKey),
-        credentialHint: `${apiKey.slice(0, 11)}...${apiKey.slice(-4)}`,
+        credentialCiphertext: encryptPaymentCredential(credential),
+        credentialHint: providerName === 'inter'
+          ? `${String(data.clientId || '').slice(0, 8)}...`
+          : `${credential.slice(0, 11)}...${credential.slice(-4)}`,
         lastValidatedAt: new Date(),
         webhookAuthCiphertext: encryptPaymentCredential(webhookAuthToken),
         webhookAuthHint: `${webhookAuthToken.slice(0, 10)}...${webhookAuthToken.slice(-4)}`,
@@ -138,15 +157,17 @@ export async function PUT(req: Request, { params }: Params) {
     ).replace(/\/$/, '')
     let webhookWarning: string | null = null
     if (configuredBaseUrl && !configuredBaseUrl.includes('localhost')) {
-      const webhookUrl = `${configuredBaseUrl}/api/webhooks/asaas/${connection.id}`
+      const webhookUrl = `${configuredBaseUrl}/api/webhooks/${providerName}/${connection.id}`
       try {
-        const webhook = await provider.ensurePaymentWebhook({
-          id: existing?.webhookId,
-          name: `Lotiva ${environment}`,
-          url: webhookUrl,
-          email: normalizeWebhookEmail(process.env.SMTP_FROM),
-          authToken: webhookAuthToken,
-        })
+        const webhook = providerName === 'inter'
+          ? await (provider as InterPaymentProvider).ensurePaymentWebhook({ url: webhookUrl })
+          : await (provider as AsaasPaymentProvider).ensurePaymentWebhook({
+              id: existing?.webhookId,
+              name: `Lotiva ${environment}`,
+              url: webhookUrl,
+              email: normalizeWebhookEmail(process.env.SMTP_FROM),
+              authToken: webhookAuthToken,
+            })
         connection = await prisma.paymentProviderConnection.update({
           where: { id: connection.id },
           data: {
@@ -192,13 +213,13 @@ export async function PUT(req: Request, { params }: Params) {
       action: existing ? 'payment_connection_updated' : 'payment_connection_created',
       entityType: 'payment_connection',
       entityId: connection.id,
-      metadata: { provider: 'asaas', environment, webhookStatus: connection.webhookStatus },
+      metadata: { provider: providerName, environment, webhookStatus: connection.webhookStatus },
     })
 
     return NextResponse.json({ ...connection, webhookWarning })
   } catch (error) {
     return NextResponse.json({
-      error: 'Nao foi possivel conectar ao Asaas.',
+      error: 'Nao foi possivel conectar ao provedor de pagamentos.',
       details: error instanceof Error ? error.message : 'Erro desconhecido',
     }, { status: 400 })
   }
@@ -215,9 +236,10 @@ export async function DELETE(req: Request, { params }: Params) {
   }
 
   const data = await req.json().catch(() => ({}))
+  const providerName = data.provider === 'inter' ? 'inter' : 'asaas'
   const environment = data.environment === 'production' ? 'production' : 'sandbox'
   await prisma.paymentProviderConnection.updateMany({
-    where: { companyId: id, provider: 'asaas', environment },
+    where: { companyId: id, provider: providerName, environment },
     data: {
       status: 'inactive',
       credentialCiphertext: null,
@@ -232,7 +254,7 @@ export async function DELETE(req: Request, { params }: Params) {
     where: {
       companyId_provider_environment: {
         companyId: id,
-        provider: 'asaas',
+        provider: providerName,
         environment,
       },
     },
@@ -245,7 +267,7 @@ export async function DELETE(req: Request, { params }: Params) {
       action: 'payment_connection_disconnected',
       entityType: 'payment_connection',
       entityId: connection.id,
-      metadata: { provider: 'asaas', environment },
+      metadata: { provider: providerName, environment },
     })
   }
 

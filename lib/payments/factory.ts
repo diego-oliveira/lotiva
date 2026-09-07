@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { AsaasPaymentProvider } from './asaas-provider'
+import { InterPaymentProvider, parseInterCredentials } from './inter-provider'
 import { decryptPaymentCredential } from './credentials'
 
 export async function getPaymentProviderForConnection(connectionId: string) {
@@ -15,6 +16,16 @@ export async function getPaymentProviderForConnection(connectionId: string) {
       connection,
       provider: new AsaasPaymentProvider(
         decryptPaymentCredential(connection.credentialCiphertext),
+        connection.environment === 'production' ? 'production' : 'sandbox',
+      ),
+    }
+  }
+
+  if (connection.provider === 'inter') {
+    return {
+      connection,
+      provider: new InterPaymentProvider(
+        parseInterCredentials(decryptPaymentCredential(connection.credentialCiphertext)),
         connection.environment === 'production' ? 'production' : 'sandbox',
       ),
     }

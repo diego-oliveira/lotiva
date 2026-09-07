@@ -78,6 +78,8 @@ export async function GET(_: Request, { params }: Params) {
         ...membershipWhere(userId),
       },
       include: {
+        company: { select: { name: true } },
+        documentTemplate: { select: { id: true, name: true } },
         contractSettings: true,
         documentValues: {
           where: { variable: { key: { in: customKeys } } },
@@ -118,7 +120,11 @@ export async function GET(_: Request, { params }: Params) {
       return {
         id: development.id,
         name: development.name,
+        companyName: development.company.name,
         selected: development.documentTemplateId === template.id,
+        currentTemplate: development.documentTemplate
+          ? { id: development.documentTemplate.id, name: development.documentTemplate.name }
+          : null,
         values,
       }
     }),

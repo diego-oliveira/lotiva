@@ -139,7 +139,7 @@ export default function CompaniesPage() {
                       <div className='flex items-center justify-end gap-2'>
                         {canManageSettings && (
                           <button onClick={() => setPaymentCompany(company)} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>
-                            Asaas
+                            Pagamentos
                           </button>
                         )}
                         <button onClick={() => { setEditingCompany(company); setShowForm(true) }} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>Editar</button>

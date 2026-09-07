@@ -31,6 +31,10 @@ export async function GET() {
           updatedAt: true,
         },
       },
+      developments: {
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      },
       _count: { select: { developments: true } },
     },
     orderBy: { updatedAt: 'desc' },

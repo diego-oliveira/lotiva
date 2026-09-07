@@ -31,14 +31,24 @@ function environmentLabel(environment: 'sandbox' | 'production') {
   return environment === 'production' ? 'Conta real' : 'Conta de teste'
 }
 
+function providerLabel(provider: 'asaas' | 'inter') {
+  return provider === 'inter' ? 'Banco Inter' : 'Asaas'
+}
+
 export default function PaymentProviderDrawer({
   company,
   isOpen,
   onClose,
 }: PaymentProviderDrawerProps) {
   const [connections, setConnections] = useState<PaymentProviderConnection[]>([])
+  const [provider, setProvider] = useState<'asaas' | 'inter'>('asaas')
   const [environment, setEnvironment] = useState<'sandbox' | 'production'>('sandbox')
   const [apiKey, setApiKey] = useState('')
+  const [clientId, setClientId] = useState('')
+  const [clientSecret, setClientSecret] = useState('')
+  const [certificate, setCertificate] = useState('')
+  const [privateKey, setPrivateKey] = useState('')
+  const [accountNumber, setAccountNumber] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,7 +78,13 @@ export default function PaymentProviderDrawer({
   useEffect(() => {
     if (!isOpen || !company) return
     setEnvironment('sandbox')
+    setProvider('asaas')
     setApiKey('')
+    setClientId('')
+    setClientSecret('')
+    setCertificate('')
+    setPrivateKey('')
+    setAccountNumber('')
     setSuccess(null)
     void loadConnections()
   }, [isOpen, company?.id])
@@ -76,8 +92,12 @@ export default function PaymentProviderDrawer({
   if (!company) return null
 
   const connect = async () => {
-    if (!apiKey.trim()) {
+    if (provider === 'asaas' && !apiKey.trim()) {
       setError('Informe a chave da API Asaas.')
+      return
+    }
+    if (provider === 'inter' && (!clientId.trim() || !clientSecret.trim() || !certificate.trim() || !privateKey.trim())) {
+      setError('Informe Client ID, Client Secret, certificado e chave privada do Inter.')
       return
     }
 
@@ -88,28 +108,42 @@ export default function PaymentProviderDrawer({
       const response = await fetch(`/api/companies/${company.id}/payment-provider`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ environment, apiKey }),
+        body: JSON.stringify({
+          provider,
+          environment,
+          apiKey,
+          clientId,
+          clientSecret,
+          certificate,
+          privateKey,
+          accountNumber,
+        }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
-        throw new Error(payload.details || payload.error || 'Nao foi possivel conectar ao Asaas.')
+        throw new Error(payload.details || payload.error || 'Nao foi possivel conectar ao provedor.')
       }
 
       setApiKey('')
+      setClientId('')
+      setClientSecret('')
+      setCertificate('')
+      setPrivateKey('')
+      setAccountNumber('')
       setSuccess(
         payload.webhookWarning
           ? `Conexao salva. Webhook pendente: ${payload.webhookWarning}`
-          : `Conexao ${environmentLabel(environment)} validada e salva.`,
+          : `Conexao ${providerLabel(provider)} ${environmentLabel(environment)} validada e salva.`,
       )
       await loadConnections()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nao foi possivel conectar ao Asaas.')
+      setError(err instanceof Error ? err.message : 'Nao foi possivel conectar ao provedor.')
     } finally {
       setSaving(false)
     }
   }
 
-  const disconnect = async (connectionEnvironment: 'sandbox' | 'production') => {
+  const disconnect = async (connectionProvider: 'asaas' | 'inter', connectionEnvironment: 'sandbox' | 'production') => {
     setSaving(true)
     setError(null)
     setSuccess(null)
@@ -117,17 +151,17 @@ export default function PaymentProviderDrawer({
       const response = await fetch(`/api/companies/${company.id}/payment-provider`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ environment: connectionEnvironment }),
+        body: JSON.stringify({ provider: connectionProvider, environment: connectionEnvironment }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
-        throw new Error(payload.error || 'Nao foi possivel desconectar o Asaas.')
+        throw new Error(payload.error || 'Nao foi possivel desconectar o provedor.')
       }
 
-      setSuccess(`Conexao ${environmentLabel(connectionEnvironment)} removida.`)
+      setSuccess(`Conexao ${providerLabel(connectionProvider)} ${environmentLabel(connectionEnvironment)} removida.`)
       await loadConnections()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nao foi possivel desconectar o Asaas.')
+      setError(err instanceof Error ? err.message : 'Nao foi possivel desconectar o provedor.')
     } finally {
       setSaving(false)
     }
@@ -136,8 +170,8 @@ export default function PaymentProviderDrawer({
   return (
     <FormDrawer
       isOpen={isOpen}
-      title={`Asaas - ${company.name}`}
-      description='Conecte a conta Asaas usada para gerar boletos e acompanhar pagamentos desta empresa.'
+      title={`Pagamentos - ${company.name}`}
+      description='Conecte os provedores usados para gerar boletos e acompanhar pagamentos desta empresa.'
       onClose={onClose}
     >
       <div className='space-y-6'>
@@ -154,23 +188,23 @@ export default function PaymentProviderDrawer({
 
         <section className='rounded-2xl border border-border bg-surface'>
           <div className='border-b border-border bg-surface-secondary px-5 py-4'>
-            <h3 className='font-semibold text-foreground'>Conta Asaas</h3>
+            <h3 className='font-semibold text-foreground'>Contas conectadas</h3>
             <p className='mt-1 text-sm text-muted'>Use a conta de teste durante homologacao e a conta real quando for operar vendas de verdade.</p>
           </div>
           {loading ? (
             <div className='px-5 py-8 text-sm text-muted'>Carregando conexoes...</div>
           ) : (
             <div className='divide-y divide-border'>
-              {(['sandbox', 'production'] as const).map((itemEnvironment) => {
+              {(['asaas', 'inter'] as const).flatMap((itemProvider) => (['sandbox', 'production'] as const).map((itemEnvironment) => {
                 const connection = connections.find(
-                  (item) => item.environment === itemEnvironment && item.status === 'active',
+                  (item) => item.provider === itemProvider && item.environment === itemEnvironment && item.status === 'active',
                 )
 
                 return (
-                  <div key={itemEnvironment} className='flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between'>
+                  <div key={`${itemProvider}-${itemEnvironment}`} className='flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between'>
                     <div>
                       <div className='flex items-center gap-2'>
-                        <p className='text-sm font-semibold text-foreground'>{environmentLabel(itemEnvironment)}</p>
+                        <p className='text-sm font-semibold text-foreground'>{providerLabel(itemProvider)} - {environmentLabel(itemEnvironment)}</p>
                         <span className={`pill ${connection ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
                           {connection ? 'Conectado' : 'Nao configurado'}
                         </span>
@@ -197,7 +231,7 @@ export default function PaymentProviderDrawer({
                       <button
                         type='button'
                         disabled={saving}
-                        onClick={() => disconnect(itemEnvironment)}
+                        onClick={() => disconnect(itemProvider, itemEnvironment)}
                         className='rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-60'
                       >
                         Desconectar
@@ -205,16 +239,28 @@ export default function PaymentProviderDrawer({
                     )}
                   </div>
                 )
-              })}
+              }))}
             </div>
           )}
         </section>
 
         <section className='rounded-2xl border border-border bg-surface p-5'>
-          <h3 className='font-semibold text-foreground'>Adicionar ou substituir chave</h3>
+          <h3 className='font-semibold text-foreground'>Adicionar ou substituir conexao</h3>
           <p className='mt-1 text-sm leading-6 text-muted'>
-            A chave sera validada no Asaas antes de ser armazenada de forma criptografada.
+            As credenciais serao validadas antes de serem armazenadas de forma criptografada.
           </p>
+
+          <label className='mt-5 block'>
+            <span className='mb-2 block text-sm font-semibold text-foreground'>Provedor</span>
+            <select
+              value={provider}
+              onChange={(event) => setProvider(event.target.value as 'asaas' | 'inter')}
+              className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary'
+            >
+              <option value='asaas'>Asaas</option>
+              <option value='inter'>Banco Inter</option>
+            </select>
+          </label>
 
           <label className='mt-5 block'>
             <span className='mb-2 block text-sm font-semibold text-foreground'>Tipo de conta</span>
@@ -228,22 +274,76 @@ export default function PaymentProviderDrawer({
             </select>
           </label>
 
-          <label className='mt-4 block'>
-            <span className='mb-2 block text-sm font-semibold text-foreground'>Chave da API</span>
-            <input
-              type='password'
-              autoComplete='off'
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              placeholder='$aact_...'
-              className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary'
-            />
-          </label>
+          {provider === 'asaas' ? (
+            <label className='mt-4 block'>
+              <span className='mb-2 block text-sm font-semibold text-foreground'>Chave da API</span>
+              <input
+                type='password'
+                autoComplete='off'
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+                placeholder='$aact_...'
+                className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary'
+              />
+            </label>
+          ) : (
+            <div className='mt-4 space-y-4'>
+              <label className='block'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Client ID</span>
+                <input
+                  type='text'
+                  autoComplete='off'
+                  value={clientId}
+                  onChange={(event) => setClientId(event.target.value)}
+                  className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary'
+                />
+              </label>
+              <label className='block'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Client Secret</span>
+                <input
+                  type='password'
+                  autoComplete='off'
+                  value={clientSecret}
+                  onChange={(event) => setClientSecret(event.target.value)}
+                  className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary'
+                />
+              </label>
+              <label className='block'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Conta corrente</span>
+                <input
+                  type='text'
+                  autoComplete='off'
+                  value={accountNumber}
+                  onChange={(event) => setAccountNumber(event.target.value.replace(/\D/g, ''))}
+                  placeholder='Opcional'
+                  className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary'
+                />
+              </label>
+              <label className='block'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Certificado .crt</span>
+                <textarea
+                  value={certificate}
+                  onChange={(event) => setCertificate(event.target.value)}
+                  rows={5}
+                  className='w-full rounded-xl border border-border bg-background px-4 py-3 font-mono text-xs text-foreground outline-none focus:ring-2 focus:ring-primary'
+                />
+              </label>
+              <label className='block'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Chave privada .key</span>
+                <textarea
+                  value={privateKey}
+                  onChange={(event) => setPrivateKey(event.target.value)}
+                  rows={5}
+                  className='w-full rounded-xl border border-border bg-background px-4 py-3 font-mono text-xs text-foreground outline-none focus:ring-2 focus:ring-primary'
+                />
+              </label>
+            </div>
+          )}
 
           <div className='mt-5 flex justify-end'>
             <button
               type='button'
-              disabled={saving || !apiKey.trim()}
+              disabled={saving || (provider === 'asaas' ? !apiKey.trim() : (!clientId.trim() || !clientSecret.trim() || !certificate.trim() || !privateKey.trim()))}
               onClick={connect}
               className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
             >
@@ -253,7 +353,7 @@ export default function PaymentProviderDrawer({
         </section>
 
         <div className='rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-800'>
-          Use a conta de teste para validar o fluxo sem impacto financeiro real. Troque para a conta real apenas quando a empresa estiver pronta para operar.
+          Use a conta de teste para validar o fluxo sem impacto financeiro real. No Inter, baixe e guarde o certificado e as credenciais assim que a integracao for criada no Internet Banking PJ.
         </div>
       </div>
     </FormDrawer>

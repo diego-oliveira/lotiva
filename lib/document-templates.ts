@@ -72,6 +72,9 @@ export const documentVariableGroups = [
     variables: [
       ['contrato.numero', 'Numero do contrato'],
       ['contrato.data', 'Data de emissao'],
+      ['contrato.dia', 'Dia de emissao'],
+      ['contrato.mes', 'Mes de emissao'],
+      ['contrato.ano', 'Ano de emissao'],
     ],
   },
   {
@@ -125,15 +128,19 @@ export const documentVariableGroups = [
     label: 'Venda',
     variables: [
       ['venda.valor_total', 'Valor total'],
+      ['venda.valor_total_numero', 'Valor total sem R$'],
       ['venda.valor_total_extenso', 'Valor total por extenso'],
       ['venda.entrada', 'Entrada'],
+      ['venda.entrada_numero', 'Entrada sem R$'],
       ['venda.entrada_extenso', 'Entrada por extenso'],
       ['venda.entrada_percentual', 'Percentual da entrada'],
       ['venda.saldo', 'Saldo'],
+      ['venda.saldo_numero', 'Saldo sem R$'],
       ['venda.saldo_extenso', 'Saldo por extenso'],
       ['venda.numero_parcelas', 'Numero de parcelas'],
       ['venda.numero_parcelas_extenso', 'Numero de parcelas por extenso'],
       ['venda.valor_parcela', 'Valor da parcela'],
+      ['venda.valor_parcela_numero', 'Valor da parcela sem R$'],
       ['venda.valor_parcela_extenso', 'Valor da parcela por extenso'],
       ['venda.primeiro_vencimento', 'Primeiro vencimento'],
       ['venda.reajuste', 'Regra de reajuste'],
@@ -186,6 +193,13 @@ function formatCurrency(value: number) {
     style: 'currency',
     currency: 'BRL',
   }).format(value)
+}
+
+function formatCurrencyNumber(value: number) {
+  return value.toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
 }
 
 function integerToWords(value: number): string {
@@ -303,6 +317,9 @@ export function getDocumentValues(sale: TemplateSale, contractNumber: string, ge
   return {
     'contrato.numero': contractNumber,
     'contrato.data': formatDate(generatedAt),
+    'contrato.dia': generatedAt.toLocaleDateString('pt-BR', { day: '2-digit' }),
+    'contrato.mes': generatedAt.toLocaleDateString('pt-BR', { month: 'long' }),
+    'contrato.ano': generatedAt.toLocaleDateString('pt-BR', { year: 'numeric' }),
     'empresa.nome': development?.company?.name ?? '',
     'empreendimento.nome': development?.name ?? '',
     'empreendimento.descricao': settings?.propertyDescription ?? '',
@@ -331,17 +348,21 @@ export function getDocumentValues(sale: TemplateSale, contractNumber: string, ge
     'lote.lateral_esquerda': formatNumber(sale.lot.leftSide, ' m'),
     'lote.lateral_direita': formatNumber(sale.lot.rightSide, ' m'),
     'venda.valor_total': formatCurrency(totalValue),
+    'venda.valor_total_numero': formatCurrencyNumber(totalValue),
     'venda.valor_total_extenso': currencyToWords(totalValue),
     'venda.entrada': formatCurrency(downPayment),
+    'venda.entrada_numero': formatCurrencyNumber(downPayment),
     'venda.entrada_extenso': currencyToWords(downPayment),
     'venda.entrada_percentual': totalValue > 0
       ? `${formatNumber((downPayment / totalValue) * 100)}%`
       : '',
     'venda.saldo': formatCurrency(balance),
+    'venda.saldo_numero': formatCurrencyNumber(balance),
     'venda.saldo_extenso': currencyToWords(balance),
     'venda.numero_parcelas': String(sale.installmentCount),
     'venda.numero_parcelas_extenso': integerToWords(sale.installmentCount),
     'venda.valor_parcela': formatCurrency(installmentValue),
+    'venda.valor_parcela_numero': formatCurrencyNumber(installmentValue),
     'venda.valor_parcela_extenso': currencyToWords(installmentValue),
     'venda.primeiro_vencimento': formatDate(sale.firstDueDate),
     'venda.reajuste': sale.annualAdjustment ? 'Com reajuste anual.' : 'Sem reajuste anual.',

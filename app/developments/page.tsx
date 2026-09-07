@@ -41,6 +41,10 @@ interface Development {
     additionalClauses: string
   } | null
   documentTemplateId?: string | null
+  documentTemplate?: {
+    id: string
+    name: string
+  } | null
   _count?: {
     blocks: number
   }
@@ -344,6 +348,7 @@ export default function DevelopmentsPage() {
                     <p><span className='font-semibold text-foreground'>Reserva:</span> {development.settings?.reservationValidityDays ?? 7} dias</p>
                     <p><span className='font-semibold text-foreground'>Juros:</span> {formatPercent(development.settings?.defaultInterestRate)} a.m.</p>
                     <p className='sm:col-span-2'><span className='font-semibold text-foreground'>Pagamento:</span> {formatPaymentMethods(development.settings?.paymentMethods)}</p>
+                    <p className='sm:col-span-2'><span className='font-semibold text-foreground'>Contrato:</span> {development.documentTemplate?.name ?? 'Nao configurado'}</p>
                   </div>
 
                   <div className='mt-5 flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between'>

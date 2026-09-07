@@ -1,4 +1,4 @@
-export type PaymentProviderName = 'asaas' | 'fake'
+export type PaymentProviderName = 'asaas' | 'inter' | 'fake'
 export type PaymentEnvironment = 'sandbox' | 'production'
 export type BillingType = 'BOLETO' | 'PIX' | 'UNDEFINED'
 

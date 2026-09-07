@@ -45,6 +45,7 @@ interface ReceivablesDrawerProps {
 interface ExternalCharge {
   id: string
   receivableId: string
+  provider: string
   providerChargeId: string
   billingType: string
   status: string
@@ -271,6 +272,7 @@ export default function ReceivablesDrawer({
   })
   const [chargeActionId, setChargeActionId] = useState<string | null>(null)
   const [chargeIssueId, setChargeIssueId] = useState<string | null>(null)
+  const [chargeProvider, setChargeProvider] = useState<'asaas' | 'inter'>('asaas')
   const [asaasImportLoading, setAsaasImportLoading] = useState(false)
   const [asaasImportSaving, setAsaasImportSaving] = useState(false)
   const [asaasImportPreview, setAsaasImportPreview] = useState<AsaasImportPreview | null>(null)
@@ -365,7 +367,10 @@ export default function ReceivablesDrawer({
   const chargesByReceivable = useMemo(() => {
     const map = new Map<string, ExternalCharge>()
     cycles
-      .flatMap((cycle) => cycle.externalCharges)
+      .flatMap((cycle) => cycle.externalCharges.map((charge) => ({
+        ...charge,
+        provider: cycle.connection.provider,
+      })))
       .sort((left, right) => right.version - left.version)
       .forEach((charge) => {
         if (!map.has(charge.receivableId)) map.set(charge.receivableId, charge)
@@ -386,6 +391,7 @@ export default function ReceivablesDrawer({
         body: JSON.stringify({
           cycleSize: 12,
           billingType: 'BOLETO',
+          provider: chargeProvider,
         }),
       })
       const payload = await response.json().catch(() => ({}))
@@ -415,7 +421,7 @@ export default function ReceivablesDrawer({
       const response = await fetch(`/api/sales/${sale.id}/adjustments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(adjustmentForm),
+        body: JSON.stringify({ ...adjustmentForm, provider: chargeProvider }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error || 'Nao foi possivel criar o reajuste.')
@@ -490,7 +496,7 @@ export default function ReceivablesDrawer({
       const response = await fetch(`/api/receivables/${receivable.id}/charge`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ billingType: 'BOLETO' }),
+        body: JSON.stringify({ billingType: 'BOLETO', provider: chargeProvider }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.details || payload.error || 'Nao foi possivel gerar o boleto.')
@@ -762,6 +768,16 @@ export default function ReceivablesDrawer({
                 </div>
                 {(canManagePayments || canReconcilePayments) && (
                   <div className='flex flex-col gap-2 sm:flex-row'>
+                    {canManagePayments && (
+                      <select
+                        value={chargeProvider}
+                        onChange={(event) => setChargeProvider(event.target.value as 'asaas' | 'inter')}
+                        className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary'
+                      >
+                        <option value='asaas'>Asaas</option>
+                        <option value='inter'>Banco Inter</option>
+                      </select>
+                    )}
                     {canReconcilePayments && (
                       <button
                         type='button'
@@ -945,13 +961,36 @@ export default function ReceivablesDrawer({
                                 </a>
                               )}
                               {charge.bankSlipUrl && (
+                                charge.bankSlipUrl.startsWith('http') ? (
+                                  <a
+                                    href={charge.bankSlipUrl}
+                                    target='_blank'
+                                    rel='noreferrer'
+                                    className='rounded-xl border border-border bg-surface px-3 py-2 text-center text-sm font-semibold text-primary transition hover:bg-primary/8'
+                                  >
+                                    Boleto
+                                  </a>
+                                ) : (
+                                  <button
+                                    type='button'
+                                    onClick={async () => {
+                                      await navigator.clipboard.writeText(charge.bankSlipUrl || '')
+                                      setCycleSuccess('Linha digitavel copiada.')
+                                    }}
+                                    className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-primary transition hover:bg-primary/8'
+                                  >
+                                    Copiar boleto
+                                  </button>
+                                )
+                              )}
+                              {charge.provider === 'inter' && (
                                 <a
-                                  href={charge.bankSlipUrl}
+                                  href={`/api/external-charges/${charge.id}/pdf`}
                                   target='_blank'
                                   rel='noreferrer'
                                   className='rounded-xl border border-border bg-surface px-3 py-2 text-center text-sm font-semibold text-primary transition hover:bg-primary/8'
                                 >
-                                  Boleto
+                                  PDF boleto
                                 </a>
                               )}
                               {charge.pixPayload && (

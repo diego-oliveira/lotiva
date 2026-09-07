@@ -23,10 +23,11 @@ interface Development {
 type DocumentTemplateOption = {
   id: string
   name: string
+  description?: string | null
   purpose: string
   status: string
   company: { id: string }
-  versions: Array<{ status: string; version: number }>
+  versions: Array<{ id: string; status: string; version: number; variables: string[] }>
 }
 
 type DevelopmentSettings = {
@@ -113,6 +114,16 @@ export default function DevelopmentForm({
   const [currentSection, setCurrentSection] = useState<ConfigSection>('basic')
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const availableDocumentTemplates = documentTemplates.filter((template) =>
+    template.company.id === formData.companyId &&
+    template.purpose === 'sale_contract' &&
+    template.status === 'published' &&
+    template.versions.some((version) => version.status === 'published'),
+  )
+  const selectedDocumentTemplate = availableDocumentTemplates.find((template) => template.id === formData.documentTemplateId) ?? null
+  const selectedPublishedVersion = selectedDocumentTemplate?.versions.find((version) => version.status === 'published') ?? null
+  const documentTemplatesHref = `/document-templates?companyId=${encodeURIComponent(formData.companyId || '')}${development?.id ? `&developmentId=${encodeURIComponent(development.id)}` : ''}`
+  const newDocumentTemplateHref = `${documentTemplatesHref}&new=1`
 
   useEffect(() => {
     setFormData(
@@ -186,12 +197,6 @@ export default function DevelopmentForm({
   const updateSettingText = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const { name, value } = e.target
     setSettingsData((prev) => ({ ...prev, [name]: value }))
-    if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }))
-  }
-
-  const updateContractSetting = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target
-    setContractSettingsData((prev) => ({ ...prev, [name]: value }))
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }))
   }
 
@@ -469,9 +474,29 @@ export default function DevelopmentForm({
 
           {development?.id && currentSection === 'documents' && (
           <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
-            <div>
-              <h3 className='text-base font-semibold text-foreground'>Documentos da venda</h3>
-              <p className='mt-1 text-sm text-muted'>Defina o modelo de contrato usado nas vendas deste empreendimento.</p>
+            <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+              <div>
+                <h3 className='text-base font-semibold text-foreground'>Documentos da venda</h3>
+                <p className='mt-1 text-sm text-muted'>Escolha o modelo aplicado às vendas deste empreendimento.</p>
+              </div>
+              <div className='flex flex-wrap gap-2'>
+                <a
+                  href={newDocumentTemplateHref}
+                  target='_blank'
+                  rel='noreferrer'
+                  className='rounded-xl bg-primary px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-primary-strong'
+                >
+                  Criar modelo
+                </a>
+                <a
+                  href={documentTemplatesHref}
+                  target='_blank'
+                  rel='noreferrer'
+                  className='rounded-xl border border-border bg-surface px-3 py-2 text-center text-sm font-semibold text-foreground transition hover:bg-background'
+                >
+                  Ver modelos
+                </a>
+              </div>
             </div>
 
             <div className='mt-5 grid gap-4'>
@@ -486,24 +511,43 @@ export default function DevelopmentForm({
                   }`}
                 >
                   <option value=''>Selecione um modelo publicado</option>
-                  {documentTemplates
-                    .filter((template) =>
-                      template.company.id === formData.companyId &&
-                      template.purpose === 'sale_contract' &&
-                      template.status === 'published' &&
-                      template.versions.some((version) => version.status === 'published'),
-                    )
+                  {availableDocumentTemplates
                     .map((template) => {
                       const published = template.versions.find((version) => version.status === 'published')
                       return <option key={template.id} value={template.id}>{template.name} (v{published?.version})</option>
                     })}
                 </select>
                 {errors.documentTemplateId && <p className='mt-2 text-sm text-red-600'>{errors.documentTemplateId}</p>}
-                <p className='mt-2 text-xs text-muted'>Somente modelos publicados da empresa selecionada podem ser usados.</p>
+                <p className='mt-2 text-xs text-muted'>Esta é a mesma configuração alterada em Modelos de documentos ao aplicar um modelo a empreendimentos.</p>
               </label>
-              <div className='rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted'>
-                O conteúdo, as variáveis e os dados do contrato são configurados em <strong className='text-foreground'>Modelos → Configurar uso</strong>. Aqui você apenas escolhe qual modelo será aplicado às vendas.
-              </div>
+
+              {availableDocumentTemplates.length === 0 && (
+                <div className='rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800'>
+                  Esta empresa ainda nao tem modelo publicado. Use Criar modelo para enviar um DOCX ja vinculado a esta empresa.
+                </div>
+              )}
+
+              {selectedDocumentTemplate && selectedPublishedVersion && (
+                <div className='rounded-xl border border-border bg-surface px-4 py-4'>
+                  <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+                    <div>
+                      <p className='text-sm font-semibold text-foreground'>{selectedDocumentTemplate.name} v{selectedPublishedVersion.version}</p>
+                      {selectedDocumentTemplate.description && (
+                        <p className='mt-1 text-sm text-muted'>{selectedDocumentTemplate.description}</p>
+                      )}
+                    </div>
+                    <a
+                      href={`/api/document-templates/${selectedDocumentTemplate.id}/preview?versionId=${selectedPublishedVersion.id}`}
+                      target='_blank'
+                      rel='noreferrer'
+                      className='rounded-xl border border-primary px-3 py-2 text-center text-sm font-semibold text-primary transition hover:bg-primary/8'
+                    >
+                      Preview preenchido
+                    </a>
+                  </div>
+
+                </div>
+              )}
             </div>
           </div>
           )}

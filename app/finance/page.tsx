@@ -173,6 +173,9 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
         },
       },
       externalCharges: {
+        include: {
+          connection: { select: { provider: true } },
+        },
         orderBy: { version: 'desc' },
         take: 1,
       },
@@ -214,7 +217,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
           take: 1,
         },
       },
-      orderBy: { environment: 'asc' },
+      orderBy: [{ provider: 'asc' }, { environment: 'asc' }],
     }),
     prisma.paymentWebhookEvent.count({
       where: {
@@ -302,6 +305,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
       <PaymentOperationsPanel
         connections={connections.map((connection) => ({
           id: connection.id,
+          provider: connection.provider,
           environment: connection.environment,
           status: connection.status,
           webhookStatus: connection.webhookStatus,
@@ -437,7 +441,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                         <span className={`pill ${statusMeta.className}`}>{statusMeta.label}</span>
                         {receivable.externalCharges[0] && (
                           <p className='mt-2 text-xs text-muted'>
-                            Asaas: {receivable.externalCharges[0].status}
+                            {receivable.externalCharges[0].connection.provider === 'inter' ? 'Inter' : 'Asaas'}: {receivable.externalCharges[0].status}
                             {receivable.externalCharges[0].version > 1 ? ` · v${receivable.externalCharges[0].version}` : ''}
                           </p>
                         )}

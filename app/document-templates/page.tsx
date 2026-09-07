@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import FormDrawer from '@/app/components/FormDrawer'
 import InlineAlert from '@/app/components/InlineAlert'
 import { documentVariableGroups } from '@/lib/document-templates'
@@ -32,12 +32,20 @@ type DocumentTemplate = {
   status: string
   company: Company
   versions: TemplateVersion[]
+  developments: Array<{ id: string; name: string }>
   _count: { developments: number }
 }
 type UsageData = {
   template: { id: string; name: string; version: number }
   fields: Array<{ variable: string; label: string; type: string; required: boolean; defaultValue?: string | null }>
-  developments: Array<{ id: string; name: string; selected: boolean; values: Record<string, string> }>
+  developments: Array<{
+    id: string
+    name: string
+    companyName: string
+    selected: boolean
+    currentTemplate: { id: string; name: string } | null
+    values: Record<string, string>
+  }>
 }
 
 const purposeOptions = [
@@ -51,6 +59,15 @@ function statusMeta(status: string) {
   if (status === 'published') return { label: 'Publicado', className: 'bg-emerald-50 text-emerald-700' }
   if (status === 'archived') return { label: 'Arquivado', className: 'bg-slate-100 text-slate-600' }
   return { label: 'Rascunho', className: 'bg-amber-50 text-amber-700' }
+}
+
+function variableLabel(variable: string) {
+  for (const group of documentVariableGroups) {
+    const found = group.variables.find(([name]) => name === variable)
+    if (found) return found[1]
+  }
+  if (variable.startsWith('custom.')) return variable.replace('custom.', 'Personalizada: ')
+  return variable
 }
 
 export default function DocumentTemplatesPage() {
@@ -70,7 +87,10 @@ export default function DocumentTemplatesPage() {
   const [purpose, setPurpose] = useState('sale_contract')
   const [file, setFile] = useState<File | null>(null)
   const [search, setSearch] = useState('')
+  const [companyFilter, setCompanyFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [sourceCompanyId, setSourceCompanyId] = useState('')
+  const [sourceDevelopmentId, setSourceDevelopmentId] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -81,8 +101,10 @@ export default function DocumentTemplatesPage() {
   const [newVariableType, setNewVariableType] = useState('text')
   const [newVariableDefault, setNewVariableDefault] = useState('')
   const [newVariableRequired, setNewVariableRequired] = useState(false)
+  const handledInitialParams = useRef(false)
 
   const filteredTemplates = useMemo(() => templates.filter((template) => {
+    if (companyFilter && template.company.id !== companyFilter) return false
     if (statusFilter && template.status !== statusFilter) return false
     if (!search.trim()) return true
     const term = search.toLowerCase()
@@ -118,6 +140,22 @@ export default function DocumentTemplatesPage() {
   }, [])
 
   useEffect(() => {
+    if (handledInitialParams.current || loading || companies.length === 0) return
+    handledInitialParams.current = true
+    const params = new URLSearchParams(window.location.search)
+    const nextCompanyId = params.get('companyId') || ''
+    const nextDevelopmentId = params.get('developmentId') || ''
+    const shouldOpenNew = params.get('new') === '1'
+
+    if (nextCompanyId) {
+      setCompanyFilter(nextCompanyId)
+      setSourceCompanyId(nextCompanyId)
+    }
+    if (nextDevelopmentId) setSourceDevelopmentId(nextDevelopmentId)
+    if (shouldOpenNew) openNew(nextCompanyId)
+  }, [loading, companies])
+
+  useEffect(() => {
     if (!formOpen || !companyId) {
       setCustomVariables([])
       return
@@ -128,11 +166,11 @@ export default function DocumentTemplatesPage() {
       .catch(() => setCustomVariables([]))
   }, [companyId, formOpen])
 
-  function openNew() {
+  function openNew(preselectedCompanyId?: string) {
     setEditingTemplate(null)
     setName('')
     setDescription('')
-    setCompanyId(companies[0]?.id ?? '')
+    setCompanyId(preselectedCompanyId || companyFilter || companies[0]?.id || '')
     setPurpose('sale_contract')
     setFile(null)
     setFormNotice(null)
@@ -196,7 +234,7 @@ export default function DocumentTemplatesPage() {
       await loadData()
       setFormOpen(false)
       setSuccess(`Versao ${payload.version.version} publicada.`)
-      await openUsage(template.id)
+      await openUsage(template.id, sourceDevelopmentId || undefined)
     } catch (publishError) {
       setError(publishError instanceof Error ? publishError.message : 'Erro ao publicar.')
     } finally {
@@ -244,13 +282,19 @@ export default function DocumentTemplatesPage() {
     }
   }
 
-  async function openUsage(templateId: string) {
+  async function openUsage(templateId: string, preferredDevelopmentId?: string) {
     try {
       const response = await fetch(`/api/document-templates/${templateId}/usage`, { cache: 'no-store' })
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error || 'Nao foi possivel configurar o uso.')
       setUsageData(payload)
-      setUsageSelections(payload.developments.filter((item: UsageData['developments'][number]) => item.selected).map((item: UsageData['developments'][number]) => item.id))
+      const selectedIds: string[] = payload.developments
+        .filter((item: UsageData['developments'][number]) => item.selected)
+        .map((item: UsageData['developments'][number]) => item.id)
+      if (preferredDevelopmentId && payload.developments.some((item: UsageData['developments'][number]) => item.id === preferredDevelopmentId)) {
+        selectedIds.push(preferredDevelopmentId)
+      }
+      setUsageSelections([...new Set(selectedIds)])
       setUsageConfigurations(Object.fromEntries(payload.developments.map((item: UsageData['developments'][number]) => [item.id, item.values])))
       setUsageOpen(true)
     } catch (usageError) {
@@ -286,6 +330,15 @@ export default function DocumentTemplatesPage() {
     <div className='space-y-6'>
       {success && <InlineAlert variant='success' title='Modelo atualizado' message={success} onClose={() => setSuccess(null)} />}
       {error && <InlineAlert variant='error' title='Nao foi possivel concluir' message={error} onClose={() => setError(null)} />}
+      {sourceCompanyId && (
+        <div className='rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4 text-sm leading-6 text-muted'>
+          <p>
+            <strong className='text-foreground'>Fluxo iniciado pelo empreendimento.</strong>{' '}
+            Os modelos foram filtrados pela empresa {companies.find((company) => company.id === sourceCompanyId)?.name || 'selecionada'}.
+          </p>
+          {sourceDevelopmentId && <p className='mt-1'>Ao publicar um novo modelo, a aplicação já abre com o empreendimento de origem marcado.</p>}
+        </div>
+      )}
 
       <div className='flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'>
         <div>
@@ -299,7 +352,7 @@ export default function DocumentTemplatesPage() {
           <a href='/api/document-templates/sample' className='rounded-2xl border border-primary px-4 py-3 text-sm font-semibold text-primary'>
             Baixar DOCX modelo
           </a>
-          <button onClick={openNew} disabled={companies.length === 0} className='rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50'>
+          <button onClick={() => openNew()} disabled={companies.length === 0} className='rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50'>
             Novo modelo
           </button>
         </div>
@@ -311,8 +364,14 @@ export default function DocumentTemplatesPage() {
             <h2 className='text-lg font-semibold text-foreground'>{filteredTemplates.length} modelo(s)</h2>
             <p className='mt-1 text-sm text-muted'>Cada upload cria uma nova versao do documento.</p>
           </div>
-          <div className='flex gap-3'>
+          <div className='flex flex-col gap-3 sm:flex-row'>
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder='Buscar modelo...' className='rounded-xl border border-border bg-background px-4 py-3 text-sm' />
+            <select value={companyFilter} onChange={(event) => setCompanyFilter(event.target.value)} className='rounded-xl border border-border bg-background px-4 py-3 text-sm'>
+              <option value=''>Todas as empresas</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>{company.name}</option>
+              ))}
+            </select>
             <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className='rounded-xl border border-border bg-background px-4 py-3 text-sm'>
               <option value=''>Todos</option>
               <option value='draft'>Rascunhos</option>
@@ -343,8 +402,40 @@ export default function DocumentTemplatesPage() {
                     {draft && <span className='rounded-full bg-amber-50 px-3 py-1 text-amber-700'>Rascunho v{draft.version}</span>}
                     <span className='rounded-full bg-surface-secondary px-3 py-1 text-muted'>{template._count.developments} empreendimento(s)</span>
                   </div>
+                  {template.developments.length > 0 && (
+                    <div className='mt-3 flex flex-wrap gap-2'>
+                      {template.developments.slice(0, 3).map((development) => (
+                        <span key={development.id} className='rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700'>
+                          {development.name}
+                        </span>
+                      ))}
+                      {template.developments.length > 3 && (
+                        <span className='rounded-full bg-surface-secondary px-3 py-1 text-xs font-semibold text-muted'>
+                          +{template.developments.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <div className='mt-auto flex flex-wrap justify-end gap-2 border-t border-border pt-5'>
-                    {template.status === 'published' && <button onClick={() => openUsage(template.id)} className='rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white'>Configurar uso</button>}
+                    {template.status !== 'archived' && (
+                      <button
+                        onClick={() => archive(template)}
+                        className='mr-auto rounded-xl px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50'
+                      >
+                        Arquivar
+                      </button>
+                    )}
+                    {published && (
+                      <a
+                        href={`/api/document-templates/${template.id}/preview?versionId=${published.id}`}
+                        target='_blank'
+                        rel='noreferrer'
+                        className='rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground'
+                      >
+                        Preview
+                      </a>
+                    )}
+                    {template.status === 'published' && <button onClick={() => openUsage(template.id, sourceDevelopmentId || undefined)} className='rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white'>Aplicar</button>}
                     <button onClick={() => openEdit(template)} className='rounded-xl border border-border px-3 py-2 text-sm font-semibold'>Detalhes</button>
                   </div>
                 </article>
@@ -369,6 +460,20 @@ export default function DocumentTemplatesPage() {
             </div>
           )}
 
+          <div className='flex flex-col gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm leading-6 text-blue-900 sm:flex-row sm:items-center sm:justify-between'>
+            <div>
+              <p className='font-semibold'>Configure o DOCX com variaveis Lotiva</p>
+              <p className='text-blue-800'>Use o guia para copiar os campos corretos antes de enviar uma nova versao.</p>
+            </div>
+            <button
+              type='button'
+              onClick={() => setGuideOpen(true)}
+              className='rounded-xl border border-blue-300 bg-white px-4 py-2 text-sm font-semibold text-blue-800 transition hover:bg-blue-100'
+            >
+              Ver variaveis
+            </button>
+          </div>
+
           <div className='grid gap-4 md:grid-cols-2'>
             <label className='block'>
               <span className='mb-2 block text-sm font-semibold'>Nome do modelo</span>
@@ -380,6 +485,7 @@ export default function DocumentTemplatesPage() {
                 <option value=''>Selecione</option>
                 {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
               </select>
+              <span className='mt-2 block text-xs text-muted'>O modelo so aparece para empreendimentos desta empresa.</span>
             </label>
             <label className='block'>
               <span className='mb-2 block text-sm font-semibold'>Finalidade</span>
@@ -410,12 +516,29 @@ export default function DocumentTemplatesPage() {
               <h3 className='font-semibold'>Historico de versoes</h3>
               <div className='mt-4 space-y-3'>
                 {editingTemplate.versions.map((version) => (
-                  <div key={version.id} className='flex flex-col gap-3 rounded-xl bg-surface-secondary px-4 py-3 sm:flex-row sm:items-center sm:justify-between'>
-                    <div>
-                      <p className='text-sm font-semibold'>Versao {version.version} · {statusMeta(version.status).label}</p>
-                      <p className='mt-1 text-xs text-muted'>{version.fileName} · {version.variables.length} variavel(is)</p>
+                  <div key={version.id} className='rounded-xl bg-surface-secondary px-4 py-3'>
+                    <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+                      <div>
+                        <p className='text-sm font-semibold'>Versao {version.version} · {statusMeta(version.status).label}</p>
+                        <p className='mt-1 text-xs text-muted'>{version.fileName} · {version.variables.length} variavel(is)</p>
+                      </div>
+                      <div className='flex flex-wrap gap-3'>
+                        <a href={`/api/document-templates/${editingTemplate.id}/preview?versionId=${version.id}`} target='_blank' rel='noreferrer' className='text-sm font-semibold text-primary'>Preview preenchido</a>
+                        <a href={`/api/document-templates/${editingTemplate.id}/versions/${version.id}/file`} className='text-sm font-semibold text-primary'>Baixar DOCX</a>
+                      </div>
                     </div>
-                    <a href={`/api/document-templates/${editingTemplate.id}/versions/${version.id}/file`} className='text-sm font-semibold text-primary'>Baixar DOCX</a>
+                    {version.variables.length > 0 && (
+                      <div className='mt-3 flex flex-wrap gap-2'>
+                        {version.variables.map((variable) => (
+                          <code key={variable} className='rounded-lg bg-white px-2 py-1 text-xs text-primary'>
+                            {`{{${variable}}}`}
+                          </code>
+                        ))}
+                      </div>
+                    )}
+                    {version.variables.length === 0 && (
+                      <p className='mt-3 text-xs text-amber-700'>Nenhuma variavel Lotiva detectada nesta versao.</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -485,17 +608,51 @@ export default function DocumentTemplatesPage() {
         </div>
       </FormDrawer>
 
-      <FormDrawer isOpen={usageOpen} title='Configurar uso do modelo' description='Selecione os empreendimentos e preencha os dados usados no DOCX publicado.' onClose={() => !saving && setUsageOpen(false)} widthClassName='max-w-4xl'>
+      <FormDrawer isOpen={usageOpen} title='Aplicar a empreendimentos' description='Este fluxo altera o mesmo modelo escolhido em Empreendimentos > Documento.' onClose={() => !saving && setUsageOpen(false)} widthClassName='max-w-4xl'>
         {usageData && (
           <div className='space-y-6'>
+            <div className='rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4 text-sm leading-6 text-muted'>
+              <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+                <div>
+                  <p><strong className='text-foreground'>{usageData.template.name}</strong> v{usageData.template.version}</p>
+                  <p className='mt-1'>Selecionar um empreendimento aqui substitui o modelo de contrato atual dele.</p>
+                </div>
+                <a
+                  href={`/api/document-templates/${usageData.template.id}/preview`}
+                  target='_blank'
+                  rel='noreferrer'
+                  className='rounded-xl border border-primary/30 bg-white px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/8'
+                >
+                  Preview preenchido
+                </a>
+              </div>
+            </div>
             {usageData.developments.map((development) => {
               const selected = usageSelections.includes(development.id)
+              const replacingAnotherTemplate = selected && development.currentTemplate && development.currentTemplate.id !== usageData.template.id
               return (
                 <div key={development.id} className={`rounded-2xl border p-5 ${selected ? 'border-primary bg-primary/3' : 'border-border'}`}>
-                  <label className='flex cursor-pointer items-center gap-3'>
-                    <input type='checkbox' checked={selected} onChange={() => setUsageSelections((current) => current.includes(development.id) ? current.filter((id) => id !== development.id) : [...current, development.id])} />
-                    <span className='font-semibold'>{development.name}</span>
-                  </label>
+                  <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+                    <label className='flex cursor-pointer items-start gap-3'>
+                      <input className='mt-1' type='checkbox' checked={selected} onChange={() => setUsageSelections((current) => current.includes(development.id) ? current.filter((id) => id !== development.id) : [...current, development.id])} />
+                      <span>
+                        <span className='block font-semibold'>{development.name}</span>
+                        <span className='mt-1 block text-sm text-muted'>{development.companyName}</span>
+                      </span>
+                    </label>
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${development.currentTemplate ? development.currentTemplate.id === usageData.template.id ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                      {development.currentTemplate
+                        ? development.currentTemplate.id === usageData.template.id
+                          ? 'Usando este modelo'
+                          : `Usando ${development.currentTemplate.name}`
+                        : 'Sem modelo'}
+                    </span>
+                  </div>
+                  {replacingAnotherTemplate && (
+                    <p className='mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800'>
+                      Ao salvar, este empreendimento deixa de usar {development.currentTemplate?.name}.
+                    </p>
+                  )}
                   {selected && (
                     <div className='mt-5 grid gap-4 md:grid-cols-2'>
                       {usageData.fields.map((field) => (
