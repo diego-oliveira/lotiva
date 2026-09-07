@@ -184,23 +184,35 @@ export async function POST(req: Request, { params }: Params) {
       )
     }
 
-    const payment = await getPaymentProviderForConnection(connection.id)
-    const result = await issueNextBillingCycle({
-      connectionId: connection.id,
-      saleId: id,
-      provider: payment.provider,
-      cycleSize: data.cycleSize === undefined ? 12 : Number(data.cycleSize),
-      billingType: data.billingType === 'PIX' ? 'PIX' : 'BOLETO',
-      interestPercentage: data.interestPercentage
-        ? String(data.interestPercentage)
-        : undefined,
-      finePercentage: data.finePercentage
-        ? String(data.finePercentage)
-        : undefined,
-      actorId: auth.session.user.id,
-    })
+    try {
+      const payment = await getPaymentProviderForConnection(connection.id)
+      const result = await issueNextBillingCycle({
+        connectionId: connection.id,
+        saleId: id,
+        provider: payment.provider,
+        cycleSize: data.cycleSize === undefined ? 12 : Number(data.cycleSize),
+        billingType: data.billingType === 'PIX' ? 'PIX' : 'BOLETO',
+        interestPercentage: data.interestPercentage
+          ? String(data.interestPercentage)
+          : undefined,
+        finePercentage: data.finePercentage
+          ? String(data.finePercentage)
+          : undefined,
+        actorId: auth.session.user.id,
+      })
 
-    return NextResponse.json(result, { status: result.alreadyComplete ? 200 : 201 })
+      return NextResponse.json(result, { status: result.alreadyComplete ? 200 : 201 })
+    } catch (issueError) {
+      console.error('payment_billing_cycle_issue_failed', {
+        provider: providerName,
+        environment: connection.environment,
+        companyId: authorized.companyId,
+        saleId: id,
+        connectionId: connection.id,
+        error: issueError instanceof Error ? issueError.message : String(issueError),
+      })
+      throw issueError
+    }
   } catch (error) {
     return NextResponse.json({
       error: 'Nao foi possivel emitir o ciclo de cobrancas.',

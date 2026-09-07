@@ -84,22 +84,34 @@ export async function POST(req: Request, { params }: Params) {
       )
     }
 
-    const payment = await getPaymentProviderForConnection(connection.id)
-    const result = await issueReceivableCharge({
-      connectionId: connection.id,
-      receivableId: id,
-      provider: payment.provider,
-      billingType: data.billingType === 'PIX' ? 'PIX' : 'BOLETO',
-      interestPercentage: data.interestPercentage
-        ? String(data.interestPercentage)
-        : undefined,
-      finePercentage: data.finePercentage
-        ? String(data.finePercentage)
-        : undefined,
-      actorId: currentUserId,
-    })
+    try {
+      const payment = await getPaymentProviderForConnection(connection.id)
+      const result = await issueReceivableCharge({
+        connectionId: connection.id,
+        receivableId: id,
+        provider: payment.provider,
+        billingType: data.billingType === 'PIX' ? 'PIX' : 'BOLETO',
+        interestPercentage: data.interestPercentage
+          ? String(data.interestPercentage)
+          : undefined,
+        finePercentage: data.finePercentage
+          ? String(data.finePercentage)
+          : undefined,
+        actorId: currentUserId,
+      })
 
-    return NextResponse.json(result, { status: result.alreadyComplete ? 200 : 201 })
+      return NextResponse.json(result, { status: result.alreadyComplete ? 200 : 201 })
+    } catch (issueError) {
+      console.error('payment_charge_issue_failed', {
+        provider: providerName,
+        environment: connection.environment,
+        companyId,
+        receivableId: id,
+        connectionId: connection.id,
+        error: issueError instanceof Error ? issueError.message : String(issueError),
+      })
+      throw issueError
+    }
   } catch (error) {
     return NextResponse.json({
       error: 'Nao foi possivel emitir o boleto.',
