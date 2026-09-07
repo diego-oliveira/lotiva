@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, membershipWhere } from '@/lib/access-control'
-import { hasDevelopmentPermission } from '@/lib/permissions'
+import { hasCompanyPermission, hasDevelopmentPermission } from '@/lib/permissions'
 import { isValidUploadedImagePath } from '@/lib/uploadStorage'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -86,6 +86,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
   if (!String(data.name || '').trim()) {
     return NextResponse.json({ error: 'Informe o nome do empreendimento.' }, { status: 400 })
   }
+  const companyId = String(data.companyId || '').trim()
+  if (!companyId) {
+    return NextResponse.json({ error: 'Selecione uma empresa.' }, { status: 400 })
+  }
 
   const canAccessDevelopment = await prisma.development.count({
     where: {
@@ -94,13 +98,15 @@ export async function PUT(req: NextRequest, { params }: Params) {
     },
   })
   if (!canAccessDevelopment) return forbiddenResponse()
+  if (!(await hasDevelopmentPermission(userId, id, 'manageSettings'))) return forbiddenResponse()
+  if (!(await hasCompanyPermission(userId, companyId, 'manageSettings'))) return forbiddenResponse()
 
   const documentTemplateId = String(data.documentTemplateId || '').trim()
   if (documentTemplateId) {
     const template = await prisma.documentTemplate.findFirst({
       where: {
         id: documentTemplateId,
-        companyId: data.companyId,
+        companyId,
         purpose: 'sale_contract',
         status: 'published',
         versions: { some: { status: 'published' } },
@@ -118,7 +124,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       data: {
         name: String(data.name).trim(),
         logo,
-        companyId: data.companyId,
+        companyId,
         documentTemplateId: documentTemplateId || null,
         updatedAt: new Date(),
       },

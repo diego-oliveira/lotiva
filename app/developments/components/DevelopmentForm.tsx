@@ -15,6 +15,7 @@ interface Development {
   name: string
   logo: string
   companyId: string
+  company?: Company
   settings?: DevelopmentSettings | null
   contractSettings?: DevelopmentContractSettings | null
   documentTemplateId?: string | null
@@ -94,7 +95,7 @@ const defaultContractSettings: DevelopmentContractSettings = {
 type ConfigSection = 'basic' | 'commercial' | 'documents'
 
 const configSections: Array<{ id: ConfigSection; title: string; description: string }> = [
-  { id: 'basic', title: 'Dados principais', description: 'Empresa, nome e logo opcional' },
+  { id: 'basic', title: 'Empresa e dados', description: 'Empresa, nome e logo opcional' },
   { id: 'commercial', title: 'Regras comerciais', description: 'Reservas, juros e pagamento' },
   { id: 'documents', title: 'Documento de venda', description: 'Modelo de contrato' },
 ]
@@ -122,6 +123,9 @@ export default function DevelopmentForm({
   )
   const selectedDocumentTemplate = availableDocumentTemplates.find((template) => template.id === formData.documentTemplateId) ?? null
   const selectedPublishedVersion = selectedDocumentTemplate?.versions.find((version) => version.status === 'published') ?? null
+  const selectedCompany = companies.find((company) => company.id === formData.companyId) ?? null
+  const originalCompany = development ? companies.find((company) => company.id === development.companyId) ?? development.company ?? null : null
+  const companyChanged = Boolean(development?.id && originalCompany && formData.companyId && formData.companyId !== originalCompany.id)
   const documentTemplatesHref = `/document-templates?companyId=${encodeURIComponent(formData.companyId || '')}${development?.id ? `&developmentId=${encodeURIComponent(development.id)}` : ''}`
   const newDocumentTemplateHref = `${documentTemplatesHref}&new=1`
 
@@ -287,7 +291,7 @@ export default function DevelopmentForm({
           {currentSection === 'basic' && (
             <div className='grid gap-5'>
               <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
-                <label className='mb-2 block text-sm font-semibold text-foreground'>Empresa *</label>
+                <label className='mb-2 block text-sm font-semibold text-foreground'>Empresa vinculada *</label>
                 <select
                   name='companyId'
                   value={formData.companyId}
@@ -304,6 +308,14 @@ export default function DevelopmentForm({
                   ))}
                 </select>
                 {errors.companyId && <p className='mt-2 text-sm text-red-600'>{errors.companyId}</p>}
+                <p className='mt-2 text-xs text-muted'>
+                  Esta empresa define permissoes, modelos de contrato e provedores de pagamento disponiveis para o empreendimento.
+                </p>
+                {companyChanged && (
+                  <div className='mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800'>
+                    Ao salvar, o empreendimento sai de {originalCompany?.name} e passa para {selectedCompany?.name}. O modelo de contrato foi limpo porque ele precisa pertencer a nova empresa.
+                  </div>
+                )}
               </div>
 
               <div className='rounded-2xl border border-border bg-surface-secondary p-5'>

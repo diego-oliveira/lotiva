@@ -375,7 +375,7 @@ export default function DevelopmentsPage() {
                       </button>
                       <button onClick={() => { setEditingDevelopment(development); setEditingSection('commercial'); setShowForm(true) }} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>Regras</button>
                       <button onClick={() => { setEditingDevelopment(development); setEditingSection('documents'); setShowForm(true) }} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>Documento</button>
-                      <button onClick={() => { setEditingDevelopment(development); setEditingSection('basic'); setShowForm(true) }} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>Dados</button>
+                      <button onClick={() => { setEditingDevelopment(development); setEditingSection('basic'); setShowForm(true) }} className='rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>Empresa e dados</button>
                     </div>
                     <button
                       type='button'
