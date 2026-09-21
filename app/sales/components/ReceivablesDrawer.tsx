@@ -281,6 +281,12 @@ type ChargeDueDateDialog = {
   dueDate: string
 }
 
+type ReceivableDueDateDialog = {
+  receivable: Receivable
+  dueDate: string
+  scope: 'single' | 'following'
+}
+
 export default function ReceivablesDrawer({
   sale,
   isOpen,
@@ -311,6 +317,7 @@ export default function ReceivablesDrawer({
   const [chargeProvider, setChargeProvider] = useState('')
   const [chargeEnvironment, setChargeEnvironment] = useState('')
   const [chargeDueDateDialog, setChargeDueDateDialog] = useState<ChargeDueDateDialog | null>(null)
+  const [receivableDueDateDialog, setReceivableDueDateDialog] = useState<ReceivableDueDateDialog | null>(null)
   const [asaasImportLoading, setAsaasImportLoading] = useState(false)
   const [asaasImportSaving, setAsaasImportSaving] = useState(false)
   const [asaasImportPreview, setAsaasImportPreview] = useState<AsaasImportPreview | null>(null)
@@ -701,6 +708,32 @@ export default function ReceivablesDrawer({
     }
   }
 
+  const updateReceivableDueDate = async () => {
+    if (!receivableDueDateDialog?.dueDate) return
+    const dialog = receivableDueDateDialog
+    setSavingId(dialog.receivable.id)
+    setError(null)
+    setCycleSuccess(null)
+    try {
+      const response = await fetch(`/api/receivables/${dialog.receivable.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dueDate: dialog.dueDate, scope: dialog.scope }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.details || payload.error || 'Nao foi possivel alterar o vencimento.')
+      setReceivableDueDateDialog(null)
+      setCycleSuccess(dialog.scope === 'following'
+        ? 'Vencimento desta parcela e das seguintes atualizado.'
+        : 'Vencimento da parcela atualizado.')
+      await Promise.all([onUpdated(), loadCycles()])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao foi possivel alterar o vencimento.')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
   return (
     <>
       <button
@@ -709,6 +742,43 @@ export default function ReceivablesDrawer({
         onClick={onClose}
         className='fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-[1px] lg:left-[290px]'
       />
+      {receivableDueDateDialog && (
+        <div className='fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/35 px-4'>
+          <div className='w-full max-w-md rounded-2xl border border-border bg-surface shadow-2xl'>
+            <div className='border-b border-border px-5 py-4'>
+              <h3 className='text-base font-semibold text-foreground'>Alterar vencimento</h3>
+              <p className='mt-1 text-sm text-muted'>{getReceivableLabel(receivableDueDateDialog.receivable)}</p>
+            </div>
+            <div className='space-y-5 px-5 py-5'>
+              <label className='block'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Novo vencimento</span>
+                <input
+                  type='date'
+                  value={receivableDueDateDialog.dueDate}
+                  onChange={(event) => setReceivableDueDateDialog((current) => current ? { ...current, dueDate: event.target.value } : current)}
+                  className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                />
+              </label>
+              <fieldset className='space-y-2'>
+                <legend className='mb-2 text-sm font-semibold text-foreground'>Aplicar alteracao</legend>
+                <label className='flex cursor-pointer items-start gap-3 rounded-xl border border-border p-3'>
+                  <input type='radio' name='due-date-scope' checked={receivableDueDateDialog.scope === 'single'} onChange={() => setReceivableDueDateDialog((current) => current ? { ...current, scope: 'single' } : current)} className='mt-1' />
+                  <span><span className='block text-sm font-semibold text-foreground'>Somente esta parcela</span><span className='text-xs text-muted'>As demais datas permanecem iguais.</span></span>
+                </label>
+                <label className='flex cursor-pointer items-start gap-3 rounded-xl border border-border p-3'>
+                  <input type='radio' name='due-date-scope' checked={receivableDueDateDialog.scope === 'following'} onChange={() => setReceivableDueDateDialog((current) => current ? { ...current, scope: 'following' } : current)} className='mt-1' />
+                  <span><span className='block text-sm font-semibold text-foreground'>Esta e as seguintes</span><span className='text-xs text-muted'>As proximas parcelas serao reorganizadas mensalmente.</span></span>
+                </label>
+              </fieldset>
+              <p className='rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800'>Parcelas pagas nao serao alteradas. Boletos ativos terao o vencimento atualizado no provedor.</p>
+            </div>
+            <div className='flex justify-end gap-3 border-t border-border px-5 py-4'>
+              <button type='button' onClick={() => setReceivableDueDateDialog(null)} disabled={savingId === receivableDueDateDialog.receivable.id} className='rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground disabled:opacity-60'>Cancelar</button>
+              <button type='button' onClick={updateReceivableDueDate} disabled={!receivableDueDateDialog.dueDate || savingId === receivableDueDateDialog.receivable.id} className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-60'>{savingId === receivableDueDateDialog.receivable.id ? 'Salvando...' : 'Alterar vencimento'}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {chargeDueDateDialog && (
         <div className='fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/35 px-4'>
           <div className='w-full max-w-md rounded-2xl border border-border bg-surface shadow-2xl'>
@@ -1205,6 +1275,21 @@ export default function ReceivablesDrawer({
                                 className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
                               >
                                 {savingId === receivable.id ? 'Salvando...' : paid ? 'Reabrir parcela' : 'Marcar como paga'}
+                              </button>
+                            )}
+
+                            {canManagePayments && !paid && (
+                              <button
+                                type='button'
+                                onClick={() => setReceivableDueDateDialog({
+                                  receivable,
+                                  dueDate: formatDateInput(new Date(receivable.dueDate)),
+                                  scope: 'single',
+                                })}
+                                disabled={savingId === receivable.id}
+                                className='rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/8 disabled:opacity-60'
+                              >
+                                Alterar vencimento
                               </button>
                             )}
 
