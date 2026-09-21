@@ -131,14 +131,18 @@ export async function PUT(req: Request, { params }: Params) {
         totalValue: true,
         contract: { select: { id: true } },
         receivables: {
-          where: {
-            OR: [
-              { status: 'paid' },
-              { paidAmount: { gt: 0 } },
-            ],
+          select: {
+            id: true,
+            kind: true,
+            sequence: true,
+            dueDate: true,
+            status: true,
+            paidAmount: true,
+            externalCharges: {
+              where: { status: { notIn: ['cancelled', 'refunded'] } },
+              select: { id: true },
+            },
           },
-          select: { id: true },
-          take: 1,
         },
       },
     })
@@ -146,10 +150,6 @@ export async function PUT(req: Request, { params }: Params) {
     if (!data.correctionReason?.trim()) {
       return NextResponse.json({ error: 'Informe o motivo da correcao da venda.' }, { status: 400 })
     }
-    if (existingSale.contract || existingSale.receivables.length > 0) {
-      return NextResponse.json({ error: 'Esta venda possui contrato ou parcelas pagas e nao pode ser editada diretamente.' }, { status: 409 })
-    }
-
     const lot = await prisma.lot.findFirst({
       where: {
         id: data.lotId,
@@ -197,6 +197,51 @@ export async function PUT(req: Request, { params }: Params) {
     const requestedDownPayment = Number(data.downPayment)
     const requestedInstallmentCount = Math.trunc(Number(data.installmentCount))
     const requestedFirstDueDate = parseDateOnly(data.firstDueDate)
+    if (!requestedFirstDueDate) {
+      return NextResponse.json({ error: 'Informe o primeiro vencimento.' }, { status: 400 })
+    }
+
+    const hasPaidReceivables = existingSale.receivables.some(
+      (receivable) => receivable.status === 'paid' || Number(receivable.paidAmount) > 0,
+    )
+    const changesSaleTerms = (
+      data.userId !== existingSale.userId ||
+      data.lotId !== existingSale.lotId ||
+      (data.reservationId || null) !== existingSale.reservationId ||
+      requestedDownPayment !== Number(existingSale.downPayment) ||
+      requestedInstallmentCount !== existingSale.installmentCount ||
+      Number(data.installmentValue) !== Number(existingSale.installmentValue) ||
+      Number(data.totalValue) !== Number(existingSale.totalValue) ||
+      Boolean(data.annualAdjustment) !== existingSale.annualAdjustment
+    )
+    const dueDateChanged = toDateKey(requestedFirstDueDate) !== toDateKey(existingSale.firstDueDate)
+    if (hasPaidReceivables && changesSaleTerms) {
+      return NextResponse.json(
+        { error: 'Como esta venda possui pagamentos, altere apenas o primeiro vencimento. Valores, cliente, lote e quantidade de parcelas devem ser preservados.' },
+        { status: 409 },
+      )
+    }
+    const hasActiveExternalCharges = existingSale.receivables.some(
+      (receivable) => receivable.externalCharges.length > 0,
+    )
+    if (changesSaleTerms && hasActiveExternalCharges) {
+      return NextResponse.json(
+        { error: 'Cancele os boletos ativos antes de alterar valores ou a quantidade de parcelas.' },
+        { status: 409 },
+      )
+    }
+    const pendingInstallmentHasActiveCharge = existingSale.receivables.some(
+      (receivable) => receivable.kind === 'installment' &&
+        receivable.status !== 'paid' &&
+        Number(receivable.paidAmount) <= 0 &&
+        receivable.externalCharges.length > 0,
+    )
+    if (dueDateChanged && pendingInstallmentHasActiveCharge) {
+      return NextResponse.json(
+        { error: 'Cancele os boletos ativos das parcelas pendentes antes de alterar o calendario de vencimentos.' },
+        { status: 409 },
+      )
+    }
 
     if (existingSale.proposalId) {
       const changesApprovedTerms = (
@@ -207,7 +252,6 @@ export async function PUT(req: Request, { params }: Params) {
         requestedInstallmentCount !== existingSale.installmentCount ||
         Number(data.installmentValue) !== Number(existingSale.installmentValue) ||
         Number(data.totalValue) !== Number(existingSale.totalValue) ||
-        toDateKey(requestedFirstDueDate) !== toDateKey(existingSale.firstDueDate) ||
         Boolean(data.annualAdjustment) !== existingSale.annualAdjustment
       )
       if (changesApprovedTerms) {
@@ -254,7 +298,7 @@ export async function PUT(req: Request, { params }: Params) {
           downPayment,
           multiplyMoney(installmentValue, installmentCount),
         ))
-    const firstDueDate = existingSale.proposalId ? existingSale.firstDueDate : requestedFirstDueDate
+    const firstDueDate = requestedFirstDueDate
     const annualAdjustment = existingSale.proposalId
       ? existingSale.annualAdjustment
       : settings.correctionIndex !== 'none'
@@ -291,15 +335,26 @@ export async function PUT(req: Request, { params }: Params) {
         }
       })
 
-      await tx.receivable.deleteMany({ where: { saleId: sale.id } })
-      const receivables = buildReceivables(sale.id, {
-        downPayment: Number(sale.downPayment),
-        installmentCount: sale.installmentCount,
-        installmentValue: Number(sale.installmentValue),
-        firstDueDate: sale.firstDueDate,
-      })
-      if (receivables.length > 0) {
-        await tx.receivable.createMany({ data: receivables })
+      const onlyDueDateChanged = !changesSaleTerms
+      if (onlyDueDateChanged) {
+        const pendingInstallments = existingSale.receivables.filter(
+          (receivable) => receivable.kind === 'installment' && receivable.status !== 'paid' && Number(receivable.paidAmount) <= 0,
+        )
+        await Promise.all(pendingInstallments.map((receivable) => tx.receivable.update({
+          where: { id: receivable.id },
+          data: { dueDate: addMonths(firstDueDate, receivable.sequence - 1) },
+        })))
+      } else {
+        await tx.receivable.deleteMany({ where: { saleId: sale.id } })
+        const receivables = buildReceivables(sale.id, {
+          downPayment: Number(sale.downPayment),
+          installmentCount: sale.installmentCount,
+          installmentValue: Number(sale.installmentValue),
+          firstDueDate: sale.firstDueDate,
+        })
+        if (receivables.length > 0) {
+          await tx.receivable.createMany({ data: receivables })
+        }
       }
 
       await createLotEvent(tx, {

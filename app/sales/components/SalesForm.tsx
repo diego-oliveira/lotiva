@@ -386,6 +386,10 @@ export default function SalesForm({
     ? latestProposal
     : undefined
   const approvedTermsLocked = Boolean(sale?.proposalId || selectedProposal)
+  const hasPaidReceivables = Boolean(sale?.receivables?.some(
+    (receivable: { status: string; paidAmount: number }) => receivable.status === 'paid' || receivable.paidAmount > 0,
+  ))
+  const financialTermsLocked = approvedTermsLocked || hasPaidReceivables
   const proposalNeedsApproval = Boolean(
     !sale && (
       (latestProposal && latestProposal.status !== 'approved') ||
@@ -545,10 +549,10 @@ export default function SalesForm({
       if (formData.installmentCount < 1) newErrors.installmentCount = 'Minimo 1 parcela'
       if (formData.downPayment < 0) newErrors.downPayment = 'Entrada nao pode ser negativa'
       if (selectedLot && formData.downPayment > selectedLot.price) newErrors.downPayment = 'Entrada nao pode ser maior que o valor do lote'
-      if (!approvedTermsLocked && formData.downPayment < minimumDownPayment) {
+      if (!financialTermsLocked && formData.downPayment < minimumDownPayment) {
         newErrors.downPayment = `Entrada minima: ${formatCurrency(minimumDownPayment)}`
       }
-      if (!approvedTermsLocked && formData.installmentCount > maximumInstallments) {
+      if (!financialTermsLocked && formData.installmentCount > maximumInstallments) {
         newErrors.installmentCount = `Maximo de ${maximumInstallments} parcelas`
       }
       if (!formData.firstDueDate) newErrors.firstDueDate = 'Informe o primeiro vencimento'
@@ -752,7 +756,8 @@ export default function SalesForm({
                   placeholder='Buscar por nome, email ou CPF...'
                   value={userSearch}
                   onChange={(event) => setUserSearch(event.target.value)}
-                  className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                  disabled={hasPaidReceivables}
+                  className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:bg-surface-secondary'
                 />
                 <div className='max-h-[420px] overflow-y-auto rounded-2xl border border-border bg-surface'>
                   {filteredUsers.map((user) => (
@@ -760,7 +765,8 @@ export default function SalesForm({
                       key={user.id}
                       type='button'
                       onClick={() => handleInputChange('userId', user.id)}
-                      className={`flex w-full items-center gap-4 border-b border-border px-4 py-3 text-left transition last:border-b-0 hover:bg-surface-secondary ${
+                      disabled={hasPaidReceivables}
+                      className={`flex w-full items-center gap-4 border-b border-border px-4 py-3 text-left transition last:border-b-0 hover:bg-surface-secondary disabled:cursor-not-allowed disabled:opacity-60 ${
                         formData.userId === user.id ? 'bg-primary/6' : ''
                       }`}
                     >
@@ -851,7 +857,8 @@ export default function SalesForm({
                                   key={lot.id}
                                   type='button'
                                   onClick={() => handleInputChange('lotId', lot.id)}
-                                  className={`min-h-[92px] rounded-xl border px-3 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-primary ${meta.tile} ${selected ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                                  disabled={hasPaidReceivables}
+                                  className={`min-h-[92px] rounded-xl border px-3 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60 ${meta.tile} ${selected ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                                 >
                                   <span className='block text-xs font-semibold opacity-75'>Lote</span>
                                   <span className='mt-1 block text-lg font-bold'>{lot.identifier}</span>
@@ -898,7 +905,9 @@ export default function SalesForm({
                     <h3 className='text-base font-semibold text-foreground'>Pagamento</h3>
                     <p className='mt-1 text-sm text-muted'>
                       {approvedTermsLocked
-                        ? 'Condicoes bloqueadas conforme a proposta aprovada.'
+                        ? 'Valores bloqueados conforme a proposta aprovada. O vencimento pode ser corrigido pelo administrador.'
+                        : hasPaidReceivables
+                          ? 'Como ja existem pagamentos, somente o calendario das parcelas pendentes pode ser corrigido.'
                         : 'Venda direta sujeita as regras comerciais do empreendimento.'}
                     </p>
                   </div>
@@ -931,10 +940,10 @@ export default function SalesForm({
                           max={selectedLot?.price || 0}
                           value={formData.downPayment}
                           onValueChange={(value) => handleInputChange('downPayment', value)}
-                          disabled={approvedTermsLocked}
+                          disabled={financialTermsLocked}
                           className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:bg-surface-secondary disabled:text-muted'
                         />
-                        {!approvedTermsLocked && (
+                        {!financialTermsLocked && (
                           <p className='mt-2 text-xs font-semibold text-muted'>Minimo: {formatCurrency(minimumDownPayment)}</p>
                         )}
                         {errors.downPayment && <p className='mt-2 text-sm font-medium text-red-600'>{errors.downPayment}</p>}
@@ -946,10 +955,10 @@ export default function SalesForm({
                           max={maximumInstallments}
                           value={formData.installmentCount}
                           onValueChange={(value) => handleInputChange('installmentCount', Math.trunc(value))}
-                          disabled={approvedTermsLocked}
+                          disabled={financialTermsLocked}
                           className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:bg-surface-secondary disabled:text-muted'
                         />
-                        {!approvedTermsLocked && (
+                        {!financialTermsLocked && (
                           <p className='mt-2 text-xs font-semibold text-muted'>Maximo: {maximumInstallments} parcelas</p>
                         )}
                         {errors.installmentCount && <p className='mt-2 text-sm font-medium text-red-600'>{errors.installmentCount}</p>}
@@ -960,9 +969,11 @@ export default function SalesForm({
                           type='date'
                           value={formData.firstDueDate}
                           onChange={(event) => handleInputChange('firstDueDate', event.target.value)}
-                          disabled={approvedTermsLocked}
-                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:bg-surface-secondary disabled:text-muted'
+                          className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
                         />
+                        {sale && (
+                          <p className='mt-2 text-xs text-muted'>A nova data reorganiza mensalmente apenas as parcelas que ainda nao foram pagas.</p>
+                        )}
                         {errors.firstDueDate && <p className='mt-2 text-sm font-medium text-red-600'>{errors.firstDueDate}</p>}
                       </label>
                     </div>
@@ -972,7 +983,7 @@ export default function SalesForm({
                         type='checkbox'
                         checked={formData.annualAdjustment}
                         onChange={(event) => handleInputChange('annualAdjustment', event.target.checked)}
-                        disabled={approvedTermsLocked}
+                        disabled={financialTermsLocked}
                         className='h-4 w-4 rounded border-border text-primary focus:ring-primary'
                       />
                       Reajuste anual das parcelas

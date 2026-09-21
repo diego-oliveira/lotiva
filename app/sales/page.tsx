@@ -184,11 +184,7 @@ function SalesContent() {
     setShowForm(true)
   }
 
-  const saleHasPaidReceivable = (sale: Sale) => Boolean(sale.receivables?.some((receivable) => receivable.status === 'paid' || receivable.paidAmount > 0))
-  const saleIsLocked = (sale: Sale) => Boolean(sale.contract || saleHasPaidReceivable(sale))
-
   const handleEditSale = (sale: Sale) => {
-    if (saleIsLocked(sale)) return
     setCorrectionSale(sale)
     setCorrectionReason('')
   }
@@ -456,9 +452,8 @@ function SalesContent() {
                         {canCorrectSales && (
                           <button
                             onClick={() => handleEditSale(sale)}
-                            disabled={saleIsLocked(sale)}
-                            title={saleIsLocked(sale) ? 'Venda com contrato ou parcela paga nao pode ser corrigida diretamente' : 'Corrigir venda'}
-                            className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8 disabled:cursor-not-allowed disabled:text-muted disabled:hover:bg-transparent'
+                            title='Corrigir venda'
+                            className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'
                           >
                             Corrigir
                           </button>
