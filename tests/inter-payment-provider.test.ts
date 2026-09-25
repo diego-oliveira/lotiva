@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  clearInterTokenCache,
+  getCachedInterToken,
   InterPaymentProvider,
   mapInterCharge,
   mapInterStatus,
@@ -15,6 +17,27 @@ const credentials = {
   privateKey: '-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----',
   accountNumber: '1234567',
 }
+
+test('reutiliza token Inter valido e evita estouro do rate limit OAuth', async () => {
+  clearInterTokenCache()
+  let loads = 0
+  const load = async () => {
+    loads += 1
+    return { access_token: `token-${loads}`, expires_in: 3600 }
+  }
+
+  const [first, concurrent] = await Promise.all([
+    getCachedInterToken('connection-1:read', load),
+    getCachedInterToken('connection-1:read', load),
+  ])
+  const reused = await getCachedInterToken('connection-1:read', load)
+
+  assert.equal(loads, 1)
+  assert.equal(first.access_token, 'token-1')
+  assert.equal(concurrent.access_token, 'token-1')
+  assert.equal(reused.access_token, 'token-1')
+  clearInterTokenCache()
+})
 
 test('serializa e valida credenciais Inter', () => {
   const serialized = serializeInterCredentials({

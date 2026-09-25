@@ -1,4 +1,5 @@
 import https from 'https'
+import { createHash } from 'crypto'
 import type { PaymentProvider } from './provider'
 import type {
   ListChargesFilter,
@@ -27,6 +28,15 @@ type InterToken = {
   token_type?: string
   expires_in?: number
 }
+
+type CachedInterToken = {
+  token?: InterToken
+  expiresAt?: number
+  pending?: Promise<InterToken>
+}
+
+const interTokenCache = new Map<string, CachedInterToken>()
+const INTER_TOKEN_EXPIRY_SAFETY_SECONDS = 30
 
 type InterRequest = <T>(input: {
   baseUrl: string
@@ -300,6 +310,48 @@ async function httpsJsonRequest<T>(url: string, options: {
   })
 }
 
+function interTokenCacheKey(input: Pick<Parameters<InterRequest>[0], 'tokenUrl' | 'credentials' | 'scope'>) {
+  return createHash('sha256')
+    .update(input.tokenUrl)
+    .update('\0')
+    .update(input.credentials.clientId)
+    .update('\0')
+    .update(input.credentials.accountNumber || '')
+    .update('\0')
+    .update(input.scope || 'boleto-cobranca.read boleto-cobranca.write')
+    .digest('hex')
+}
+
+export async function getCachedInterToken(
+  cacheKey: string,
+  load: () => Promise<InterToken>,
+  now = Date.now(),
+) {
+  const cached = interTokenCache.get(cacheKey)
+  if (cached?.token && (cached.expiresAt ?? 0) > now) return cached.token
+  if (cached?.pending) return cached.pending
+
+  const pending = load().then((token) => {
+    const lifetimeSeconds = Math.max(Number(token.expires_in) || 3600, 1)
+    const usableLifetimeSeconds = Math.max(lifetimeSeconds - INTER_TOKEN_EXPIRY_SAFETY_SECONDS, 1)
+    interTokenCache.set(cacheKey, {
+      token,
+      expiresAt: Date.now() + usableLifetimeSeconds * 1000,
+    })
+    return token
+  }).catch((error) => {
+    interTokenCache.delete(cacheKey)
+    throw error
+  })
+
+  interTokenCache.set(cacheKey, { pending })
+  return pending
+}
+
+export function clearInterTokenCache() {
+  interTokenCache.clear()
+}
+
 async function defaultInterRequest<T>(input: Parameters<InterRequest>[0]): Promise<T> {
   const tokenBody = new URLSearchParams({
     client_id: input.credentials.clientId,
@@ -307,17 +359,19 @@ async function defaultInterRequest<T>(input: Parameters<InterRequest>[0]): Promi
     grant_type: 'client_credentials',
     scope: input.scope || 'boleto-cobranca.read boleto-cobranca.write',
   })
-  const token = await httpsJsonRequest<InterToken>(input.tokenUrl, {
-    method: 'POST',
-    cert: input.credentials.certificate,
-    key: input.credentials.privateKey,
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/x-www-form-urlencoded',
-      'content-length': String(Buffer.byteLength(tokenBody.toString())),
-    },
-    body: tokenBody.toString(),
-  })
+  const token = await getCachedInterToken(interTokenCacheKey(input), () =>
+    httpsJsonRequest<InterToken>(input.tokenUrl, {
+      method: 'POST',
+      cert: input.credentials.certificate,
+      key: input.credentials.privateKey,
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/x-www-form-urlencoded',
+        'content-length': String(Buffer.byteLength(tokenBody.toString())),
+      },
+      body: tokenBody.toString(),
+    }),
+  )
 
   const body = input.body === undefined ? undefined : JSON.stringify(input.body)
   if (shouldLogPaymentPayloads() && input.path.startsWith('/cobrancas')) {
