@@ -143,6 +143,7 @@ export default function ContractViewer({
   const getStatusLabel = (status?: string) => {
     const labels: Record<string, string> = {
       generated: 'Gerado',
+      outdated: 'Requer regeneracao',
       sent: 'Enviado',
       signed: 'Assinado',
       cancelled: 'Cancelado',

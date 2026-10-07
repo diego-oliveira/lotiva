@@ -80,6 +80,7 @@ export async function GET() {
       },
       reservation: true,
       contract: true,
+      proposal: true,
       receivables: {
         orderBy: [
           { dueDate: 'asc' },
@@ -315,7 +316,8 @@ export async function POST(req: Request) {
     const firstDueDate = approvedProposal?.firstDueDate ?? parseDateOnly(data.firstDueDate) ?? addMonths(new Date(), 1)
     const downPayment = approvedProposal ? Number(approvedProposal.downPayment) : requestedDownPayment
     const installmentCount = approvedProposal?.installmentCount ?? requestedInstallmentCount
-    const financedBalance = moneyToNumber(subtractMoney(lot.price, downPayment))
+    const salePrice = approvedProposal ? Number(approvedProposal.salePrice) : Number(lot.price)
+    const financedBalance = moneyToNumber(subtractMoney(salePrice, downPayment))
     const calculatedInstallmentValue = calculateInstallment(
       financedBalance,
       installmentCount,
@@ -344,6 +346,7 @@ export async function POST(req: Request) {
           lotId: data.lotId,
           reservationId,
           proposalId: approvedProposal?.id ?? null,
+          salePrice,
           installmentCount,
           installmentValue,
           downPayment,

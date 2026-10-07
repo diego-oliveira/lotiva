@@ -397,6 +397,7 @@ model Sale {
   lotId            String    @unique
   reservationId    String?   @unique
   proposalId       String?   @unique
+  salePrice        Decimal   @db.Decimal(15, 2)
   installmentCount Int
   installmentValue Decimal   @db.Decimal(15, 2)
   downPayment      Decimal   @db.Decimal(15, 2)

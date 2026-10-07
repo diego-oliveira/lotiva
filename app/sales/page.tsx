@@ -56,6 +56,8 @@ interface Sale {
   userId: string
   lotId: string
   reservationId?: string
+  proposalId?: string | null
+  salePrice: number
   installmentCount: number
   installmentValue: number
   downPayment: number
@@ -69,6 +71,10 @@ interface Sale {
   reservation?: Reservation
   receivables?: Receivable[]
   contract?: { id: string; contractNumber: string } | null
+  proposal?: {
+    interestRate: number
+    interestCalculation: string
+  } | null
   canManagePayments?: boolean
   canCancelPayments?: boolean
   canApproveAdjustments?: boolean

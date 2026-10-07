@@ -226,6 +226,7 @@ export async function POST(req: Request) {
           userId: user.id,
           createdById: currentUserId,
           lotId: lot.id,
+          salePrice: totalValue,
           installmentCount,
           installmentValue,
           downPayment,

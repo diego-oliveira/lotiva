@@ -54,6 +54,7 @@ async function main() {
         data: {
           userId: user.id,
           lotId: lot.id,
+          salePrice: '15200.00',
           installmentCount: 36,
           installmentValue: '600.00',
           downPayment: '8000.00',

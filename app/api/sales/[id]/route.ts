@@ -4,7 +4,7 @@ import { forbiddenResponse, lotAccessWhere, reservationAccessWhere, saleAccessWh
 import { NextResponse } from 'next/server'
 import { createLotEvent } from '@/lib/lot-events'
 import { hasDevelopmentPermission } from '@/lib/permissions'
-import { calculateInstallment, evaluateDirectSaleTerms } from '@/lib/proposal-rules'
+import { calculateInstallment } from '@/lib/proposal-rules'
 import { addMoney, decimal, moneyToNumber, multiplyMoney, subtractMoney } from '@/lib/money'
 
 type Params = { params: Promise<{ id: string }> }
@@ -123,12 +123,19 @@ export async function PUT(req: Request, { params }: Params) {
         lotId: true,
         reservationId: true,
         proposalId: true,
+        salePrice: true,
         installmentCount: true,
         installmentValue: true,
         downPayment: true,
         firstDueDate: true,
         annualAdjustment: true,
         totalValue: true,
+        proposal: {
+          select: {
+            interestRate: true,
+            interestCalculation: true,
+          },
+        },
         contract: { select: { id: true } },
         receivables: {
           select: {
@@ -195,7 +202,17 @@ export async function PUT(req: Request, { params }: Params) {
     }
 
     const requestedDownPayment = Number(data.downPayment)
+    const requestedSalePrice = Number(data.salePrice)
     const requestedInstallmentCount = Math.trunc(Number(data.installmentCount))
+    if (!Number.isFinite(requestedSalePrice) || requestedSalePrice <= 0) {
+      return NextResponse.json({ error: 'Informe um valor de venda valido.' }, { status: 400 })
+    }
+    if (!Number.isFinite(requestedDownPayment) || requestedDownPayment < 0 || requestedDownPayment > requestedSalePrice) {
+      return NextResponse.json({ error: 'A entrada deve estar entre zero e o valor da venda.' }, { status: 400 })
+    }
+    if (!Number.isFinite(requestedInstallmentCount) || requestedInstallmentCount < 1) {
+      return NextResponse.json({ error: 'Informe uma quantidade de parcelas valida.' }, { status: 400 })
+    }
     const requestedFirstDueDate = parseDateOnly(data.firstDueDate)
     if (!requestedFirstDueDate) {
       return NextResponse.json({ error: 'Informe o primeiro vencimento.' }, { status: 400 })
@@ -208,6 +225,7 @@ export async function PUT(req: Request, { params }: Params) {
       data.userId !== existingSale.userId ||
       data.lotId !== existingSale.lotId ||
       (data.reservationId || null) !== existingSale.reservationId ||
+      requestedSalePrice !== Number(existingSale.salePrice) ||
       requestedDownPayment !== Number(existingSale.downPayment) ||
       requestedInstallmentCount !== existingSale.installmentCount ||
       Number(data.installmentValue) !== Number(existingSale.installmentValue) ||
@@ -243,25 +261,6 @@ export async function PUT(req: Request, { params }: Params) {
       )
     }
 
-    if (existingSale.proposalId) {
-      const changesApprovedTerms = (
-        data.userId !== existingSale.userId ||
-        data.lotId !== existingSale.lotId ||
-        (data.reservationId || null) !== existingSale.reservationId ||
-        requestedDownPayment !== Number(existingSale.downPayment) ||
-        requestedInstallmentCount !== existingSale.installmentCount ||
-        Number(data.installmentValue) !== Number(existingSale.installmentValue) ||
-        Number(data.totalValue) !== Number(existingSale.totalValue) ||
-        Boolean(data.annualAdjustment) !== existingSale.annualAdjustment
-      )
-      if (changesApprovedTerms) {
-        return NextResponse.json(
-          { error: 'Condicoes de uma proposta aprovada nao podem ser alteradas na venda. Crie uma nova proposta para revisar os valores.' },
-          { status: 409 },
-        )
-      }
-    }
-
     const settings = lot.block.development?.settings ?? {
       minDownPaymentPercentage: 10,
       maxInstallments: 120,
@@ -269,39 +268,23 @@ export async function PUT(req: Request, { params }: Params) {
       interestCalculation: 'none',
       correctionIndex: 'none',
     }
-    const directSaleEvaluation = evaluateDirectSaleTerms(settings, {
-      basePrice: Number(lot.price),
-      downPayment: requestedDownPayment,
-      installmentCount: requestedInstallmentCount,
-    })
-    if (!existingSale.proposalId && !directSaleEvaluation.isValid) {
-      return NextResponse.json(
-        { error: `A venda nao atende as regras comerciais: ${directSaleEvaluation.reasons.join('; ')}.` },
-        { status: 422 },
-      )
-    }
-
-    const installmentCount = existingSale.proposalId ? existingSale.installmentCount : requestedInstallmentCount
-    const downPayment = existingSale.proposalId ? Number(existingSale.downPayment) : requestedDownPayment
-    const financedBalance = moneyToNumber(subtractMoney(lot.price, downPayment))
-    const installmentValue = existingSale.proposalId
-      ? Number(existingSale.installmentValue)
-      : moneyToNumber(decimal(calculateInstallment(
-          financedBalance,
-          installmentCount,
-          settings.defaultInterestRate,
-          settings.interestCalculation,
-        )))
-    const totalValue = existingSale.proposalId
-      ? Number(existingSale.totalValue)
-      : moneyToNumber(addMoney(
-          downPayment,
-          multiplyMoney(installmentValue, installmentCount),
-        ))
+    const installmentCount = requestedInstallmentCount
+    const downPayment = requestedDownPayment
+    const financedBalance = moneyToNumber(subtractMoney(requestedSalePrice, downPayment))
+    const interestRate = existingSale.proposal?.interestRate ?? settings.defaultInterestRate
+    const interestCalculation = existingSale.proposal?.interestCalculation ?? settings.interestCalculation
+    const installmentValue = moneyToNumber(decimal(calculateInstallment(
+      financedBalance,
+      installmentCount,
+      interestRate,
+      interestCalculation,
+    )))
+    const totalValue = moneyToNumber(addMoney(
+      downPayment,
+      multiplyMoney(installmentValue, installmentCount),
+    ))
     const firstDueDate = requestedFirstDueDate
-    const annualAdjustment = existingSale.proposalId
-      ? existingSale.annualAdjustment
-      : settings.correctionIndex !== 'none'
+    const annualAdjustment = Boolean(data.annualAdjustment)
 
     const updated = await prisma.$transaction(async (tx) => {
       const sale = await tx.sale.update({
@@ -310,6 +293,7 @@ export async function PUT(req: Request, { params }: Params) {
           userId: data.userId,
           lotId: data.lotId,
           reservationId: data.reservationId || null,
+          salePrice: requestedSalePrice,
           installmentCount,
           installmentValue,
           downPayment,
@@ -357,12 +341,21 @@ export async function PUT(req: Request, { params }: Params) {
         }
       }
 
+      if (changesSaleTerms && existingSale.contract) {
+        await tx.contract.update({
+          where: { id: existingSale.contract.id },
+          data: { status: 'outdated' },
+        })
+      }
+
       await createLotEvent(tx, {
         lotId: sale.lotId,
         userId: currentUserId,
         type: 'sale_corrected',
         title: 'Venda corrigida',
-        description: `Venda corrigida para ${sale.user.name}.`,
+        description: changesSaleTerms
+          ? `Venda corrigida para ${sale.user.name}: valor de ${Number(existingSale.salePrice).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} para ${Number(sale.salePrice).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`
+          : `Venda corrigida para ${sale.user.name}.`,
         notes: data.correctionReason.trim(),
       })
 
