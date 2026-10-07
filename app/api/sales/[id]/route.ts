@@ -143,11 +143,11 @@ export async function PUT(req: Request, { params }: Params) {
             kind: true,
             sequence: true,
             dueDate: true,
+            amount: true,
             status: true,
             paidAmount: true,
             externalCharges: {
-              where: { status: { notIn: ['cancelled', 'refunded'] } },
-              select: { id: true },
+              select: { id: true, status: true },
             },
           },
         },
@@ -218,14 +218,6 @@ export async function PUT(req: Request, { params }: Params) {
       return NextResponse.json({ error: 'Informe o primeiro vencimento.' }, { status: 400 })
     }
 
-    const hasPaidInstallments = existingSale.receivables.some(
-      (receivable) => receivable.kind === 'installment' &&
-        (receivable.status === 'paid' || Number(receivable.paidAmount) > 0),
-    )
-    const paidDownPayment = existingSale.receivables.find(
-      (receivable) => receivable.kind === 'down_payment' &&
-        (receivable.status === 'paid' || Number(receivable.paidAmount) > 0),
-    )
     const changesSaleTerms = (
       data.userId !== existingSale.userId ||
       data.lotId !== existingSale.lotId ||
@@ -238,20 +230,10 @@ export async function PUT(req: Request, { params }: Params) {
       Boolean(data.annualAdjustment) !== existingSale.annualAdjustment
     )
     const dueDateChanged = toDateKey(requestedFirstDueDate) !== toDateKey(existingSale.firstDueDate)
-    if (hasPaidInstallments && changesSaleTerms) {
-      return NextResponse.json(
-        { error: 'Como esta venda possui parcelas pagas, altere apenas o primeiro vencimento. Valores, cliente, lote e quantidade de parcelas devem ser preservados.' },
-        { status: 409 },
-      )
-    }
-    if (paidDownPayment && requestedDownPayment !== Number(existingSale.downPayment)) {
-      return NextResponse.json(
-        { error: 'A entrada ja foi paga e deve ser preservada. Corrija o valor da venda ou as parcelas sem alterar a entrada.' },
-        { status: 409 },
-      )
-    }
     const hasActiveExternalCharges = existingSale.receivables.some(
-      (receivable) => receivable.externalCharges.length > 0,
+      (receivable) => receivable.externalCharges.some(
+        (charge) => !['confirmed', 'received', 'cancelled', 'refunded'].includes(charge.status),
+      ),
     )
     if (changesSaleTerms && hasActiveExternalCharges) {
       return NextResponse.json(
@@ -263,7 +245,9 @@ export async function PUT(req: Request, { params }: Params) {
       (receivable) => receivable.kind === 'installment' &&
         receivable.status !== 'paid' &&
         Number(receivable.paidAmount) <= 0 &&
-        receivable.externalCharges.length > 0,
+        receivable.externalCharges.some(
+          (charge) => !['confirmed', 'received', 'cancelled', 'refunded'].includes(charge.status),
+        ),
     )
     if (dueDateChanged && pendingInstallmentHasActiveCharge) {
       return NextResponse.json(
@@ -340,28 +324,55 @@ export async function PUT(req: Request, { params }: Params) {
           data: { dueDate: addMonths(firstDueDate, receivable.sequence - 1) },
         })))
       } else {
-        await tx.receivable.deleteMany({
-          where: {
-            saleId: sale.id,
-            status: { not: 'paid' },
-            paidAmount: { lte: 0 },
-          },
-        })
-        const receivables = buildReceivables(sale.id, {
+        const desiredReceivables = buildReceivables(sale.id, {
           downPayment: Number(sale.downPayment),
           installmentCount: sale.installmentCount,
           installmentValue: Number(sale.installmentValue),
           firstDueDate: sale.firstDueDate,
         })
-        const preservedKeys = new Set(existingSale.receivables
-          .filter((receivable) => receivable.status === 'paid' || Number(receivable.paidAmount) > 0)
-          .map((receivable) => `${receivable.kind}:${receivable.sequence}`))
-        const pendingReceivables = receivables.filter(
-          (receivable) => !preservedKeys.has(`${receivable.kind}:${receivable.sequence}`),
+        const desiredByKey = new Map(desiredReceivables.map(
+          (receivable) => [`${receivable.kind}:${receivable.sequence}`, receivable],
+        ))
+        const existingByKey = new Map(existingSale.receivables.map(
+          (receivable) => [`${receivable.kind}:${receivable.sequence}`, receivable],
+        ))
+
+        await Promise.all(existingSale.receivables.map(async (receivable) => {
+          const desired = desiredByKey.get(`${receivable.kind}:${receivable.sequence}`)
+          if (!desired) {
+            if (Number(receivable.paidAmount) > 0 || receivable.status === 'paid') {
+              return tx.receivable.update({
+                where: { id: receivable.id },
+                data: { balance: 0, status: 'paid' },
+              })
+            }
+            return tx.receivable.delete({ where: { id: receivable.id } })
+          }
+
+          const paidAmount = Number(receivable.paidAmount)
+          const balance = Math.max(desired.amount - paidAmount, 0)
+          return tx.receivable.update({
+            where: { id: receivable.id },
+            data: {
+              dueDate: desired.dueDate,
+              amount: desired.amount,
+              balance,
+              status: paidAmount >= desired.amount && paidAmount > 0 ? 'paid' : 'pending',
+            },
+          })
+        }))
+
+        const newReceivables = desiredReceivables.filter(
+          (receivable) => !existingByKey.has(`${receivable.kind}:${receivable.sequence}`),
         )
-        if (pendingReceivables.length > 0) {
-          await tx.receivable.createMany({ data: pendingReceivables })
+        if (newReceivables.length > 0) {
+          await tx.receivable.createMany({ data: newReceivables })
         }
+      }
+
+      if (data.lotId !== existingSale.lotId) {
+        await tx.lot.update({ where: { id: existingSale.lotId }, data: { status: 'available' } })
+        await tx.lot.update({ where: { id: data.lotId }, data: { status: 'sold' } })
       }
 
       if (changesSaleTerms && existingSale.contract) {
