@@ -394,7 +394,15 @@ export default function SalesForm({
   const hasPaidReceivables = Boolean(sale?.receivables?.some(
     (receivable: { status: string; paidAmount: number }) => receivable.status === 'paid' || receivable.paidAmount > 0,
   ))
-  const financialTermsLocked = hasPaidReceivables || (!sale && approvedTermsLocked)
+  const hasPaidInstallments = Boolean(sale?.receivables?.some(
+    (receivable: { kind: string; status: string; paidAmount: number }) =>
+      receivable.kind === 'installment' && (receivable.status === 'paid' || receivable.paidAmount > 0),
+  ))
+  const hasPaidDownPayment = Boolean(sale?.receivables?.some(
+    (receivable: { kind: string; status: string; paidAmount: number }) =>
+      receivable.kind === 'down_payment' && (receivable.status === 'paid' || receivable.paidAmount > 0),
+  ))
+  const financialTermsLocked = hasPaidInstallments || (!sale && approvedTermsLocked)
   const proposalNeedsApproval = Boolean(
     !sale && (
       (latestProposal && latestProposal.status !== 'approved') ||
@@ -928,13 +936,15 @@ export default function SalesForm({
                   <div>
                     <h3 className='text-base font-semibold text-foreground'>Pagamento</h3>
                     <p className='mt-1 text-sm text-muted'>
-                      {approvedTermsLocked
-                        ? sale
-                          ? 'Como administrador, voce pode corrigir os valores desta venda. A proposta aprovada original sera preservada no historico.'
-                          : 'Valores definidos conforme a proposta aprovada.'
-                        : hasPaidReceivables
-                          ? 'Como ja existem pagamentos, somente o calendario das parcelas pendentes pode ser corrigido.'
-                        : 'Venda direta sujeita as regras comerciais do empreendimento.'}
+                      {hasPaidInstallments
+                        ? 'Como ja existem parcelas pagas, somente o calendario das parcelas pendentes pode ser corrigido.'
+                        : approvedTermsLocked
+                          ? sale
+                            ? 'Como administrador, voce pode corrigir os valores desta venda. A proposta aprovada original sera preservada no historico.'
+                            : 'Valores definidos conforme a proposta aprovada.'
+                          : hasPaidDownPayment
+                            ? 'A entrada paga sera preservada; o valor da venda e as parcelas pendentes podem ser corrigidos.'
+                            : 'Venda direta sujeita as regras comerciais do empreendimento.'}
                     </p>
                   </div>
                   {proposalNeedsApproval && (
@@ -944,8 +954,10 @@ export default function SalesForm({
                   )}
                   {approvedTermsLocked && (
                     <div className='rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800'>
-                      {sale
-                        ? 'A correcao atualiza a venda e suas parcelas pendentes, sem alterar a proposta que foi aprovada.'
+                      {hasPaidInstallments
+                        ? 'A proposta original permanece preservada. Como existem parcelas pagas, os valores financeiros nao podem mais ser reescritos.'
+                        : sale
+                          ? 'A correcao atualiza a venda e suas parcelas pendentes, sem alterar a proposta que foi aprovada.'
                         : 'Esta venda utiliza as condicoes da proposta aprovada.'}
                     </div>
                   )}
@@ -983,11 +995,14 @@ export default function SalesForm({
                           max={formData.salePrice || 0}
                           value={formData.downPayment}
                           onValueChange={(value) => handleInputChange('downPayment', value)}
-                          disabled={financialTermsLocked}
+                          disabled={financialTermsLocked || hasPaidDownPayment}
                           className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:bg-surface-secondary disabled:text-muted'
                         />
-                        {!financialTermsLocked && (
+                        {!financialTermsLocked && !hasPaidDownPayment && (
                           <p className='mt-2 text-xs font-semibold text-muted'>Minimo: {formatCurrency(minimumDownPayment)}</p>
+                        )}
+                        {hasPaidDownPayment && (
+                          <p className='mt-2 text-xs text-muted'>A entrada ja foi paga e sera preservada.</p>
                         )}
                         {errors.downPayment && <p className='mt-2 text-sm font-medium text-red-600'>{errors.downPayment}</p>}
                       </label>
