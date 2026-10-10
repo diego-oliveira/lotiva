@@ -228,29 +228,40 @@ function WorkspaceSelectorContent({
   const router = useRouter()
   const searchParams = useSearchParams()
   const enabled = isWorkspaceRoute(pathname)
+  const [pendingDevelopmentId, setPendingDevelopmentId] = useState<string | null>(null)
 
   const currentDevelopmentId = searchParams.get('developmentId') ?? ''
-  const selectedDevelopment =
-    developments?.find((development) => development.id === currentDevelopmentId) ?? developments?.[0] ?? null
+  const urlDevelopment = developments?.find((development) => development.id === currentDevelopmentId) ?? null
+  const pendingDevelopment = developments?.find((development) => development.id === pendingDevelopmentId) ?? null
+  const selectedDevelopment = pendingDevelopment ?? urlDevelopment ?? developments?.[0] ?? null
 
   useEffect(() => {
     if (!enabled || !developments || developments.length === 0) return
 
-    const storedDevelopmentId = window.localStorage.getItem('lotiva.workspace.developmentId') ?? ''
     const urlDevelopment = developments.find((development) => development.id === currentDevelopmentId)
+
+    if (urlDevelopment) {
+      if (pendingDevelopmentId && pendingDevelopmentId !== urlDevelopment.id) return
+
+      window.localStorage.setItem('lotiva.workspace.developmentId', urlDevelopment.id)
+      setPendingDevelopmentId(null)
+      return
+    }
+
+    if (pendingDevelopmentId) return
+
+    const storedDevelopmentId = window.localStorage.getItem('lotiva.workspace.developmentId') ?? ''
     const storedDevelopment = developments.find((development) => development.id === storedDevelopmentId)
-    const nextDevelopmentId = urlDevelopment?.id ?? storedDevelopment?.id ?? developments[0]?.id
+    const nextDevelopmentId = storedDevelopment?.id ?? developments[0]?.id
 
     if (!nextDevelopmentId) return
 
+    setPendingDevelopmentId(nextDevelopmentId)
     window.localStorage.setItem('lotiva.workspace.developmentId', nextDevelopmentId)
-
-    if (currentDevelopmentId !== nextDevelopmentId) {
-      const params = new URLSearchParams(searchParams.toString())
-      params.set('developmentId', nextDevelopmentId)
-      router.replace(`${pathname}?${params.toString()}`)
-    }
-  }, [currentDevelopmentId, developments, enabled, pathname, router, searchParams])
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('developmentId', nextDevelopmentId)
+    router.replace(`${pathname}?${params.toString()}`)
+  }, [currentDevelopmentId, developments, enabled, pathname, pendingDevelopmentId, router, searchParams])
 
   if (!enabled || !developments) return null
 
@@ -263,8 +274,11 @@ function WorkspaceSelectorContent({
   }
 
   const handleChange = (developmentId: string) => {
+    if (!developmentId || developmentId === selectedDevelopment?.id) return
+
     const params = new URLSearchParams(searchParams.toString())
     params.set('developmentId', developmentId)
+    setPendingDevelopmentId(developmentId)
     window.localStorage.setItem('lotiva.workspace.developmentId', developmentId)
     router.push(`${pathname}?${params.toString()}`)
   }
