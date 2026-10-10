@@ -8,6 +8,7 @@ type DevelopmentMap = {
   fileUrl: string
   fileType: string
   pdfPageNumber: number
+  markerSize: MarkerSize
 }
 
 type Development = {
@@ -56,6 +57,13 @@ type Marker = {
 }
 
 type StatusFilter = 'all' | 'available' | 'reserved' | 'sold' | 'on_hold'
+type MarkerSize = 'small' | 'medium' | 'large'
+
+const markerSizes: Record<MarkerSize, { label: string; className: string; exportRadius: number }> = {
+  small: { label: 'Pequeno', className: 'h-3 w-3 border-[1.5px]', exportRadius: 5 },
+  medium: { label: 'Medio', className: 'h-4 w-4 border-2', exportRadius: 7 },
+  large: { label: 'Grande', className: 'h-[22px] w-[22px] border-[3px]', exportRadius: 10 },
+}
 
 type Props = {
   development: Development
@@ -130,6 +138,7 @@ export default function DevelopmentLotMap({
   })
   const [currentMap, setCurrentMap] = useState<DevelopmentMap | null>(development.map ?? null)
   const [markers, setMarkers] = useState<Record<string, Marker>>({})
+  const [markerSize, setMarkerSize] = useState<MarkerSize>(development.map?.markerSize ?? 'medium')
   const [editing, setEditing] = useState(false)
   const [selectedMarkerLotId, setSelectedMarkerLotId] = useState<string>('')
   const [uploading, setUploading] = useState(false)
@@ -144,6 +153,7 @@ export default function DevelopmentLotMap({
 
   useEffect(() => {
     setCurrentMap(development.map ?? null)
+    setMarkerSize(development.map?.markerSize ?? 'medium')
   }, [development.map])
 
   useEffect(() => {
@@ -318,6 +328,7 @@ export default function DevelopmentLotMap({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          markerSize,
           markers: sortedLots.map((lot) => ({
             lotId: lot.id,
             xPercent: markers[lot.id]?.xPercent ?? null,
@@ -451,11 +462,12 @@ export default function DevelopmentLotMap({
       const status = getEffectiveLotStatus(lot)
 
       context.beginPath()
-      context.arc(x, y, 9 * scale, 0, Math.PI * 2)
+      const radius = markerSizes[markerSize].exportRadius
+      context.arc(x, y, (radius + 3) * scale, 0, Math.PI * 2)
       context.fillStyle = '#ffffff'
       context.fill()
       context.beginPath()
-      context.arc(x, y, 6 * scale, 0, Math.PI * 2)
+      context.arc(x, y, radius * scale, 0, Math.PI * 2)
       context.fillStyle = getMarkerColor(status)
       context.fill()
       context.lineWidth = 2 * scale
@@ -674,21 +686,36 @@ export default function DevelopmentLotMap({
 
       {editing && (
         <div className='hidden gap-3 rounded-2xl border border-border bg-surface-secondary p-4 md:grid lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-start'>
-          <label className='block'>
-            <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Lote para marcar</span>
-            <select
-              value={selectedMarkerLotId}
-              onChange={(event) => setSelectedMarkerLotId(event.target.value)}
-              className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
-            >
-              {sortedLots.map((lot) => (
-                <option key={lot.id} value={lot.id}>
-                  {markerKey(lot)}{hasMarker(markers[lot.id]) ? ' - marcado' : ' - sem pino'}
-                </option>
-              ))}
-            </select>
-            <span className='mt-2 block text-xs text-muted'>Clique na planta para marcar; o proximo lote sem pino sera selecionado automaticamente.</span>
-          </label>
+          <div className='grid gap-3 sm:grid-cols-2'>
+            <label className='block'>
+              <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Lote para marcar</span>
+              <select
+                value={selectedMarkerLotId}
+                onChange={(event) => setSelectedMarkerLotId(event.target.value)}
+                className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+              >
+                {sortedLots.map((lot) => (
+                  <option key={lot.id} value={lot.id}>
+                    {markerKey(lot)}{hasMarker(markers[lot.id]) ? ' - marcado' : ' - sem pino'}
+                  </option>
+                ))}
+              </select>
+              <span className='mt-2 block text-xs text-muted'>Clique na planta para marcar; o proximo lote sem pino sera selecionado automaticamente.</span>
+            </label>
+            <label className='block'>
+              <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Tamanho da marcacao</span>
+              <select
+                value={markerSize}
+                onChange={(event) => setMarkerSize(event.target.value as MarkerSize)}
+                className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+              >
+                {(Object.entries(markerSizes) as Array<[MarkerSize, (typeof markerSizes)[MarkerSize]]>).map(([value, option]) => (
+                  <option key={value} value={value}>{option.label}</option>
+                ))}
+              </select>
+              <span className='mt-2 block text-xs text-muted'>O tamanho tambem sera usado no mapa publico e na imagem baixada.</span>
+            </label>
+          </div>
           <div className='grid gap-2 lg:pt-6'>
             <button
               type='button'
@@ -798,7 +825,7 @@ export default function DevelopmentLotMap({
                     dragStateRef.current = { lotId: null, moved: false, startX: 0, startY: 0 }
                   }}
                   aria-label={`${markerKey(lot)} - ${meta.label}`}
-                  className={`absolute z-20 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-lg transition before:absolute before:left-1/2 before:top-1/2 before:h-9 before:w-9 before:-translate-x-1/2 before:-translate-y-1/2 before:content-[''] hover:scale-125 focus:outline-none focus:ring-2 focus:ring-primary md:before:h-5 md:before:w-5 ${
+                  className={`absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-full border-white shadow-lg transition before:absolute before:left-1/2 before:top-1/2 before:h-9 before:w-9 before:-translate-x-1/2 before:-translate-y-1/2 before:content-[''] hover:scale-125 focus:outline-none focus:ring-2 focus:ring-primary md:before:h-8 md:before:w-8 ${markerSizes[markerSize].className} ${
                     selected || editingSelected ? 'ring-2 ring-primary ring-offset-2' : ''
                   } ${meta.dot}`}
                   style={{

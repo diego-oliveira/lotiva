@@ -21,6 +21,7 @@ interface DevelopmentMap {
   fileUrl: string
   fileType: string
   pdfPageNumber: number
+  markerSize: 'small' | 'medium' | 'large'
 }
 
 interface DevelopmentSettings {

@@ -109,6 +109,7 @@ model DevelopmentMap {
   fileUrl       String
   fileType      String
   pdfPageNumber Int      @default(1)
+  markerSize    String   @default("medium")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

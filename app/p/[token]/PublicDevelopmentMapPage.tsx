@@ -7,7 +7,14 @@ type DevelopmentMap = {
   fileUrl: string
   fileType: string
   pdfPageNumber: number
+  markerSize: 'small' | 'medium' | 'large'
 }
+
+const markerSizeClasses = {
+  small: 'h-3 w-3 border-[1.5px]',
+  medium: 'h-4 w-4 border-2',
+  large: 'h-[22px] w-[22px] border-[3px]',
+} as const
 
 type PublicLot = {
   id: string
@@ -318,7 +325,7 @@ export default function PublicDevelopmentMapPage({ token }: { token: string }) {
                     type='button'
                     onClick={() => { setSelectedLotId(lot.id); setSubmitState(null) }}
                     aria-label={`${lotLabel(lot)} - ${meta.label}`}
-                    className={`absolute z-20 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-lg transition before:absolute before:left-1/2 before:top-1/2 before:h-9 before:w-9 before:-translate-x-1/2 before:-translate-y-1/2 before:content-[''] hover:scale-125 focus:outline-none focus:ring-2 focus:ring-primary md:before:h-5 md:before:w-5 ${
+                    className={`absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-full border-white shadow-lg transition before:absolute before:left-1/2 before:top-1/2 before:h-9 before:w-9 before:-translate-x-1/2 before:-translate-y-1/2 before:content-[''] hover:scale-125 focus:outline-none focus:ring-2 focus:ring-primary md:before:h-8 md:before:w-8 ${markerSizeClasses[payload?.map.markerSize ?? 'medium']} ${
                       selected ? 'ring-2 ring-primary ring-offset-2' : ''
                     } ${meta.color}`}
                     style={{ left: `${lot.mapXPercent ?? 0}%`, top: `${lot.mapYPercent ?? 0}%` }}

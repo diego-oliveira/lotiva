@@ -37,6 +37,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
   if (!development) return forbiddenResponse()
 
   const data = await req.json()
+  const markerSize = ['small', 'medium', 'large'].includes(data.markerSize) ? data.markerSize : 'medium'
   const markers: MarkerInput[] = Array.isArray(data.markers) ? data.markers : []
   if (markers.length > 1000) {
     return NextResponse.json({ error: 'Envie no maximo 1000 marcacoes por vez.' }, { status: 400 })
@@ -47,10 +48,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
   if (lotIds.some((lotId) => !lotId)) {
     return NextResponse.json({ error: 'Todas as marcacoes precisam informar um lote.' }, { status: 400 })
   }
-  if (markers.length === 0) {
-    return NextResponse.json({ updated: 0 })
-  }
-
   const uniqueLotIds = [...new Set(lotIds)]
   const allowedLots = await prisma.lot.findMany({
     where: {
@@ -64,16 +61,22 @@ export async function PUT(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Uma ou mais marcacoes nao pertencem a este empreendimento.' }, { status: 400 })
   }
 
-  await prisma.$transaction(markers.map((marker) => {
-    const lotId = String(marker?.lotId || '').trim()
-    return prisma.lot.update({
-      where: { id: lotId },
-      data: {
-        mapXPercent: normalizePercent(marker?.xPercent),
-        mapYPercent: normalizePercent(marker?.yPercent),
-      },
-    })
-  }))
+  await prisma.$transaction([
+    prisma.developmentMap.update({
+      where: { developmentId: id },
+      data: { markerSize },
+    }),
+    ...markers.map((marker) => {
+      const lotId = String(marker?.lotId || '').trim()
+      return prisma.lot.update({
+        where: { id: lotId },
+        data: {
+          mapXPercent: normalizePercent(marker?.xPercent),
+          mapYPercent: normalizePercent(marker?.yPercent),
+        },
+      })
+    }),
+  ])
 
   return NextResponse.json({ updated: markers.length })
 }
