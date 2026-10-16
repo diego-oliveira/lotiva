@@ -200,3 +200,28 @@ test('lista cobrancas Inter com paginacao esperada pela API v3', async () => {
   assert.equal(result.charges[0].bankSlipUrl, 'linha')
   assert.equal((result.charges[0] as { pixPayload?: string }).pixPayload, 'pix')
 })
+
+test('consulta cobranca Inter com dados aninhados', async () => {
+  const provider = new InterPaymentProvider(credentials, 'production', async <T>() => ({
+    cobranca: {
+      codigoSolicitacao: 'sol-123',
+      seuNumero: 'r12345678901234',
+      valorNominal: '663.75',
+      valorTotalRecebido: '663.75',
+      dataVencimento: '2026-10-20',
+      situacao: 'RECEBIDO',
+    },
+    boleto: { linhaDigitavel: 'linha' },
+    pix: { pixCopiaECola: 'pix' },
+  }) as T)
+
+  const charge = await provider.getCharge('sol-123')
+
+  assert.equal(charge.id, 'sol-123')
+  assert.equal(charge.externalReference, 'r12345678901234')
+  assert.equal(charge.amount, '663.75')
+  assert.equal(charge.paidAmount, '663.75')
+  assert.equal(charge.status, 'received')
+  assert.equal(charge.dueDate, '2026-10-20')
+  assert.equal(charge.bankSlipUrl, 'linha')
+})

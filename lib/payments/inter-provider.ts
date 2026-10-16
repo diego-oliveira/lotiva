@@ -67,7 +67,7 @@ export type InterCharge = {
   pixCopiaECola?: string
 }
 
-type InterChargeListItem = InterCharge | {
+export type InterChargeListItem = InterCharge | {
   cobranca?: InterCharge
   boleto?: InterCharge['boleto']
   pix?: InterCharge['pix']
@@ -174,9 +174,12 @@ export function mapInterCharge(charge: InterCharge): PaymentCharge {
   } as PaymentCharge & { pixPayload?: string }
 }
 
-function mapInterChargeListItem(item: InterChargeListItem) {
+export function mapInterChargeResponse(item: InterChargeListItem) {
   if ('codigoSolicitacao' in item) {
     return mapInterCharge(item)
+  }
+  if (!item.cobranca?.codigoSolicitacao) {
+    throw new Error('O Banco Inter retornou uma cobranca sem codigo de solicitacao.')
   }
   return mapInterCharge({
     ...item.cobranca,
@@ -500,7 +503,7 @@ export class InterPaymentProvider implements PaymentProvider {
   }
 
   async getCharge(chargeId: string): Promise<PaymentCharge> {
-    return mapInterCharge(await this.request<InterCharge>(`/cobrancas/${encodeURIComponent(chargeId)}`, {
+    return mapInterChargeResponse(await this.request<InterChargeListItem>(`/cobrancas/${encodeURIComponent(chargeId)}`, {
       scope: 'boleto-cobranca.read',
     }))
   }
@@ -521,7 +524,7 @@ export class InterPaymentProvider implements PaymentProvider {
       scope: 'boleto-cobranca.read',
     })
     return {
-      charges: (result.cobrancas ?? []).map(mapInterChargeListItem),
+      charges: (result.cobrancas ?? []).map(mapInterChargeResponse),
       totalCount: result.totalElementos ?? result.cobrancas?.length ?? 0,
       hasMore: result.ultimaPagina === false || result.last === false,
     }
