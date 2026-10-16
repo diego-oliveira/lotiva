@@ -8,6 +8,7 @@ import { getUserPermissions } from '@/lib/permissions'
 type HomeProps = {
   searchParams?: Promise<{
     developmentId?: string
+    chooseDevelopment?: string
   }>
 }
 
@@ -34,14 +35,107 @@ export default async function Home({ searchParams }: HomeProps) {
   const session = await getCurrentSession()
   if (!session?.user?.id) redirect('/signin')
   const access = await getUserPermissions(session.user.id)
-  if (!access.permissions.manageSettings && !access.permissions.finance) redirect('/lots')
+  const salesOnly = access.permissions.sales &&
+    !access.permissions.admin &&
+    !access.permissions.manageSettings &&
+    !access.permissions.manageUsers &&
+    !access.permissions.finance
 
   const params = await searchParams
   const developments = await prisma.development.findMany({
     where: membershipWhere(session.user.id),
-    include: { company: true, settings: true },
+    include: { company: true, settings: true, map: true },
     orderBy: { name: 'asc' },
   })
+
+  if (salesOnly) {
+    const preference = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { lastDevelopmentId: true },
+    })
+    const requestedDevelopment = developments.find((development) => development.id === params?.developmentId)
+    const lastDevelopment = developments.find((development) => development.id === preference?.lastDevelopmentId)
+    const automaticDevelopment = requestedDevelopment ?? lastDevelopment ?? (developments.length === 1 ? developments[0] : null)
+
+    if (automaticDevelopment && params?.chooseDevelopment !== '1') {
+      redirect(`/lots?developmentId=${automaticDevelopment.id}&view=${automaticDevelopment.map ? 'plan' : 'map'}`)
+    }
+
+    const lots = await prisma.lot.findMany({
+      where: { block: { developmentId: { in: developments.map((development) => development.id) } } },
+      select: { status: true, price: true, block: { select: { developmentId: true } } },
+    })
+
+    return (
+      <div className='mx-auto max-w-6xl space-y-6'>
+        <div>
+          <p className='text-xs font-semibold uppercase tracking-[0.2em] text-primary'>Area comercial</p>
+          <h1 className='page-title mt-2'>Escolha um empreendimento</h1>
+          <p className='page-subtitle'>Abra a planta para consultar lotes, simular condicoes e iniciar uma reserva.</p>
+        </div>
+
+        {developments.length === 0 ? (
+          <section className='panel px-6 py-12 text-center'>
+            <h2 className='text-lg font-semibold text-foreground'>Nenhum empreendimento acessivel</h2>
+            <p className='mt-2 text-sm text-muted'>Solicite ao administrador acesso a um empreendimento.</p>
+          </section>
+        ) : (
+          <section className='grid gap-4 sm:grid-cols-2 xl:grid-cols-3'>
+            {developments.map((development) => {
+              const developmentLots = lots.filter((lot) => lot.block.developmentId === development.id)
+              const available = developmentLots.filter((lot) => lot.status === 'available').length
+              const prices = developmentLots.map((lot) => Number(lot.price)).filter((price) => price > 0)
+              const minimumPrice = prices.length > 0 ? Math.min(...prices) : null
+              const isLast = development.id === preference?.lastDevelopmentId
+
+              return (
+                <Link
+                  key={development.id}
+                  href={`/lots?developmentId=${development.id}&view=${development.map ? 'plan' : 'map'}`}
+                  className='group flex min-h-[240px] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md active:scale-[0.99]'
+                >
+                  <div className='flex min-h-28 items-center justify-center bg-gradient-to-br from-primary/12 to-primary/5 p-6'>
+                    {development.logo ? (
+                      <img src={development.logo} alt='' className='max-h-20 max-w-[75%] object-contain' />
+                    ) : (
+                      <span className='flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-xl font-bold text-white'>
+                        {development.name.slice(0, 2).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className='flex flex-1 flex-col p-5'>
+                    <div className='flex items-start justify-between gap-3'>
+                      <div>
+                        <h2 className='text-lg font-bold text-foreground'>{development.name}</h2>
+                        <p className='mt-1 text-sm text-muted'>{development.company.name}</p>
+                      </div>
+                      {isLast && <span className='pill shrink-0 bg-primary/10 text-primary'>Ultimo acesso</span>}
+                    </div>
+                    <div className='mt-5 grid grid-cols-2 gap-3 text-sm'>
+                      <div className='rounded-xl bg-emerald-50 px-3 py-3'>
+                        <p className='text-xs font-semibold text-emerald-700'>Disponiveis</p>
+                        <p className='mt-1 text-xl font-bold text-emerald-800'>{available}</p>
+                      </div>
+                      <div className='rounded-xl bg-surface-secondary px-3 py-3'>
+                        <p className='text-xs font-semibold text-muted'>A partir de</p>
+                        <p className='mt-1 text-sm font-bold text-foreground'>{minimumPrice === null ? 'Consulte' : formatCurrency(minimumPrice)}</p>
+                      </div>
+                    </div>
+                    <span className='mt-5 inline-flex items-center justify-between text-sm font-semibold text-primary'>
+                      {development.map ? 'Abrir planta' : 'Consultar lotes'}
+                      <span aria-hidden='true' className='transition group-hover:translate-x-1'>→</span>
+                    </span>
+                  </div>
+                </Link>
+              )
+            })}
+          </section>
+        )}
+      </div>
+    )
+  }
+
+  if (!access.permissions.manageSettings && !access.permissions.finance) redirect('/lots')
 
   const selectedDevelopment =
     developments.find((development) => development.id === params?.developmentId) ?? developments[0] ?? null

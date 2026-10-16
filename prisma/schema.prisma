@@ -135,6 +135,7 @@ model User {
   profession    String?
   birthplace    String?
   maritalStatus String?
+  lastDevelopmentId String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

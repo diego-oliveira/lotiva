@@ -287,6 +287,7 @@ function calculateInstallment(balance: number, installmentCount: number, monthly
 function LotsContent() {
   const searchParams = useSearchParams()
   const developmentFilter = searchParams.get('developmentId') ?? ''
+  const requestedView = searchParams.get('view')
   const [lots, setLots] = useState<Lot[]>([])
   const [clients, setClients] = useState<Person[]>([])
   const [loading, setLoading] = useState(true)
@@ -329,7 +330,7 @@ function LotsContent() {
     correctionFrequency: 'monthly' as DevelopmentSettings['correctionFrequency'],
     firstDueDate: getDefaultDueDate(),
   })
-  const [viewMode, setViewMode] = useState<ViewMode>('map')
+  const [viewMode, setViewMode] = useState<ViewMode>(requestedView === 'plan' ? 'plan' : requestedView === 'list' ? 'list' : 'map')
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null)
   const [clientFilter, setClientFilter] = useState('')
   const [blockFilter, setBlockFilter] = useState('')
@@ -378,6 +379,13 @@ function LotsContent() {
         setCanManageUsers(Boolean(payload?.permissions?.manageUsers))
         setCanManageSettings(Boolean(payload?.permissions?.manageSettings || payload?.permissions?.admin))
         setCanAdmin(Boolean(payload?.permissions?.admin))
+        const permissions = payload?.permissions
+        const salesOnly = Boolean(permissions?.sales &&
+          !permissions.admin &&
+          !permissions.manageSettings &&
+          !permissions.manageUsers &&
+          !permissions.finance)
+        if (salesOnly && !requestedView) setViewMode('plan')
       })
       .catch(() => {
         setCanManageUsers(false)
@@ -410,7 +418,20 @@ function LotsContent() {
       if (!current || !developmentFilter || current.developmentId === developmentFilter) return current
       return null
     })
+    if (developmentFilter) {
+      void fetch('/api/me/workspace', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ developmentId: developmentFilter }),
+      })
+    }
   }, [developmentFilter])
+
+  useEffect(() => {
+    if (requestedView === 'plan' || requestedView === 'map' || requestedView === 'list') {
+      setViewMode(requestedView)
+    }
+  }, [requestedView])
 
   async function fetchClients() {
     const response = await fetch('/api/clients?scope=operational', { cache: 'no-store' })
@@ -1285,7 +1306,7 @@ function LotsContent() {
                 )}
               </div>
             ) : viewMode === 'plan' ? (
-              <div className='space-y-6 p-6'>
+              <div className='space-y-4 p-3 sm:space-y-6 sm:p-6'>
                 {selectedDevelopment && (selectedDevelopment.map || canManageSettings) ? (
                   <DevelopmentLotMap
                     development={selectedDevelopment}

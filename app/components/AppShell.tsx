@@ -280,6 +280,11 @@ function WorkspaceSelectorContent({
     params.set('developmentId', developmentId)
     setPendingDevelopmentId(developmentId)
     window.localStorage.setItem('lotiva.workspace.developmentId', developmentId)
+    void fetch('/api/me/workspace', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ developmentId }),
+    })
     router.push(`${pathname}?${params.toString()}`)
   }
 
@@ -389,6 +394,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [pathname])
 
   const unreadNotifications = notifications.filter((notification) => !notification.readAt).length
+  const salesOnly = Boolean(permissions?.sales &&
+    !permissions.admin &&
+    !permissions.manageSettings &&
+    !permissions.manageUsers &&
+    !permissions.finance)
 
   const markNotificationRead = async (notification: Notification) => {
     if (notification.readAt) return
@@ -400,22 +410,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const visibleNavSections = useMemo(() => {
     if (!permissions) return navSections
-    const salesOnly =
-      permissions.sales &&
-      !permissions.admin &&
-      !permissions.manageSettings &&
-      !permissions.manageUsers &&
-      !permissions.finance
     return navSections
       .map((section) => ({
         ...section,
-        items: section.items.filter((item) => {
-          if (salesOnly && item.href === '/') return false
-          return !item.permission || permissions[item.permission]
-        }),
+        items: section.items
+          .filter((item) => !item.permission || permissions[item.permission])
+          .map((item) => salesOnly && item.href === '/' ? {
+            ...item,
+            href: '/?chooseDevelopment=1',
+            label: 'Empreendimentos',
+            description: 'Escolher uma planta',
+          } : item),
       }))
       .filter((section) => section.items.length > 0)
-  }, [permissions])
+  }, [permissions, salesOnly])
 
   if (isAuthPage || isPublicPage) {
     return <>{children}</>
@@ -467,7 +475,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   </p>
                   <div className='space-y-1.5'>
                     {section.items.map((item) => {
-                      const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
+                      const isActive = item.href === '/' || item.href.startsWith('/?') ? pathname === '/' : pathname.startsWith(item.href)
                       return (
                         <Link
                           key={item.href}
@@ -643,9 +651,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </header>
 
-          <main className='flex-1 px-4 py-6 sm:px-6 lg:px-8'>{children}</main>
+          <main className={`flex-1 px-4 py-4 sm:px-6 sm:py-6 lg:px-8 ${salesOnly ? 'pb-24 lg:pb-6' : ''}`}>{children}</main>
         </div>
       </div>
+
+      {salesOnly && (
+        <nav className='fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-border bg-white/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur lg:hidden'>
+          {[
+            { href: '/?chooseDevelopment=1', label: 'Empreendimentos', icon: 'development' as const },
+            { href: '/lots', label: 'Planta', icon: 'lot' as const },
+            { href: '/proposals', label: 'Propostas', icon: 'sale' as const },
+            { href: '/sales', label: 'Vendas', icon: 'sale' as const },
+          ].map((item) => {
+            const active = item.href.startsWith('/?') ? pathname === '/' : pathname.startsWith(item.href)
+            return (
+              <Link key={item.href} href={item.href} className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] font-semibold ${active ? 'text-primary' : 'text-muted'}`}>
+                <NavIcon icon={item.icon} />
+                <span className='truncate'>{item.label}</span>
+              </Link>
+            )
+          })}
+        </nav>
+      )}
 
       {sidebarOpen && (
         <button

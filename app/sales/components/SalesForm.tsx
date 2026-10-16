@@ -267,6 +267,7 @@ export default function SalesForm({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [paymentTouched, setPaymentTouched] = useState(false)
   const [documentSaving, setDocumentSaving] = useState(false)
+  const [documentDirty, setDocumentDirty] = useState(false)
   const [documentNotice, setDocumentNotice] = useState<string | null>(null)
   const [documentForm, setDocumentForm] = useState({
     cpf: '',
@@ -338,6 +339,7 @@ export default function SalesForm({
     setUserSearch('')
     setLotSearch('')
     setDocumentNotice(null)
+    setDocumentDirty(false)
     setErrors({})
   }, [isOpen, sale, initialData, developmentId])
 
@@ -428,6 +430,7 @@ export default function SalesForm({
       maritalStatus: selectedUser.maritalStatus ?? '',
     })
     setDocumentNotice(null)
+    setDocumentDirty(false)
   }, [selectedUser?.id])
 
   const filteredUsers = users.filter((user) => {
@@ -578,16 +581,32 @@ export default function SalesForm({
       }
       if (!formData.firstDueDate) newErrors.firstDueDate = 'Informe o primeiro vencimento'
     }
-    if (step === 4 && missingDocumentFields.length > 0) {
-      newErrors.documents = `Complete os dados do cliente: ${missingDocumentFields.map((field) => field.label).join(', ')}`
+    if (step === 4) {
+      const missing = REQUIRED_DOCUMENT_FIELDS.filter((field) => {
+        const value = documentForm[field.key as keyof typeof documentForm]
+        return !String(value ?? '').trim()
+      })
+      if (missing.length > 0) {
+        newErrors.documents = `Complete os dados do cliente: ${missing.map((field) => field.label).join(', ')}`
+      }
     }
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
-  const nextStep = () => {
-    if (validateStep(currentStep)) setCurrentStep((prev) => Math.min(prev + 1, STEPS.length))
+  const goToStep = async (step: number) => {
+    if (step <= currentStep) {
+      setCurrentStep(step)
+      return
+    }
+    if (!validateStep(currentStep)) return
+    if (currentStep === 4 && documentDirty && !(await saveClientDocuments())) return
+    setCurrentStep(step)
+  }
+
+  const nextStep = async () => {
+    await goToStep(Math.min(currentStep + 1, STEPS.length))
   }
 
   const prevStep = () => {
@@ -630,11 +649,13 @@ export default function SalesForm({
 
   const updateDocumentField = (field: keyof typeof documentForm, value: string) => {
     setDocumentForm((current) => ({ ...current, [field]: value }))
+    setDocumentDirty(true)
+    setDocumentNotice(null)
     if (errors.documents) setErrors((current) => ({ ...current, documents: '' }))
   }
 
-  const saveClientDocuments = async () => {
-    if (!selectedUser) return
+  async function saveClientDocuments(): Promise<boolean> {
+    if (!selectedUser) return false
 
     const missing = REQUIRED_DOCUMENT_FIELDS.filter((field) => {
       const value = documentForm[field.key as keyof typeof documentForm]
@@ -645,7 +666,7 @@ export default function SalesForm({
         ...current,
         documents: `Complete os dados do cliente: ${missing.map((field) => field.label).join(', ')}`,
       }))
-      return
+      return false
     }
 
     try {
@@ -681,12 +702,15 @@ export default function SalesForm({
 
       const updatedUser = await response.json()
       setUsers((current) => current.map((user) => (user.id === updatedUser.id ? { ...user, ...updatedUser } : user)))
-      setDocumentNotice('Dados do cliente salvos. Voce ja pode avancar para a revisao.')
+      setDocumentDirty(false)
+      setDocumentNotice('Dados do cliente salvos.')
+      return true
     } catch (error) {
       setErrors((current) => ({
         ...current,
         documents: error instanceof Error ? error.message : 'Erro ao atualizar dados do cliente',
       }))
+      return false
     } finally {
       setDocumentSaving(false)
     }
@@ -727,9 +751,8 @@ export default function SalesForm({
                 <button
                   key={step.id}
                   type='button'
-                  onClick={() => {
-                    if (step.id <= currentStep || validateStep(currentStep)) setCurrentStep(step.id)
-                  }}
+                  onClick={() => void goToStep(step.id)}
+                  disabled={documentSaving}
                   className={`min-w-[112px] rounded-xl border px-3 py-2 text-left transition sm:min-w-0 sm:py-3 ${
                     currentStep === step.id
                       ? 'border-primary bg-primary/8 text-primary'
@@ -1189,16 +1212,11 @@ export default function SalesForm({
                   </label>
                 </div>
                 <div className='flex flex-col gap-3 md:flex-row md:items-center'>
-                  <button
-                    type='button'
-                    onClick={saveClientDocuments}
-                    disabled={documentSaving}
-                    className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
-                  >
-                    {documentSaving ? 'Salvando...' : 'Salvar dados do cliente'}
-                  </button>
-                  {missingDocumentFields.length === 0 && (
+                  {!documentDirty && missingDocumentFields.length === 0 && (
                     <span className='pill bg-emerald-50 text-emerald-700'>Dados completos</span>
+                  )}
+                  {documentDirty && (
+                    <span className='text-sm text-muted'>As alteracoes serao salvas ao continuar.</span>
                   )}
                 </div>
               </section>
@@ -1264,10 +1282,15 @@ export default function SalesForm({
                 {currentStep < STEPS.length ? (
                   <button
                     type='button'
-                    onClick={nextStep}
+                    onClick={() => void nextStep()}
+                    disabled={documentSaving}
                     className='rounded-xl bg-primary px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-strong sm:px-4 sm:py-3'
                   >
-                    Proximo
+                    {documentSaving
+                      ? 'Salvando...'
+                      : currentStep === 4 && (documentDirty || missingDocumentFields.length > 0)
+                      ? 'Salvar e continuar'
+                      : 'Proximo'}
                   </button>
                 ) : (
                   <button
