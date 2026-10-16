@@ -167,7 +167,9 @@ export function mapInterCharge(charge: InterCharge): PaymentCharge {
     paidAmount: Number(paidAmount) > 0 ? paidAmount : undefined,
     netAmount: Number(paidAmount) > 0 ? paidAmount : undefined,
     deleted: ['CANCELADO', 'EXPIRADO'].includes(charge.situacao || ''),
-    paymentDate: Number(paidAmount) > 0 ? new Date().toISOString().slice(0, 10) : undefined,
+    // A consulta nao informa a data efetiva do pagamento. Usar o dia da
+    // conciliacao aqui exibiria uma data incorreta para pagamentos antigos.
+    paymentDate: undefined,
     invoiceUrl: undefined,
     creditDate: undefined,
     ...(pixPayload ? { pixPayload } : {}),

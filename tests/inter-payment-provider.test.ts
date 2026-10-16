@@ -78,6 +78,7 @@ test('mapeia cobranca Inter para formato comum', () => {
   assert.equal(charge.amount, '663.75')
   assert.equal(charge.status, 'received')
   assert.equal(charge.paidAmount, '663.75')
+  assert.equal(charge.paymentDate, undefined)
   assert.equal(charge.externalReference, 'receivable:1:v1')
 })
 

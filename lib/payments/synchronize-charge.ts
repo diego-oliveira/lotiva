@@ -97,7 +97,7 @@ export async function synchronizeExternalCharge(input: {
         status: balance.lte(0) ? 'paid' : 'pending',
         paidAmount,
         balance: balance.lte(0) ? 0 : balance,
-        paidAt: providerPaymentDate || input.eventAt || new Date(),
+        paidAt: providerPaymentDate || input.eventAt || saved.receivable.paidAt || new Date(),
       },
     })
   } else if ((cancelled || refunded) && saved.grossPaidAmount) {

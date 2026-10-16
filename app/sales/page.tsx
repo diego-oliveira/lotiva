@@ -246,18 +246,45 @@ function SalesContent() {
     setContractSaleId('')
   }
 
+  const refreshReceivablesSale = async (saleId: string) => {
+    const response = await fetch(`/api/sales/${saleId}`, { cache: 'no-store' })
+    if (!response.ok) return
+    const freshSale = (await response.json()) as Sale
+    setReceivablesSale((current) => current?.id === saleId
+      ? { ...current, ...freshSale }
+      : current)
+  }
+
   const handleViewReceivables = (sale: Sale) => {
     setReceivablesSale(sale)
+    void refreshReceivablesSale(sale.id)
   }
 
   const handleReceivablesUpdated = async () => {
-    const nextSales = await fetchSales()
+    const saleId = receivablesSale?.id
+    const [nextSales] = await Promise.all([
+      fetchSales(),
+      saleId ? refreshReceivablesSale(saleId) : Promise.resolve(),
+    ])
     if (!nextSales) return
     setReceivablesSale((current) => {
       if (!current) return null
       return nextSales.find((sale) => sale.id === current.id) ?? current
     })
   }
+
+  useEffect(() => {
+    const saleId = receivablesSale?.id
+    if (!saleId) return
+
+    const refresh = () => void refreshReceivablesSale(saleId)
+    const interval = window.setInterval(refresh, 30_000)
+    window.addEventListener('focus', refresh)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [receivablesSale?.id])
 
   const filteredSales = sales.filter((sale) => {
     if (developmentFilter && sale.lot.block.development?.id !== developmentFilter) return false

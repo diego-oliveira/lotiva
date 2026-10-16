@@ -192,7 +192,7 @@ export async function PATCH(req: Request, { params }: Params) {
     const activeCharge = receivable.externalCharges.find(
       (charge) => !['cancelled', 'refunded'].includes(charge.status),
     )
-    if (activeCharge) {
+    if (activeCharge && receivable.status !== 'paid') {
       return NextResponse.json({
         error: 'Cancele a cobranca externa antes de registrar uma baixa manual.',
       }, { status: 409 })

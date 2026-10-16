@@ -287,6 +287,11 @@ type ReceivableDueDateDialog = {
   scope: 'single' | 'following'
 }
 
+type ReceivablePaymentDialog = {
+  receivable: Receivable
+  paidAt: string
+}
+
 export default function ReceivablesDrawer({
   sale,
   isOpen,
@@ -318,6 +323,7 @@ export default function ReceivablesDrawer({
   const [chargeEnvironment, setChargeEnvironment] = useState('')
   const [chargeDueDateDialog, setChargeDueDateDialog] = useState<ChargeDueDateDialog | null>(null)
   const [receivableDueDateDialog, setReceivableDueDateDialog] = useState<ReceivableDueDateDialog | null>(null)
+  const [receivablePaymentDialog, setReceivablePaymentDialog] = useState<ReceivablePaymentDialog | null>(null)
   const [asaasImportLoading, setAsaasImportLoading] = useState(false)
   const [asaasImportSaving, setAsaasImportSaving] = useState(false)
   const [asaasImportPreview, setAsaasImportPreview] = useState<AsaasImportPreview | null>(null)
@@ -684,7 +690,7 @@ export default function ReceivablesDrawer({
     }
   }
 
-  const updateReceivable = async (receivable: Receivable, status: 'paid' | 'pending') => {
+  const updateReceivable = async (receivable: Receivable, status: 'paid' | 'pending', paidAt?: string) => {
     setSavingId(receivable.id)
     setError(null)
 
@@ -692,7 +698,7 @@ export default function ReceivablesDrawer({
       const response = await fetch(`/api/receivables/${receivable.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, paidAt }),
       })
 
       if (!response.ok) {
@@ -700,6 +706,7 @@ export default function ReceivablesDrawer({
         throw new Error(payload.error || 'Nao foi possivel atualizar a parcela.')
       }
 
+      setReceivablePaymentDialog(null)
       await onUpdated()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nao foi possivel atualizar a parcela.')
@@ -775,6 +782,33 @@ export default function ReceivablesDrawer({
             <div className='flex justify-end gap-3 border-t border-border px-5 py-4'>
               <button type='button' onClick={() => setReceivableDueDateDialog(null)} disabled={savingId === receivableDueDateDialog.receivable.id} className='rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground disabled:opacity-60'>Cancelar</button>
               <button type='button' onClick={updateReceivableDueDate} disabled={!receivableDueDateDialog.dueDate || savingId === receivableDueDateDialog.receivable.id} className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-60'>{savingId === receivableDueDateDialog.receivable.id ? 'Salvando...' : 'Alterar vencimento'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {receivablePaymentDialog && (
+        <div className='fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/35 px-4'>
+          <div className='w-full max-w-md rounded-2xl border border-border bg-surface shadow-2xl'>
+            <div className='border-b border-border px-5 py-4'>
+              <h3 className='text-base font-semibold text-foreground'>Registrar pagamento</h3>
+              <p className='mt-1 text-sm text-muted'>{getReceivableLabel(receivablePaymentDialog.receivable)}</p>
+            </div>
+            <div className='px-5 py-5'>
+              <label className='block'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Data de pagamento</span>
+                <input
+                  type='date'
+                  value={receivablePaymentDialog.paidAt}
+                  onChange={(event) => setReceivablePaymentDialog((current) => current
+                    ? { ...current, paidAt: event.target.value }
+                    : current)}
+                  className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                />
+              </label>
+            </div>
+            <div className='flex justify-end gap-3 border-t border-border px-5 py-4'>
+              <button type='button' onClick={() => setReceivablePaymentDialog(null)} disabled={savingId === receivablePaymentDialog.receivable.id} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground disabled:opacity-60'>Cancelar</button>
+              <button type='button' onClick={() => updateReceivable(receivablePaymentDialog.receivable, 'paid', receivablePaymentDialog.paidAt)} disabled={!receivablePaymentDialog.paidAt || savingId === receivablePaymentDialog.receivable.id} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-60'>{savingId === receivablePaymentDialog.receivable.id ? 'Salvando...' : 'Confirmar pagamento'}</button>
             </div>
           </div>
         </div>
@@ -1179,7 +1213,9 @@ export default function ReceivablesDrawer({
                               </div>
                               <div className='mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted'>
                                 <span>Vencimento em {formatDate(receivable.dueDate)}</span>
-                                {paid && receivable.paidAt && <span>Pago em {formatDate(receivable.paidAt)}</span>}
+                                {paid && receivable.paidAt && (
+                                  <span className='font-semibold text-emerald-700'>Pago em {formatDate(receivable.paidAt)}</span>
+                                )}
                                 {hasRemainingBalance && <span>Saldo restante {formatCurrency(receivable.balance)}</span>}
                               </div>
                             </div>
@@ -1267,10 +1303,30 @@ export default function ReceivablesDrawer({
                           )}
 
                           <div className='flex w-full flex-col gap-2 sm:flex-row xl:flex-col'>
+                            {canManagePayments && paid && (
+                              <button
+                                type='button'
+                                onClick={() => setReceivablePaymentDialog({
+                                  receivable,
+                                  paidAt: receivable.paidAt
+                                    ? formatDateInput(new Date(receivable.paidAt))
+                                    : formatDateInput(new Date()),
+                                })}
+                                disabled={savingId === receivable.id}
+                                className='rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/8 disabled:opacity-60'
+                              >
+                                Alterar data do pagamento
+                              </button>
+                            )}
                             {canManagePayments && (
                               <button
                                 type='button'
-                                onClick={() => updateReceivable(receivable, paid ? 'pending' : 'paid')}
+                                onClick={() => paid
+                                  ? updateReceivable(receivable, 'pending')
+                                  : setReceivablePaymentDialog({
+                                      receivable,
+                                      paidAt: formatDateInput(new Date()),
+                                    })}
                                 disabled={savingId === receivable.id}
                                 className='rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
                               >
