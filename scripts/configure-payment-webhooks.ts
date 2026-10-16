@@ -6,6 +6,10 @@ import {
 import {
   decryptPaymentCredential,
 } from '../lib/payments/credentials'
+import {
+  InterPaymentProvider,
+  parseInterCredentials,
+} from '../lib/payments/inter-provider'
 
 const prisma = new PrismaClient()
 
@@ -22,18 +26,39 @@ async function main() {
 
   const connections = await prisma.paymentProviderConnection.findMany({
     where: {
-      provider: 'asaas',
+      provider: { in: ['asaas', 'inter'] },
       status: 'active',
       credentialCiphertext: { not: null },
-      webhookAuthCiphertext: { not: null },
     },
   })
   if (connections.length === 0) {
-    throw new Error('Nenhuma conexao Asaas ativa foi encontrada.')
+    throw new Error('Nenhuma conexao de pagamentos ativa foi encontrada.')
   }
 
   for (const connection of connections) {
     try {
+      if (connection.provider === 'inter') {
+        const provider = new InterPaymentProvider(
+          parseInterCredentials(decryptPaymentCredential(connection.credentialCiphertext!)),
+          connection.environment === 'production' ? 'production' : 'sandbox',
+        )
+        const webhookUrl = `${baseUrl}/api/webhooks/inter/${connection.id}`
+        const webhook = await provider.ensurePaymentWebhook({ url: webhookUrl })
+        await prisma.paymentProviderConnection.update({
+          where: { id: connection.id },
+          data: {
+            webhookId: webhook.id,
+            webhookUrl,
+            webhookStatus: webhook.enabled ? 'active' : 'inactive',
+          },
+        })
+        console.log(`${connection.provider}/${connection.environment}: webhook ativo em ${webhookUrl}`)
+        continue
+      }
+
+      if (!connection.webhookAuthCiphertext) {
+        throw new Error('Token de autenticacao do webhook Asaas nao configurado.')
+      }
       const provider = new AsaasPaymentProvider(
         decryptPaymentCredential(connection.credentialCiphertext!),
         connection.environment === 'production' ? 'production' : 'sandbox',
@@ -58,14 +83,14 @@ async function main() {
               : 'inactive',
         },
       })
-      console.log(`${connection.environment}: webhook ativo em ${webhookUrl}`)
+      console.log(`${connection.provider}/${connection.environment}: webhook ativo em ${webhookUrl}`)
     } catch (error) {
       await prisma.paymentProviderConnection.update({
         where: { id: connection.id },
         data: { webhookStatus: 'configuration_failed' },
       })
       console.error(
-        `${connection.environment}: ${
+        `${connection.provider}/${connection.environment}: ${
           error instanceof Error ? error.message : 'falha desconhecida'
         }`,
       )
