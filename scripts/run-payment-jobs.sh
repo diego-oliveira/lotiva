@@ -5,6 +5,11 @@ MODE="${1:-events}"
 ENV_FILE="${ENV_FILE:-.env.production}"
 APP_URL="${PAYMENT_JOB_URL:-http://127.0.0.1:3000}"
 
+case "$ENV_FILE" in
+  /*|./*|../*) ;;
+  *) ENV_FILE="./$ENV_FILE" ;;
+esac
+
 if [ -f "$ENV_FILE" ]; then
   set -a
   # shellcheck disable=SC1090
