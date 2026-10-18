@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import DevelopmentLotMap from './components/DevelopmentLotMap'
 import { CurrencyTextInput, NumberTextInput } from '@/app/components/NumberTextInput'
@@ -286,6 +286,7 @@ function calculateInstallment(balance: number, installmentCount: number, monthly
 
 function LotsContent() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const developmentFilter = searchParams.get('developmentId') ?? ''
   const requestedView = searchParams.get('view')
   const [lots, setLots] = useState<Lot[]>([])
@@ -573,13 +574,12 @@ function LotsContent() {
   const visibleDevelopments = useMemo(() => {
     const map = new Map<string, Development>()
     lots
-      .filter((lot) => !developmentFilter || lot.block.development?.id === developmentFilter)
       .forEach((lot) => {
       const development = lot.block.development
       if (development) map.set(development.id, development)
     })
     return Array.from(map.values())
-  }, [lots, developmentFilter])
+  }, [lots])
   const selectedDevelopment = developmentFilter
     ? visibleDevelopments.find((development) => development.id === developmentFilter) ?? null
     : visibleDevelopments.length === 1
@@ -1310,6 +1310,7 @@ function LotsContent() {
                 {selectedDevelopment && (selectedDevelopment.map || canManageSettings) ? (
                   <DevelopmentLotMap
                     development={selectedDevelopment}
+                    developments={visibleDevelopments}
                     lots={planLots}
                     selectedLotId={selectedLotId}
                     canManageMap={canManageSettings}
@@ -1317,6 +1318,7 @@ function LotsContent() {
                     onOpenLotDetails={openLotDetails}
                     onReserveLot={(lotId) => void openReservationForLot(lotId)}
                     onSimulateLot={(lotId) => void openSimulatorForLot(lotId)}
+                    onChangeDevelopment={(developmentId) => router.push(`/lots?developmentId=${encodeURIComponent(developmentId)}&view=plan`)}
                     onRefresh={fetchLots}
                     getStatusMeta={getStatusMeta}
                     formatCurrency={formatCurrency}

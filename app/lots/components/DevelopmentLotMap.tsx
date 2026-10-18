@@ -68,6 +68,7 @@ const markerSizes: Record<MarkerSize, { label: string; className: string; export
 
 type Props = {
   development: Development
+  developments: Array<{ id: string; name: string }>
   lots: Lot[]
   selectedLotId: string | null
   canManageMap: boolean
@@ -75,6 +76,7 @@ type Props = {
   onOpenLotDetails: (lotId: string) => void
   onReserveLot: (lotId: string) => void
   onSimulateLot: (lotId: string) => void
+  onChangeDevelopment: (developmentId: string) => void
   onRefresh: () => Promise<void>
   getStatusMeta: (status: string) => StatusMeta
   formatCurrency: (value: number) => string
@@ -115,6 +117,7 @@ function getEffectiveLotStatus(lot: Lot) {
 
 export default function DevelopmentLotMap({
   development,
+  developments,
   lots,
   selectedLotId,
   canManageMap,
@@ -122,6 +125,7 @@ export default function DevelopmentLotMap({
   onOpenLotDetails,
   onReserveLot,
   onSimulateLot,
+  onChangeDevelopment,
   onRefresh,
   getStatusMeta,
   formatCurrency,
@@ -157,7 +161,9 @@ export default function DevelopmentLotMap({
   useEffect(() => {
     setCurrentMap(development.map ?? null)
     setMarkerSize(development.map?.markerSize ?? 'medium')
-  }, [development.map])
+    setMobileLotId(null)
+    setMobileMapZoom(1)
+  }, [development.id, development.map])
 
   useEffect(() => {
     setMarkers(Object.fromEntries(lots.map((lot) => [
@@ -597,16 +603,25 @@ export default function DevelopmentLotMap({
   return (
     <div className={mobileFocusMode ? 'fixed inset-0 z-[60] flex h-[100dvh] flex-col overflow-hidden bg-background p-2 md:static md:block md:h-auto md:space-y-4 md:overflow-visible md:bg-transparent md:p-0' : 'space-y-4'}>
       {mobileFocusMode && (
-        <div className='flex shrink-0 items-center justify-between gap-2 rounded-2xl border border-border bg-surface px-3 py-2 shadow-sm md:hidden'>
-          <div className='min-w-0'>
-            <p className='truncate text-sm font-bold text-foreground'>{development.name}</p>
-            <p className='text-xs text-muted'>Toque em um lote para ver as acoes</p>
+        <div className='shrink-0 rounded-2xl border border-border bg-surface p-2 shadow-sm md:hidden'>
+          <div className='flex items-center gap-2'>
+            <select
+              aria-label='Trocar empreendimento'
+              value={development.id}
+              onChange={(event) => onChangeDevelopment(event.target.value)}
+              className='h-10 min-w-0 flex-1 rounded-xl border border-border bg-surface-secondary px-3 text-sm font-bold text-foreground outline-none focus:ring-2 focus:ring-primary'
+            >
+              {developments.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+            <button type='button' aria-label='Sair da tela cheia' onClick={() => setMobileFocusMode(false)} className='h-10 w-10 shrink-0 rounded-xl border border-border bg-surface text-xl text-muted'>×</button>
           </div>
-          <div className='flex shrink-0 items-center gap-1'>
+          <div className='mt-2 flex items-center justify-between gap-2'>
+            <p className='min-w-0 truncate px-1 text-xs text-muted'>Toque em um lote para ver as acoes</p>
+            <div className='flex shrink-0 items-center gap-1'>
             <button type='button' aria-label='Diminuir planta' onClick={() => setMobileMapZoom((zoom) => Math.max(0.75, zoom - 0.25))} className='h-10 w-10 rounded-xl border border-border bg-surface-secondary text-xl font-semibold text-foreground'>−</button>
             <button type='button' aria-label='Restaurar tamanho da planta' onClick={() => setMobileMapZoom(1)} className='h-10 min-w-12 rounded-xl border border-border bg-surface-secondary px-2 text-xs font-bold text-foreground'>{Math.round(mobileMapZoom * 100)}%</button>
             <button type='button' aria-label='Ampliar planta' onClick={() => setMobileMapZoom((zoom) => Math.min(2, zoom + 0.25))} className='h-10 w-10 rounded-xl border border-border bg-surface-secondary text-xl font-semibold text-foreground'>+</button>
-            <button type='button' aria-label='Sair da tela cheia' onClick={() => setMobileFocusMode(false)} className='ml-1 h-10 w-10 rounded-xl border border-border bg-surface text-xl text-muted'>×</button>
+            </div>
           </div>
         </div>
       )}
@@ -963,14 +978,14 @@ export default function DevelopmentLotMap({
                 <>
                   <button
                     type='button'
-                    onClick={() => { setMobileLotId(null); onSimulateLot(mobileLot.id) }}
+                    onClick={() => { setMobileLotId(null); setMobileFocusMode(false); onSimulateLot(mobileLot.id) }}
                     className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white'
                   >
                     Simular venda
                   </button>
                   <button
                     type='button'
-                    onClick={() => { setMobileLotId(null); onReserveLot(mobileLot.id) }}
+                    onClick={() => { setMobileLotId(null); setMobileFocusMode(false); onReserveLot(mobileLot.id) }}
                     className='rounded-xl border border-border bg-surface-secondary px-4 py-3 text-sm font-semibold text-foreground'
                   >
                     Reservar lote
@@ -981,14 +996,14 @@ export default function DevelopmentLotMap({
                 <>
                   <button
                     type='button'
-                    onClick={() => { setMobileLotId(null); onSimulateLot(mobileLot.id) }}
+                    onClick={() => { setMobileLotId(null); setMobileFocusMode(false); onSimulateLot(mobileLot.id) }}
                     className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white'
                   >
                     Simular nova condicao
                   </button>
                   <button
                     type='button'
-                    onClick={() => { setMobileLotId(null); onOpenLotDetails(mobileLot.id) }}
+                    onClick={() => { setMobileLotId(null); setMobileFocusMode(false); onOpenLotDetails(mobileLot.id) }}
                     className='rounded-xl border border-border bg-surface-secondary px-4 py-3 text-sm font-semibold text-foreground'
                   >
                     Ver reserva
@@ -999,7 +1014,7 @@ export default function DevelopmentLotMap({
                 <>
                   <button
                     type='button'
-                    onClick={() => { setMobileLotId(null); onOpenLotDetails(mobileLot.id) }}
+                    onClick={() => { setMobileLotId(null); setMobileFocusMode(false); onOpenLotDetails(mobileLot.id) }}
                     className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white'
                   >
                     Ver venda
@@ -1017,7 +1032,7 @@ export default function DevelopmentLotMap({
               {mobileLotStatus === 'on_hold' && (
                 <button
                   type='button'
-                  onClick={() => { setMobileLotId(null); onOpenLotDetails(mobileLot.id) }}
+                  onClick={() => { setMobileLotId(null); setMobileFocusMode(false); onOpenLotDetails(mobileLot.id) }}
                   className='rounded-xl border border-border bg-surface-secondary px-4 py-3 text-sm font-semibold text-foreground'
                 >
                   Ver detalhes
@@ -1025,7 +1040,7 @@ export default function DevelopmentLotMap({
               )}
               <button
                 type='button'
-                onClick={() => { setMobileLotId(null); onOpenLotDetails(mobileLot.id) }}
+                onClick={() => { setMobileLotId(null); setMobileFocusMode(false); onOpenLotDetails(mobileLot.id) }}
                 className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground'
               >
                 Dados do lote
