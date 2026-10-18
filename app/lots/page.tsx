@@ -1324,10 +1324,27 @@ function LotsContent() {
                     formatArea={formatArea}
                   />
                 ) : (
-                  <div className='rounded-2xl border border-dashed border-border bg-surface-secondary p-6 text-sm text-muted'>
-                    {selectedDevelopment
-                      ? 'A planta deste empreendimento ainda nao foi configurada por um administrador.'
-                      : 'Selecione um unico empreendimento para visualizar ou configurar a planta real.'}
+                  <div className='rounded-2xl border border-dashed border-border bg-surface-secondary p-5 sm:p-6'>
+                    <label className='block'>
+                      <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Empreendimento</span>
+                      <select
+                        value={selectedDevelopment?.id ?? ''}
+                        onChange={(event) => {
+                          if (event.target.value) window.location.assign(`/lots?developmentId=${encodeURIComponent(event.target.value)}&view=plan`)
+                        }}
+                        className='h-12 w-full rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary sm:max-w-md'
+                      >
+                        {!selectedDevelopment && <option value=''>Selecione um empreendimento</option>}
+                        {visibleDevelopments.map((development) => (
+                          <option key={development.id} value={development.id}>{development.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className='mt-5 rounded-xl border border-border bg-surface px-4 py-5 text-sm text-muted'>
+                      {selectedDevelopment
+                        ? `A planta de ${selectedDevelopment.name} ainda nao foi configurada por um administrador.`
+                        : 'Selecione um empreendimento para visualizar sua planta.'}
+                    </div>
                   </div>
                 )}
               </div>
