@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 type DevelopmentMap = {
   id: string
@@ -150,6 +151,8 @@ export default function DevelopmentLotMap({
   const [shareMessage, setShareMessage] = useState<string | null>(null)
   const [mobileLotId, setMobileLotId] = useState<string | null>(null)
   const [mobileStatusFilter, setMobileStatusFilter] = useState<StatusFilter>('all')
+  const [mobileFocusMode, setMobileFocusMode] = useState(false)
+  const [mobileMapZoom, setMobileMapZoom] = useState(1)
 
   useEffect(() => {
     setCurrentMap(development.map ?? null)
@@ -165,6 +168,30 @@ export default function DevelopmentLotMap({
       },
     ])))
   }, [lots])
+
+  useEffect(() => {
+    if (!canManageMap && window.matchMedia('(max-width: 767px)').matches) {
+      setMobileFocusMode(true)
+    }
+  }, [canManageMap, development.id])
+
+  useEffect(() => {
+    if (!mobileFocusMode) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [mobileFocusMode])
+
+  useEffect(() => {
+    const mobileMedia = window.matchMedia('(max-width: 767px)')
+    const leaveFocusOnDesktop = (event: MediaQueryListEvent) => {
+      if (!event.matches) setMobileFocusMode(false)
+    }
+    mobileMedia.addEventListener('change', leaveFocusOnDesktop)
+    return () => mobileMedia.removeEventListener('change', leaveFocusOnDesktop)
+  }, [])
 
   const sortedLots = useMemo(
     () => [...lots].sort((a, b) => {
@@ -568,8 +595,23 @@ export default function DevelopmentLotMap({
   }
 
   return (
-    <div className='space-y-4'>
-      <div className='space-y-3 rounded-2xl border border-border bg-surface-secondary p-3 md:hidden'>
+    <div className={mobileFocusMode ? 'fixed inset-0 z-[60] flex h-[100dvh] flex-col overflow-hidden bg-background p-2 md:static md:block md:h-auto md:space-y-4 md:overflow-visible md:bg-transparent md:p-0' : 'space-y-4'}>
+      {mobileFocusMode && (
+        <div className='flex shrink-0 items-center justify-between gap-2 rounded-2xl border border-border bg-surface px-3 py-2 shadow-sm md:hidden'>
+          <div className='min-w-0'>
+            <p className='truncate text-sm font-bold text-foreground'>{development.name}</p>
+            <p className='text-xs text-muted'>Toque em um lote para ver as acoes</p>
+          </div>
+          <div className='flex shrink-0 items-center gap-1'>
+            <button type='button' aria-label='Diminuir planta' onClick={() => setMobileMapZoom((zoom) => Math.max(0.75, zoom - 0.25))} className='h-10 w-10 rounded-xl border border-border bg-surface-secondary text-xl font-semibold text-foreground'>−</button>
+            <button type='button' aria-label='Restaurar tamanho da planta' onClick={() => setMobileMapZoom(1)} className='h-10 min-w-12 rounded-xl border border-border bg-surface-secondary px-2 text-xs font-bold text-foreground'>{Math.round(mobileMapZoom * 100)}%</button>
+            <button type='button' aria-label='Ampliar planta' onClick={() => setMobileMapZoom((zoom) => Math.min(2, zoom + 0.25))} className='h-10 w-10 rounded-xl border border-border bg-surface-secondary text-xl font-semibold text-foreground'>+</button>
+            <button type='button' aria-label='Sair da tela cheia' onClick={() => setMobileFocusMode(false)} className='ml-1 h-10 w-10 rounded-xl border border-border bg-surface text-xl text-muted'>×</button>
+          </div>
+        </div>
+      )}
+
+      <div className={`${mobileFocusMode ? 'hidden' : 'space-y-3'} rounded-2xl border border-border bg-surface-secondary p-3 md:hidden`}>
         <div className='flex items-center justify-between gap-3 px-1'>
           <p className='text-xs font-semibold uppercase text-muted'>Status dos lotes</p>
           <p className='text-xs font-bold text-primary'>
@@ -605,6 +647,13 @@ export default function DevelopmentLotMap({
             {exporting ? 'Gerando...' : 'Baixar imagem'}
           </button>
         </div>
+        <button
+          type='button'
+          onClick={() => setMobileFocusMode(true)}
+          className='w-full rounded-xl bg-primary px-3 py-2.5 text-sm font-semibold text-white'
+        >
+          Abrir mapa em tela cheia
+        </button>
       </div>
 
       <div className='flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
@@ -737,8 +786,8 @@ export default function DevelopmentLotMap({
         </div>
       )}
 
-      <div className='grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]'>
-        <div className='overflow-auto rounded-2xl border border-border bg-surface-secondary p-3'>
+      <div className={`${mobileFocusMode ? 'mt-2 min-h-0 flex-1' : ''} grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]`}>
+        <div className={`${mobileFocusMode ? 'h-full min-h-0 overscroll-contain p-1' : 'p-3'} overflow-auto rounded-2xl border border-border bg-surface-secondary`} style={mobileFocusMode ? { touchAction: 'pan-x pan-y' } : undefined}>
           <div
             ref={mapAreaRef}
             role={editing ? 'button' : undefined}
@@ -747,9 +796,10 @@ export default function DevelopmentLotMap({
               if (event.target instanceof HTMLElement && event.target.closest('[data-lot-marker]')) return
               placeMarker(event.clientX, event.clientY)
             }}
-            className={`relative mx-auto min-h-[420px] w-[calc(100vw-3rem)] min-w-[720px] max-w-6xl overflow-hidden rounded-xl bg-white shadow-sm md:w-full md:min-w-0 ${
+            className={`relative mx-auto min-h-[420px] overflow-hidden rounded-xl bg-white shadow-sm md:w-full md:min-w-0 ${mobileFocusMode ? 'min-w-0 max-w-none' : 'w-[calc(100vw-3rem)] min-w-[720px] max-w-6xl'} ${
               editing ? 'cursor-crosshair ring-2 ring-primary/30' : ''
             }`}
+            style={mobileFocusMode ? { width: `${720 * mobileMapZoom}px` } : undefined}
           >
             {currentMap.fileType === 'pdf' ? (
               <>
@@ -878,15 +928,15 @@ export default function DevelopmentLotMap({
         </aside>
       </div>
 
-      {mobileLot && mobileLotStatus && mobileLotMeta && (
-        <>
+      {mobileLot && mobileLotStatus && mobileLotMeta && typeof document !== 'undefined' && createPortal(
+        <div className='fixed inset-0 z-[80] md:hidden'>
           <button
             type='button'
             aria-label='Fechar lote selecionado'
-            className='fixed inset-0 z-40 bg-slate-950/30 md:hidden'
+            className='absolute inset-0 bg-slate-950/30'
             onClick={() => setMobileLotId(null)}
           />
-          <section className='fixed inset-x-0 bottom-0 z-50 rounded-t-2xl border border-border bg-surface p-4 shadow-2xl md:hidden'>
+          <section className='absolute inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto rounded-t-2xl border border-border bg-surface p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl'>
             <div className='mx-auto mb-3 h-1 w-10 rounded-full bg-border' />
             <div className='flex items-start justify-between gap-3'>
               <div>
@@ -978,11 +1028,12 @@ export default function DevelopmentLotMap({
                 onClick={() => { setMobileLotId(null); onOpenLotDetails(mobileLot.id) }}
                 className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground'
               >
-                Detalhes completos
+                Dados do lote
               </button>
             </div>
           </section>
-        </>
+        </div>,
+        document.body,
       )}
     </div>
   )
