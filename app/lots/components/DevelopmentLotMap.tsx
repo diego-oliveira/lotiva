@@ -601,7 +601,7 @@ export default function DevelopmentLotMap({
   }
 
   return (
-    <div className={mobileFocusMode ? 'fixed inset-0 z-[60] flex h-[100dvh] flex-col overflow-hidden bg-background p-2 md:static md:block md:h-auto md:space-y-4 md:overflow-visible md:bg-transparent md:p-0' : 'space-y-4'}>
+    <div className={mobileFocusMode ? 'fixed inset-0 z-[35] flex h-[100dvh] flex-col overflow-hidden bg-background p-2 md:static md:block md:h-auto md:space-y-4 md:overflow-visible md:bg-transparent md:p-0' : 'space-y-4'}>
       {mobileFocusMode && (
         <div className='shrink-0 rounded-2xl border border-border bg-surface p-2 shadow-sm md:hidden'>
           <div className='flex items-center gap-2'>
@@ -978,14 +978,14 @@ export default function DevelopmentLotMap({
                 <>
                   <button
                     type='button'
-                    onClick={() => { setMobileLotId(null); setMobileFocusMode(false); onSimulateLot(mobileLot.id) }}
+                    onClick={() => { setMobileLotId(null); onSimulateLot(mobileLot.id) }}
                     className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white'
                   >
                     Simular venda
                   </button>
                   <button
                     type='button'
-                    onClick={() => { setMobileLotId(null); setMobileFocusMode(false); onReserveLot(mobileLot.id) }}
+                    onClick={() => { setMobileLotId(null); onReserveLot(mobileLot.id) }}
                     className='rounded-xl border border-border bg-surface-secondary px-4 py-3 text-sm font-semibold text-foreground'
                   >
                     Reservar lote
@@ -996,14 +996,14 @@ export default function DevelopmentLotMap({
                 <>
                   <button
                     type='button'
-                    onClick={() => { setMobileLotId(null); setMobileFocusMode(false); onSimulateLot(mobileLot.id) }}
+                    onClick={() => { setMobileLotId(null); onSimulateLot(mobileLot.id) }}
                     className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white'
                   >
                     Simular nova condicao
                   </button>
                   <button
                     type='button'
-                    onClick={() => { setMobileLotId(null); setMobileFocusMode(false); onOpenLotDetails(mobileLot.id) }}
+                    onClick={() => { setMobileLotId(null); onOpenLotDetails(mobileLot.id) }}
                     className='rounded-xl border border-border bg-surface-secondary px-4 py-3 text-sm font-semibold text-foreground'
                   >
                     Ver reserva
@@ -1014,7 +1014,7 @@ export default function DevelopmentLotMap({
                 <>
                   <button
                     type='button'
-                    onClick={() => { setMobileLotId(null); setMobileFocusMode(false); onOpenLotDetails(mobileLot.id) }}
+                    onClick={() => { setMobileLotId(null); onOpenLotDetails(mobileLot.id) }}
                     className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white'
                   >
                     Ver venda
@@ -1032,7 +1032,7 @@ export default function DevelopmentLotMap({
               {mobileLotStatus === 'on_hold' && (
                 <button
                   type='button'
-                  onClick={() => { setMobileLotId(null); setMobileFocusMode(false); onOpenLotDetails(mobileLot.id) }}
+                  onClick={() => { setMobileLotId(null); onOpenLotDetails(mobileLot.id) }}
                   className='rounded-xl border border-border bg-surface-secondary px-4 py-3 text-sm font-semibold text-foreground'
                 >
                   Ver detalhes
@@ -1040,7 +1040,7 @@ export default function DevelopmentLotMap({
               )}
               <button
                 type='button'
-                onClick={() => { setMobileLotId(null); setMobileFocusMode(false); onOpenLotDetails(mobileLot.id) }}
+                onClick={() => { setMobileLotId(null); onOpenLotDetails(mobileLot.id) }}
                 className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground'
               >
                 Dados do lote
