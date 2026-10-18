@@ -20,16 +20,16 @@ export default async function SignInPage() {
             <p className='text-xs font-semibold uppercase tracking-[0.24em] text-slate-400'>Lotiva</p>
             <h1 className='mt-3 text-3xl font-bold tracking-tight'>Acesse o Lotiva</h1>
             <p className='mt-4 max-w-sm text-sm leading-6 text-slate-300'>
-              Receba um link seguro por email para entrar no painel administrativo.
+              Receba um codigo seguro por email e continue no mesmo navegador do seu celular.
             </p>
           </div>
         </div>
 
         <div className='px-8 py-10 sm:px-12'>
-          <p className='text-sm font-medium text-muted'>Signin</p>
-          <h2 className='mt-2 text-2xl font-bold text-foreground'>Magic link</h2>
+          <p className='text-sm font-medium text-muted'>Acesso seguro</p>
+          <h2 className='mt-2 text-2xl font-bold text-foreground'>Entre com seu email</h2>
           <p className='mt-3 text-sm leading-6 text-muted'>
-            Use o email vinculado ao seu acesso administrativo. Por seguranca, a confirmacao e a mesma para emails validos ou nao.
+            Enviaremos um codigo de 6 digitos. Voce nao precisa abrir o link no navegador interno do aplicativo de email.
           </p>
           <SignInForm />
         </div>
