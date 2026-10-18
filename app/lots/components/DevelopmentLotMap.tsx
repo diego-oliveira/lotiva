@@ -68,7 +68,6 @@ const markerSizes: Record<MarkerSize, { label: string; className: string; export
 
 type Props = {
   development: Development
-  developments: Array<{ id: string; name: string }>
   lots: Lot[]
   selectedLotId: string | null
   canManageMap: boolean
@@ -76,7 +75,6 @@ type Props = {
   onOpenLotDetails: (lotId: string) => void
   onReserveLot: (lotId: string) => void
   onSimulateLot: (lotId: string) => void
-  onChangeDevelopment: (developmentId: string) => void
   onRefresh: () => Promise<void>
   getStatusMeta: (status: string) => StatusMeta
   formatCurrency: (value: number) => string
@@ -117,7 +115,6 @@ function getEffectiveLotStatus(lot: Lot) {
 
 export default function DevelopmentLotMap({
   development,
-  developments,
   lots,
   selectedLotId,
   canManageMap,
@@ -125,7 +122,6 @@ export default function DevelopmentLotMap({
   onOpenLotDetails,
   onReserveLot,
   onSimulateLot,
-  onChangeDevelopment,
   onRefresh,
   getStatusMeta,
   formatCurrency,
@@ -601,18 +597,14 @@ export default function DevelopmentLotMap({
   }
 
   return (
-    <div className={mobileFocusMode ? 'fixed inset-0 z-[35] flex h-[100dvh] flex-col overflow-hidden bg-background p-2 md:static md:block md:h-auto md:space-y-4 md:overflow-visible md:bg-transparent md:p-0' : 'space-y-4'}>
+    <div className={mobileFocusMode ? 'fixed inset-0 z-[35] flex h-[100dvh] flex-col overflow-hidden bg-background p-2 pb-[calc(5rem+env(safe-area-inset-bottom))] md:static md:block md:h-auto md:space-y-4 md:overflow-visible md:bg-transparent md:p-0' : 'space-y-4'}>
       {mobileFocusMode && (
         <div className='shrink-0 rounded-2xl border border-border bg-surface p-2 shadow-sm md:hidden'>
           <div className='flex items-center gap-2'>
-            <select
-              aria-label='Trocar empreendimento'
-              value={development.id}
-              onChange={(event) => onChangeDevelopment(event.target.value)}
-              className='h-10 min-w-0 flex-1 rounded-xl border border-border bg-surface-secondary px-3 text-sm font-bold text-foreground outline-none focus:ring-2 focus:ring-primary'
-            >
-              {developments.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
+            <div className='min-w-0 flex-1 px-2'>
+              <p className='truncate text-sm font-bold text-foreground'>{development.name}</p>
+              <p className='truncate text-xs text-muted'>Planta do empreendimento</p>
+            </div>
             <button type='button' aria-label='Sair da tela cheia' onClick={() => setMobileFocusMode(false)} className='h-10 w-10 shrink-0 rounded-xl border border-border bg-surface text-xl text-muted'>×</button>
           </div>
           <div className='mt-2 flex items-center justify-between gap-2'>
