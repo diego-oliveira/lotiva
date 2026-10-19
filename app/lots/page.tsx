@@ -345,6 +345,7 @@ function LotsContent() {
   const [canManageSettings, setCanManageSettings] = useState(false)
   const [canAdmin, setCanAdmin] = useState(false)
   const handledProposalInterestRef = useRef<string | null>(null)
+  const lotsRequestIdRef = useRef(0)
   const [editingLot, setEditingLot] = useState(false)
   const [lotEditForm, setLotEditForm] = useState<LotEditForm>({
     identifier: '',
@@ -362,17 +363,21 @@ function LotsContent() {
   const [lotEditSuccess, setLotEditSuccess] = useState<string | null>(null)
 
   async function fetchLots(activeDevelopmentId = developmentFilter) {
+    const requestId = ++lotsRequestIdRef.current
     try {
       setLoading(true)
       const query = activeDevelopmentId ? `?developmentId=${encodeURIComponent(activeDevelopmentId)}` : ''
       const response = await fetch(`/api/lots${query}`, { cache: 'no-store' })
       if (!response.ok) throw new Error('Nao foi possivel carregar os lotes')
-      setLots(await response.json())
+      const nextLots = await response.json()
+      if (requestId !== lotsRequestIdRef.current) return
+      setLots(nextLots)
       setError(null)
     } catch (err) {
+      if (requestId !== lotsRequestIdRef.current) return
       setError(err instanceof Error ? err.message : 'Erro ao carregar lotes')
     } finally {
-      setLoading(false)
+      if (requestId === lotsRequestIdRef.current) setLoading(false)
     }
   }
 
@@ -400,6 +405,7 @@ function LotsContent() {
 
   useEffect(() => {
     if (developmentFilter) {
+      setLots([])
       void fetchLots(developmentFilter)
       return
     }
@@ -414,7 +420,7 @@ function LotsContent() {
           setLoading(false)
           return
         }
-        const nextParams = new URLSearchParams(searchParams.toString())
+        const nextParams = new URLSearchParams(window.location.search)
         nextParams.set('developmentId', developmentId)
         router.replace(`/lots?${nextParams.toString()}`)
       })
@@ -422,7 +428,7 @@ function LotsContent() {
         setError('Nao foi possivel identificar o empreendimento ativo')
         setLoading(false)
       })
-  }, [developmentFilter, router, searchParams])
+  }, [developmentFilter, router])
 
   useEffect(() => {
     const userId = searchParams.get('userId')

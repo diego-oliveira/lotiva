@@ -274,19 +274,26 @@ function WorkspaceSelectorContent({
     )
   }
 
-  const handleChange = (developmentId: string) => {
+  const handleChange = async (developmentId: string) => {
     if (!developmentId || developmentId === selectedDevelopment?.id) return
 
-    const params = new URLSearchParams(searchParams.toString())
+    const params = new URLSearchParams()
+    ;['view', 'month', 'calendarBy', 'tab'].forEach((key) => {
+      const value = searchParams.get(key)
+      if (value) params.set(key, value)
+    })
     params.set('developmentId', developmentId)
     setPendingDevelopmentId(developmentId)
     window.localStorage.setItem('lotiva.workspace.developmentId', developmentId)
-    void fetch('/api/me/workspace', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ developmentId }),
-    })
-    router.push(`${pathname}?${params.toString()}`)
+    try {
+      await fetch('/api/me/workspace', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ developmentId }),
+      })
+    } finally {
+      window.location.assign(`${pathname}?${params.toString()}`)
+    }
   }
 
   return (
@@ -303,7 +310,7 @@ function WorkspaceSelectorContent({
       <select
         aria-label='Empreendimento ativo'
         value={selectedDevelopment?.id ?? ''}
-        onChange={(event) => handleChange(event.target.value)}
+        onChange={(event) => void handleChange(event.target.value)}
         className='min-w-0 flex-1 bg-transparent py-2 text-xs font-semibold text-foreground outline-none lg:text-sm'
       >
         {developments.map((development) => (
