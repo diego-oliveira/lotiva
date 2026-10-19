@@ -19,6 +19,7 @@ type FinancePageProps = {
     view?: string
     month?: string
     day?: string
+    calendarBy?: string
   }>
 }
 
@@ -102,6 +103,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
 
   const params = await searchParams
   const view: FinanceView = params?.view === 'list' || params?.view === 'summary' ? params.view : 'calendar'
+  const calendarBy = params?.calendarBy === 'due' ? 'due' : 'payment'
   const now = new Date()
   const selectedMonth = parseMonth(params?.month, now)
   const monthStart = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1)
@@ -242,7 +244,25 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
             },
           },
         },
-        select: { paidAmount: true, paidAt: true },
+        include: {
+          sale: {
+            include: {
+              user: true,
+              lot: { include: { block: true } },
+            },
+          },
+          externalCharges: {
+            include: {
+              connection: { select: { provider: true } },
+            },
+            orderBy: { version: 'desc' },
+            take: 1,
+          },
+        },
+        orderBy: [
+          { paidAt: 'asc' },
+          { sequence: 'asc' },
+        ],
       })
     : []
 
@@ -266,9 +286,11 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
     summary.paidCount = paidInPeriod.length
   }
 
-  const receivablesByDay = new Map<string, typeof receivables>()
-  receivables.forEach((receivable) => {
-    const key = formatDateInput(receivable.dueDate)
+  const calendarReceivables = calendarBy === 'payment' ? paidInPeriod : receivables
+  const receivablesByDay = new Map<string, typeof calendarReceivables>()
+  calendarReceivables.forEach((receivable) => {
+    const calendarDate = calendarBy === 'payment' ? receivable.paidAt! : receivable.dueDate
+    const key = formatDateInput(calendarDate)
     receivablesByDay.set(key, [...(receivablesByDay.get(key) ?? []), receivable])
   })
   const selectedDay = parseDateOnly(params?.day)
@@ -391,7 +413,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
           <div>
             <h2 className='text-2xl font-bold text-foreground'>{selectedDevelopment.name}</h2>
             <p className='mt-1 text-sm text-muted'>
-              {selectedDevelopment.company.name} · {receivables.length} parcela(s) no recorte financeiro atual.
+              {selectedDevelopment.company.name} · {view === 'calendar' ? calendarReceivables.length : receivables.length} registro(s) no recorte financeiro atual.
             </p>
           </div>
         </div>
@@ -405,7 +427,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
         ] as const).map(([value, label]) => (
           <Link
             key={value}
-            href={`/finance?developmentId=${selectedDevelopment.id}&view=${value}${value === 'calendar' ? `&month=${monthKey(selectedMonth)}` : ''}`}
+            href={`/finance?developmentId=${selectedDevelopment.id}&view=${value}${value === 'calendar' ? `&month=${monthKey(selectedMonth)}&calendarBy=${calendarBy}` : ''}`}
             className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${view === value ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary hover:text-foreground'}`}
           >
             {label}
@@ -416,11 +438,17 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
       {view === 'calendar' && (
         <section className='panel flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between'>
           <div className='flex items-center justify-between gap-2 sm:justify-start'>
-            <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(addMonths(selectedMonth, -1))}`} className='rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-surface-secondary' aria-label='Mes anterior'>←</Link>
+            <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(addMonths(selectedMonth, -1))}&calendarBy=${calendarBy}`} className='rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-surface-secondary' aria-label='Mes anterior'>←</Link>
             <h2 className='min-w-48 text-center text-lg font-bold text-foreground'>{monthLabel(selectedMonth)}</h2>
-            <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(addMonths(selectedMonth, 1))}`} className='rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-surface-secondary' aria-label='Proximo mes'>→</Link>
+            <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(addMonths(selectedMonth, 1))}&calendarBy=${calendarBy}`} className='rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-surface-secondary' aria-label='Proximo mes'>→</Link>
           </div>
-          <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(now)}&day=${formatDateInput(now)}`} className='rounded-xl border border-border px-4 py-2 text-center text-sm font-semibold text-foreground hover:bg-surface-secondary'>Hoje</Link>
+          <div className='flex flex-col gap-2 sm:flex-row'>
+            <div className='inline-flex rounded-xl border border-border bg-background p-1'>
+              <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(selectedMonth)}&calendarBy=payment`} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${calendarBy === 'payment' ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary'}`}>Pagamentos</Link>
+              <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(selectedMonth)}&calendarBy=due`} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${calendarBy === 'due' ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary'}`}>Vencimentos</Link>
+            </div>
+            <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(now)}&day=${formatDateInput(now)}&calendarBy=${calendarBy}`} className='rounded-xl border border-border px-4 py-2 text-center text-sm font-semibold text-foreground hover:bg-surface-secondary'>Hoje</Link>
+          </div>
         </section>
       )}
 
@@ -460,11 +488,13 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                 const key = formatDateInput(date)
                 const items = receivablesByDay.get(key) ?? []
                 const inMonth = date.getMonth() === selectedMonth.getMonth() && date.getFullYear() === selectedMonth.getFullYear()
-                const total = items.reduce((sum, item) => sum + Number(item.amount), 0)
+                const total = items.reduce((sum, item) => sum + Number(calendarBy === 'payment' ? item.paidAmount : item.amount), 0)
                 const allPaid = items.length > 0 && items.every((item) => item.status === 'paid')
                 const hasOverdue = items.some((item) => item.status !== 'paid' && item.dueDate < today)
                 const hasDueToday = items.some((item) => item.status !== 'paid' && sameDay(item.dueDate, today))
-                const tone = hasOverdue
+                const tone = calendarBy === 'payment'
+                  ? items.length > 0 ? 'bg-emerald-50 text-emerald-800' : 'bg-surface text-foreground'
+                  : hasOverdue
                   ? 'bg-red-50 text-red-800'
                   : hasDueToday
                     ? 'bg-amber-50 text-amber-800'
@@ -476,13 +506,13 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                 return (
                   <Link
                     key={key}
-                    href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(date)}&day=${key}`}
+                    href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(date)}&day=${key}&calendarBy=${calendarBy}`}
                     className={`min-h-20 border-b border-r border-border p-1.5 transition hover:brightness-95 sm:min-h-28 sm:p-3 ${tone} ${!inMonth ? 'opacity-35' : ''} ${key === selectedDayKey ? 'relative z-10 ring-2 ring-inset ring-primary' : ''}`}
                   >
                     <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold sm:text-sm ${sameDay(date, today) ? 'bg-primary text-white' : ''}`}>{date.getDate()}</span>
                     {items.length > 0 && (
                       <div className='mt-1'>
-                        <p className='text-[10px] font-bold sm:text-xs'>{items.length} {items.length === 1 ? 'parcela' : 'parcelas'}</p>
+                        <p className='text-[10px] font-bold sm:text-xs'>{items.length} {calendarBy === 'payment' ? (items.length === 1 ? 'pagamento' : 'pagamentos') : (items.length === 1 ? 'parcela' : 'parcelas')}</p>
                         <p className='mt-1 hidden text-xs font-semibold sm:block'>{formatCurrency(total)}</p>
                       </div>
                     )}
@@ -491,20 +521,26 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
               })}
             </div>
             <div className='flex flex-wrap gap-4 border-t border-border px-4 py-3 text-xs text-muted'>
-              <span><i className='mr-1 inline-block h-2.5 w-2.5 rounded-full bg-emerald-500' />Pagas</span>
-              <span><i className='mr-1 inline-block h-2.5 w-2.5 rounded-full bg-blue-500' />A vencer</span>
-              <span><i className='mr-1 inline-block h-2.5 w-2.5 rounded-full bg-amber-500' />Hoje</span>
-              <span><i className='mr-1 inline-block h-2.5 w-2.5 rounded-full bg-red-500' />Vencidas</span>
+              {calendarBy === 'payment' ? (
+                <span><i className='mr-1 inline-block h-2.5 w-2.5 rounded-full bg-emerald-500' />Pagamentos recebidos pela data da baixa</span>
+              ) : (
+                <>
+                  <span><i className='mr-1 inline-block h-2.5 w-2.5 rounded-full bg-emerald-500' />Pagas</span>
+                  <span><i className='mr-1 inline-block h-2.5 w-2.5 rounded-full bg-blue-500' />A vencer</span>
+                  <span><i className='mr-1 inline-block h-2.5 w-2.5 rounded-full bg-amber-500' />Hoje</span>
+                  <span><i className='mr-1 inline-block h-2.5 w-2.5 rounded-full bg-red-500' />Vencidas</span>
+                </>
+              )}
             </div>
           </section>
 
           <section className='panel self-start overflow-hidden'>
             <div className='panel-header px-5 py-4'>
               <h2 className='text-base font-bold text-foreground'>{formatDate(selectedDay)}</h2>
-              <p className='mt-1 text-sm text-muted'>{selectedDayReceivables.length} parcela(s) com vencimento nesta data.</p>
+              <p className='mt-1 text-sm text-muted'>{selectedDayReceivables.length} {calendarBy === 'payment' ? 'pagamento(s) registrado(s)' : 'parcela(s) com vencimento'} nesta data.</p>
             </div>
             {selectedDayReceivables.length === 0 ? (
-              <p className='px-5 py-10 text-center text-sm text-muted'>Nenhum vencimento neste dia.</p>
+              <p className='px-5 py-10 text-center text-sm text-muted'>{calendarBy === 'payment' ? 'Nenhum pagamento registrado neste dia.' : 'Nenhum vencimento neste dia.'}</p>
             ) : (
               <div className='divide-y divide-border'>
                 {selectedDayReceivables.map((receivable) => {
@@ -518,7 +554,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                         </div>
                         <span className={`pill shrink-0 ${itemStatus.className}`}>{itemStatus.label}</span>
                       </div>
-                      <p className='text-lg font-bold text-foreground'>{formatCurrency(Number(receivable.amount))}</p>
+                      <p className='text-lg font-bold text-foreground'>{formatCurrency(Number(calendarBy === 'payment' ? receivable.paidAmount : receivable.amount))}</p>
                       {receivable.paidAt && <p className='text-xs font-semibold text-emerald-700'>Paga em {formatDate(receivable.paidAt)}</p>}
                       <ReceivableActions
                         canManagePayments={canManagePayments}
