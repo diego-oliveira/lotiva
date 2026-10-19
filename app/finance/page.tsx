@@ -103,7 +103,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
 
   const params = await searchParams
   const view: FinanceView = params?.view === 'list' || params?.view === 'summary' ? params.view : 'calendar'
-  const calendarBy = params?.calendarBy === 'due' ? 'due' : 'payment'
+  const calendarBy = params?.calendarBy === 'payment' ? 'payment' : 'due'
   const now = new Date()
   const selectedMonth = parseMonth(params?.month, now)
   const monthStart = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1)
