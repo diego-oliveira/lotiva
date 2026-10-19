@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import DevelopmentLotMap from './components/DevelopmentLotMap'
 import { CurrencyTextInput, NumberTextInput } from '@/app/components/NumberTextInput'
 
@@ -57,6 +57,7 @@ interface LotReservation {
   createdAt: string
   updatedAt: string
   user: Person
+  createdBy?: Person | null
   sale?: { id: string } | null
   canManage?: boolean
 }
@@ -137,6 +138,7 @@ interface Lot {
   sale?: LotSale | null
   events: LotEvent[]
   canReleaseHold?: boolean
+  canManageReservation?: boolean
   saleEligibility?: {
     userId: string
     canConvert: boolean
@@ -341,6 +343,7 @@ function LotsContent() {
   const [canManageUsers, setCanManageUsers] = useState(false)
   const [canManageSettings, setCanManageSettings] = useState(false)
   const [canAdmin, setCanAdmin] = useState(false)
+  const handledProposalInterestRef = useRef<string | null>(null)
   const [editingLot, setEditingLot] = useState(false)
   const [lotEditForm, setLotEditForm] = useState<LotEditForm>({
     identifier: '',
@@ -436,7 +439,9 @@ function LotsContent() {
   async function fetchClients() {
     const response = await fetch('/api/clients?scope=operational', { cache: 'no-store' })
     if (!response.ok) throw new Error('Nao foi possivel carregar clientes')
-    setClients(await response.json())
+    const nextClients = await response.json()
+    setClients(nextClients)
+    return nextClients as Person[]
   }
 
   async function saveLotEventNote() {
@@ -593,6 +598,7 @@ function LotsContent() {
   const selectedLotStatus = selectedLot ? getEffectiveLotStatus(selectedLot) : null
   const selectedDevelopmentSettings = selectedLot?.block.development?.settings ?? null
   const selectedLotReservation = selectedLot ? getActiveReservation(selectedLot) : null
+  const hasReservationDataIssue = selectedLotStatus === 'reserved' && !selectedLotReservation
   const selectedReservationProposal = selectedLot?.proposals.find(
     (proposal) => proposal.user.id === selectedLotReservation?.user.id,
   ) ?? null
@@ -746,19 +752,22 @@ function LotsContent() {
     setProposalNotice(null)
   }
 
-  const openSimulator = async (lotOverride?: Lot) => {
+  const openSimulator = async (lotOverride?: Lot, interest?: PublicLotInterest) => {
     const activeLot = lotOverride ?? selectedLot
     if (!activeLot) return
 
     try {
       setProposalError(null)
-      if (clients.length === 0) await fetchClients()
+      const availableClients = clients.length === 0 ? await fetchClients() : clients
 
       const settings = activeLot.block.development?.settings
       const salePrice = activeLot.price
       const minDownPaymentPercentage = settings?.minDownPaymentPercentage ?? 10
       const maxInstallments = settings?.maxInstallments ?? 120
       const activeReservation = getActiveReservation(activeLot)
+      const interestClient = interest
+        ? availableClients.find((client) => client.email.trim().toLowerCase() === interest.email.trim().toLowerCase())
+        : null
 
       setSimulatorForm({
         salePrice,
@@ -771,13 +780,13 @@ function LotsContent() {
         firstDueDate: getDefaultDueDate(),
       })
       setProposalForm({
-        userId: activeReservation?.user.id ?? '',
-        notes: activeReservation?.proposal ?? '',
+        userId: activeReservation?.user.id ?? interestClient?.id ?? '',
+        notes: activeReservation?.proposal ?? interest?.notes ?? '',
       })
-      setClientSearch('')
+      setClientSearch(activeReservation?.user.name ?? interestClient?.name ?? interest?.name ?? '')
       setClientDropdownOpen(false)
-      setShowQuickClientForm(false)
-      setQuickClient({ name: '', email: '' })
+      setShowQuickClientForm(Boolean(interest && !activeReservation && !interestClient))
+      setQuickClient({ name: interest?.name ?? '', email: interest?.email ?? '' })
       setShowReservationForm(false)
       setShowSimulator(true)
       setProposalNotice(null)
@@ -818,6 +827,23 @@ function LotsContent() {
     setSelectedLotId(lotId)
     await openReservationForm(lot)
   }
+
+  useEffect(() => {
+    const action = searchParams.get('action')
+    const lotId = searchParams.get('lotId')
+    const interestId = searchParams.get('interestId')
+    if (loading || action !== 'proposal' || !lotId || !interestId) return
+
+    const requestKey = `${lotId}:${interestId}`
+    if (handledProposalInterestRef.current === requestKey) return
+    const lot = lots.find((item) => item.id === lotId)
+    const interest = lot?.publicInterests.find((item) => item.id === interestId)
+    if (!lot || !interest) return
+
+    handledProposalInterestRef.current = requestKey
+    setSelectedLotId(lot.id)
+    void openSimulator(lot, interest)
+  }, [loading, lots, searchParams])
 
   const saveReservation = async () => {
     if (!selectedLot) return
@@ -1716,10 +1742,27 @@ function LotsContent() {
                         <span className='pill bg-amber-50 text-amber-700'>Ativa</span>
                       )}
                     </div>
-                    <p className='mt-2 text-sm leading-6 text-muted'>{getActiveReservation(selectedLot)?.proposal || 'Sem proposta registrada.'}</p>
+                    <dl className='mt-4 grid gap-3 text-sm sm:grid-cols-2'>
+                      <div>
+                        <dt className='text-muted'>Cliente</dt>
+                        <dd className='mt-1 font-semibold text-foreground'>{getActiveReservation(selectedLot)!.user.name}</dd>
+                      </div>
+                      <div>
+                        <dt className='text-muted'>Reservado por</dt>
+                        <dd className='mt-1 font-semibold text-foreground'>{getActiveReservation(selectedLot)!.createdBy?.name || 'Responsavel nao identificado'}</dd>
+                      </div>
+                    </dl>
+                    <p className='mt-3 text-sm leading-6 text-muted'>{getActiveReservation(selectedLot)?.proposal || 'Sem observacao registrada.'}</p>
                     {getActiveReservation(selectedLot)?.expiresAt && (
                       <p className='mt-3 text-sm font-semibold text-foreground'>Valida ate {formatDate(getActiveReservation(selectedLot)!.expiresAt!)}</p>
                     )}
+                  </div>
+                )}
+
+                {hasReservationDataIssue && (
+                  <div className='rounded-2xl border border-amber-200 bg-amber-50 p-5'>
+                    <h3 className='text-sm font-semibold text-amber-900'>Reserva sem dados</h3>
+                    <p className='mt-2 text-sm leading-6 text-amber-800'>Este lote esta marcado como reservado, mas nao possui cliente, responsavel ou validade. Registre a reserva corretamente ou libere o lote.</p>
                   </div>
                 )}
 
@@ -1728,7 +1771,7 @@ function LotsContent() {
                     <div className='flex items-start justify-between gap-3'>
                       <div>
                         <h3 className='text-sm font-semibold text-foreground'>Fila de interesse</h3>
-                        <p className='mt-1 text-xs font-semibold text-sky-700'>{selectedLot.publicInterests.length} solicitacao(oes) pelo mapa publico</p>
+                        <p className='mt-1 text-xs font-semibold text-sky-700'>{selectedLot.publicInterests.length} interessado(s) pelo mapa publico</p>
                       </div>
                       <span className='pill bg-white text-sky-700'>Publico</span>
                     </div>
@@ -1823,7 +1866,18 @@ function LotsContent() {
 
                     {selectedLotStatus === 'reserved' && (
                       <>
-                        {reservationCanConvert ? (
+                        {hasReservationDataIssue ? (
+                          <>
+                            <button onClick={() => void openReservationForm()} className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+                              Registrar reserva
+                            </button>
+                            {selectedLot.canManageReservation && (
+                              <button onClick={() => updateLotStatus('available')} disabled={reservationSaving} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background disabled:opacity-60'>
+                                Liberar lote
+                              </button>
+                            )}
+                          </>
+                        ) : reservationCanConvert ? (
                           <Link
                             href={`/sales?developmentId=${selectedLot.block.development?.id ?? developmentFilter}&lotId=${selectedLot.id}${selectedLotReservation ? `&userId=${selectedLotReservation.user.id}&reservationId=${selectedLotReservation.id}` : ''}${reservationProposalId ? `&proposalId=${reservationProposalId}` : ''}`}
                             className='block w-full rounded-xl bg-primary px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-primary-strong'
@@ -1845,10 +1899,12 @@ function LotsContent() {
                             </p>
                           </>
                         )}
-                        <button onClick={() => void openSimulator()} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
-                          Nova proposta
-                        </button>
-                        {selectedLotReservation?.canManage ? (
+                        {!hasReservationDataIssue && (
+                          <button onClick={() => void openSimulator()} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
+                            Nova proposta
+                          </button>
+                        )}
+                        {!hasReservationDataIssue && (selectedLotReservation?.canManage ? (
                           <button onClick={cancelReservation} disabled={reservationSaving} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background disabled:opacity-60'>
                             Liberar lote
                           </button>
@@ -1856,7 +1912,7 @@ function LotsContent() {
                           <p className='rounded-xl border border-border bg-background px-4 py-3 text-center text-sm text-muted'>
                             Somente o responsavel pela reserva ou um administrador pode liberar este lote.
                           </p>
-                        )}
+                        ))}
                       </>
                     )}
 

@@ -248,7 +248,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     queuePosition: result.queuePosition,
     alreadyExisted: result.existing,
     message: result.existing
-      ? 'Sua solicitacao ja estava na fila e foi atualizada.'
-      : 'Solicitacao recebida com sucesso.',
+      ? 'Seu interesse ja estava na fila e foi atualizado.'
+      : 'Interesse registrado com sucesso.',
   }, { status: result.existing ? 200 : 201 })
 }

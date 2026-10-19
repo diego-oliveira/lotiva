@@ -60,7 +60,7 @@ const statusMeta: Record<string, { label: string; color: string; badge: string; 
     label: 'Fila de interesse',
     color: 'bg-sky-500',
     badge: 'bg-sky-50 text-sky-700',
-    text: 'Este lote ja tem solicitacao em analise. Voce pode registrar seu interesse para entrar na fila.',
+    text: 'Este lote ja tem um interesse em analise. Voce pode registrar o seu para entrar na fila.',
   },
   reserved: {
     label: 'Reservado',
@@ -221,7 +221,7 @@ export default function PublicDevelopmentMapPage({ token }: { token: string }) {
       if (!response.ok) throw new Error(data.error || 'Nao foi possivel registrar seu interesse.')
       setSubmitState({
         type: 'success',
-        message: data.message || 'Solicitacao recebida com sucesso.',
+        message: data.message || 'Interesse registrado com sucesso.',
         lotId: selectedLot.id,
         queuePosition: data.queuePosition,
       })
@@ -360,10 +360,10 @@ export default function PublicDevelopmentMapPage({ token }: { token: string }) {
               <div className='mt-4 rounded-xl border border-border bg-surface-secondary px-4 py-3 text-sm leading-6 text-muted'>
                   {selectedLot.status === 'requested' && selectedLot.interestCount > 0
                   ? selectedLotSubmitState?.type === 'success'
-                    ? 'Sua solicitacao foi recebida. Nossa equipe vai analisar e entrar em contato.'
+                    ? 'Seu interesse foi registrado. Nossa equipe vai analisar e entrar em contato.'
                     : selectedLot.interestCount === 1
-                      ? 'Este lote tem 1 solicitacao em analise. Voce pode registrar seu interesse para entrar na fila.'
-                      : `Este lote tem ${selectedLot.interestCount} solicitacoes em analise. Voce pode registrar seu interesse para entrar na fila.`
+                      ? 'Este lote tem 1 interessado em analise. Voce pode registrar seu interesse para entrar na fila.'
+                      : `Este lote tem ${selectedLot.interestCount} interessados em analise. Voce pode registrar seu interesse para entrar na fila.`
                   : selectedMeta.text}
               </div>
 

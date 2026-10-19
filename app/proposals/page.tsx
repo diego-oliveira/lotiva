@@ -74,9 +74,9 @@ const statusMeta: Record<string, { label: string; className: string }> = {
 }
 
 const interestStatusMeta: Record<string, { label: string; className: string }> = {
-  pending: { label: 'Pendente', className: 'bg-amber-50 text-amber-700' },
-  contacted: { label: 'Contactada', className: 'bg-sky-50 text-sky-700' },
-  dismissed: { label: 'Descartada', className: 'bg-slate-100 text-slate-700' },
+  pending: { label: 'Novo interesse', className: 'bg-amber-50 text-amber-700' },
+  contacted: { label: 'Em atendimento', className: 'bg-sky-50 text-sky-700' },
+  dismissed: { label: 'Descartado', className: 'bg-slate-100 text-slate-700' },
 }
 
 function formatCurrency(value: number) {
@@ -105,7 +105,7 @@ function getLotAvailability(lot: PublicLotInterest['lot']) {
 function ProposalsContent() {
   const searchParams = useSearchParams()
   const developmentFilter = searchParams.get('developmentId') ?? ''
-  const [viewMode, setViewMode] = useState<'interests' | 'proposals'>('interests')
+  const [viewMode, setViewMode] = useState<'interests' | 'proposals'>(searchParams.get('tab') === 'interests' ? 'interests' : 'proposals')
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [interests, setInterests] = useState<PublicLotInterest[]>([])
   const [loading, setLoading] = useState(true)
@@ -129,7 +129,7 @@ function ProposalsContent() {
         fetch('/api/public-lot-interests', { cache: 'no-store' }),
       ])
       if (!proposalResponse.ok) throw new Error('Nao foi possivel carregar as propostas.')
-      if (!interestResponse.ok) throw new Error('Nao foi possivel carregar as solicitacoes publicas.')
+      if (!interestResponse.ok) throw new Error('Nao foi possivel carregar os interessados pelo mapa publico.')
       setProposals(await proposalResponse.json())
       const nextInterests = await interestResponse.json()
       setInterests(nextInterests)
@@ -248,15 +248,15 @@ function ProposalsContent() {
         body: JSON.stringify({ status }),
       })
       const payload = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel atualizar a solicitacao.')
+      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel atualizar o interessado.')
       setInterests((current) => current.map((interest) => (interest.id === payload.id ? payload : interest)))
       setFeedback({
         type: 'success',
-        message: 'Solicitacao atualizada.',
+        message: 'Interessado atualizado.',
         developmentId: feedbackDevelopmentId,
       })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Nao foi possivel atualizar a solicitacao.'
+      const message = err instanceof Error ? err.message : 'Nao foi possivel atualizar o interessado.'
       setError(message)
       setFeedback({ type: 'error', message, developmentId: feedbackDevelopmentId })
     } finally {
@@ -295,14 +295,22 @@ function ProposalsContent() {
     }
   }
 
+  async function createProposalFromInterest(interest: PublicLotInterest) {
+    if (interest.status === 'pending') {
+      await updateInterestStatus(interest.id, 'contacted')
+    }
+    const developmentId = interest.lot.block.development?.id ?? developmentFilter
+    window.location.href = `/lots?developmentId=${encodeURIComponent(developmentId)}&view=plan&lotId=${encodeURIComponent(interest.lot.id)}&action=proposal&interestId=${encodeURIComponent(interest.id)}`
+  }
+
   if (loading) return <div className='h-72 animate-pulse rounded-2xl bg-surface-secondary' />
 
   return (
     <div className='space-y-6'>
       <div className='flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'>
         <div>
-          <h1 className='page-title'>Funil comercial</h1>
-          <p className='page-subtitle'>Acompanhe solicitacoes do mapa publico, aprovacoes comerciais e continuidade das vendas.</p>
+          <h1 className='page-title'>Propostas</h1>
+          <p className='page-subtitle'>Crie e acompanhe propostas comerciais; use os interessados pelo mapa como ponto de partida para novos atendimentos.</p>
         </div>
         <div className='flex flex-col gap-3 sm:flex-row'>
           <div className='inline-flex rounded-xl border border-border bg-surface p-1'>
@@ -311,7 +319,7 @@ function ProposalsContent() {
               onClick={() => setViewMode('interests')}
               className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${viewMode === 'interests' ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary'}`}
             >
-              Solicitacoes ({filteredInterests.length})
+              Interessados ({filteredInterests.length})
             </button>
             <button
               type='button'
@@ -328,9 +336,9 @@ function ProposalsContent() {
               className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground'
             >
               <option value=''>Todos os status</option>
-              <option value='pending'>Pendentes</option>
-              <option value='contacted'>Contactadas</option>
-              <option value='dismissed'>Descartadas</option>
+              <option value='pending'>Novos interesses</option>
+              <option value='contacted'>Em atendimento</option>
+              <option value='dismissed'>Descartados</option>
             </select>
           ) : (
             <select
@@ -374,7 +382,7 @@ function ProposalsContent() {
 
       {viewMode === 'interests' ? (
         interestsByLot.length === 0 ? (
-          <div className='panel px-6 py-12 text-center text-sm text-muted'>Nenhuma solicitacao publica encontrada neste filtro.</div>
+          <div className='panel px-6 py-12 text-center text-sm text-muted'>Nenhum interessado encontrado neste filtro.</div>
         ) : (
           <div className='grid gap-3'>
             {interestsByLot.map(({ lot, interests: lotInterests }) => (
@@ -434,6 +442,16 @@ function ProposalsContent() {
                                 className='rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
                               >
                                 Marcar contato
+                              </button>
+                            )}
+                            {getLotAvailability(lot) !== 'Vendido' && (
+                              <button
+                                type='button'
+                                onClick={() => void createProposalFromInterest(interest)}
+                                disabled={updatingInterestId === interest.id}
+                                className='rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'
+                              >
+                                Criar proposta
                               </button>
                             )}
                             {interest.status !== 'dismissed' && (

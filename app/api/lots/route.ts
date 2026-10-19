@@ -2,6 +2,7 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, lotAccessWhere, blockAccessWhere, lotEventAccessWhere, proposalAccessWhere } from '@/lib/access-control'
+import { hasDevelopmentPermission } from '@/lib/permissions'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
@@ -16,6 +17,7 @@ export async function GET() {
       reservations: {
         include: {
           user: true,
+          createdBy: { select: { id: true, name: true, email: true } },
           sale: true,
         },
         orderBy: { createdAt: 'desc' },
@@ -51,23 +53,17 @@ export async function GET() {
     },
     orderBy: { createdAt: 'desc' },
   })
-  const adminMemberships = await prisma.developmentUser.findMany({
-    where: {
-      userId,
-      roles: {
-        some: {
-          role: {
-            name: {
-              in: ['owner', 'administrador', 'admin'],
-              mode: 'insensitive',
-            },
-          },
-        },
-      },
-    },
-    select: { developmentId: true },
-  })
-  const adminDevelopmentIds = new Set(adminMemberships.map((membership) => membership.developmentId))
+  const developmentIds = [...new Set(lots.flatMap((lot) => lot.block.development?.id ? [lot.block.development.id] : []))]
+  const adminDevelopmentIds = new Set(
+    (await Promise.all(
+      developmentIds.map(async (developmentId) => ({
+        developmentId,
+        isAdmin: await hasDevelopmentPermission(userId, developmentId, 'admin'),
+      })),
+    ))
+      .filter((entry) => entry.isAdmin)
+      .map((entry) => entry.developmentId),
+  )
 
   const proposalCandidates = await prisma.proposal.findMany({
     where: {
@@ -101,7 +97,15 @@ export async function GET() {
         canManage: item.createdById === userId || isDevelopmentAdmin,
       }))
       const canReleaseHold = latestBlockEvent?.userId === userId || isDevelopmentAdmin
-      if (!reservation) return { ...lot, reservations, canReleaseHold, saleEligibility: null }
+      if (!reservation) {
+        return {
+          ...lot,
+          reservations,
+          canReleaseHold,
+          canManageReservation: isDevelopmentAdmin,
+          saleEligibility: null,
+        }
+      }
 
       const latestProposal = latestProposalByBuyerAndLot.get(`${lot.id}:${reservation.userId}`)
       const visibleProposal = latestProposal
@@ -112,6 +116,7 @@ export async function GET() {
         ...lot,
         reservations,
         canReleaseHold,
+        canManageReservation: reservation.createdById === userId || isDevelopmentAdmin,
         saleEligibility: {
           userId: reservation.userId,
           canConvert: !latestProposal || Boolean(visibleProposal && latestProposal.status === 'approved'),

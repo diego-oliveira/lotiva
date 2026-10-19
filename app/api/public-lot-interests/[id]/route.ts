@@ -86,10 +86,10 @@ export async function PATCH(req: Request, { params }: Params) {
       lotId: interest.lotId,
       userId,
       type: 'public_interest_updated',
-      title: 'Solicitacao publica atualizada',
+      title: 'Interesse pelo mapa atualizado',
       description: status
-        ? `Solicitacao de ${interest.name} marcada como ${status}.`
-        : `Observacao interna adicionada para solicitacao de ${interest.name}.`,
+        ? `Interesse de ${interest.name} atualizado para ${status}.`
+        : `Observacao interna adicionada ao interesse de ${interest.name}.`,
       notes: hasInternalNotes ? internalNotes || null : data.notes ? String(data.notes) : null,
     })
 
