@@ -8,6 +8,7 @@ import { hasAnyDevelopmentPermission, hasDevelopmentPermission } from '@/lib/per
 import ReceivableActions from './components/ReceivableActions'
 import PaymentOperationsPanel from './components/PaymentOperationsPanel'
 import { hasCompanyPermission } from '@/lib/permissions'
+import FinanceDevelopmentSelect from './components/FinanceDevelopmentSelect'
 
 type FinancePageProps = {
   searchParams?: Promise<{
@@ -16,8 +17,13 @@ type FinancePageProps = {
     search?: string
     dueFrom?: string
     dueTo?: string
+    view?: string
+    month?: string
+    day?: string
   }>
 }
+
+type FinanceView = 'calendar' | 'list' | 'summary'
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', {
@@ -35,6 +41,39 @@ function parseDateOnly(value?: string) {
   const [year, month, day] = value.split('-').map(Number)
   if (!year || !month || !day) return null
   return new Date(year, month - 1, day)
+}
+
+function formatDateInput(value: Date) {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function parseMonth(value: string | undefined, fallback: Date) {
+  const match = value?.match(/^(\d{4})-(\d{2})$/)
+  if (!match) return new Date(fallback.getFullYear(), fallback.getMonth(), 1)
+  const year = Number(match[1])
+  const month = Number(match[2])
+  if (month < 1 || month > 12) return new Date(fallback.getFullYear(), fallback.getMonth(), 1)
+  return new Date(year, month - 1, 1)
+}
+
+function addMonths(value: Date, amount: number) {
+  return new Date(value.getFullYear(), value.getMonth() + amount, 1)
+}
+
+function monthKey(value: Date) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}`
+}
+
+function monthLabel(value: Date) {
+  const label = value.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+  return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
+function sameDay(left: Date, right: Date) {
+  return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate()
 }
 
 function getReceivableLabel(receivable: { kind: string; sequence: number }) {
@@ -63,10 +102,17 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
   if (!(await hasAnyDevelopmentPermission(session.user.id, 'finance'))) redirect('/')
 
   const params = await searchParams
-  const status = params?.status || 'open'
+  const view: FinanceView = params?.view === 'list' || params?.view === 'summary' ? params.view : 'calendar'
+  const now = new Date()
+  const selectedMonth = parseMonth(params?.month, now)
+  const monthStart = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1)
+  const monthEnd = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 0, 23, 59, 59, 999)
+  const defaultSummaryFrom = new Date(now.getFullYear(), 0, 1)
+  const defaultSummaryTo = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999)
+  const status = params?.status || (view === 'list' ? 'open' : 'all')
   const search = params?.search?.trim() || ''
-  const dueFrom = parseDateOnly(params?.dueFrom)
-  const dueTo = parseDateOnly(params?.dueTo)
+  const dueFrom = view === 'calendar' ? monthStart : parseDateOnly(params?.dueFrom) ?? (view === 'summary' ? defaultSummaryFrom : null)
+  const dueTo = view === 'calendar' ? monthEnd : parseDateOnly(params?.dueTo) ?? (view === 'summary' ? defaultSummaryTo : null)
   if (dueTo) dueTo.setHours(23, 59, 59, 999)
 
   const developments = await prisma.development.findMany({
@@ -186,6 +232,21 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
     ],
   })
 
+  const paidInPeriod = view !== 'list' && dueFrom && dueTo
+    ? await prisma.receivable.findMany({
+        where: {
+          status: 'paid',
+          paidAt: { gte: dueFrom, lte: dueTo },
+          sale: {
+            is: {
+              lot: { is: { block: { is: { developmentId: selectedDevelopment.id } } } },
+            },
+          },
+        },
+        select: { paidAmount: true, paidAt: true },
+      })
+    : []
+
   const summary = receivables.reduce(
     (acc, receivable) => {
       acc.expected += Number(receivable.amount)
@@ -200,6 +261,64 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
     },
     { expected: 0, received: 0, open: 0, overdue: 0, overdueCount: 0, paidCount: 0 },
   )
+
+  if (view !== 'list') {
+    summary.received = paidInPeriod.reduce((total, receivable) => total + Number(receivable.paidAmount), 0)
+    summary.paidCount = paidInPeriod.length
+  }
+
+  const receivablesByDay = new Map<string, typeof receivables>()
+  receivables.forEach((receivable) => {
+    const key = formatDateInput(receivable.dueDate)
+    receivablesByDay.set(key, [...(receivablesByDay.get(key) ?? []), receivable])
+  })
+  const selectedDay = parseDateOnly(params?.day)
+    ?? (sameDay(selectedMonth, now) || (selectedMonth.getFullYear() === now.getFullYear() && selectedMonth.getMonth() === now.getMonth())
+      ? now
+      : monthStart)
+  const selectedDayKey = formatDateInput(selectedDay)
+  const selectedDayReceivables = receivablesByDay.get(selectedDayKey) ?? []
+
+  const calendarStart = new Date(monthStart)
+  calendarStart.setDate(calendarStart.getDate() - calendarStart.getDay())
+  const calendarDays = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(calendarStart)
+    date.setDate(calendarStart.getDate() + index)
+    return date
+  })
+
+  const monthlySummary = new Map<string, { month: Date; expected: number; received: number; open: number; overdue: number; count: number }>()
+  receivables.forEach((receivable) => {
+    const key = monthKey(receivable.dueDate)
+    const row = monthlySummary.get(key) ?? {
+      month: new Date(receivable.dueDate.getFullYear(), receivable.dueDate.getMonth(), 1),
+      expected: 0,
+      received: 0,
+      open: 0,
+      overdue: 0,
+      count: 0,
+    }
+    row.expected += Number(receivable.amount)
+    row.open += receivable.status === 'paid' ? 0 : Number(receivable.balance)
+    row.overdue += receivable.status !== 'paid' && receivable.dueDate < today ? Number(receivable.balance) : 0
+    row.count += 1
+    monthlySummary.set(key, row)
+  })
+  paidInPeriod.forEach((receivable) => {
+    if (!receivable.paidAt) return
+    const key = monthKey(receivable.paidAt)
+    const row = monthlySummary.get(key) ?? {
+      month: new Date(receivable.paidAt.getFullYear(), receivable.paidAt.getMonth(), 1),
+      expected: 0,
+      received: 0,
+      open: 0,
+      overdue: 0,
+      count: 0,
+    }
+    row.received += Number(receivable.paidAmount)
+    monthlySummary.set(key, row)
+  })
+  const monthlyRows = [...monthlySummary.values()].sort((left, right) => left.month.getTime() - right.month.getTime())
 
   const [
     connections,
@@ -269,27 +388,58 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
       </div>
 
       <section className='panel px-6 py-5'>
-        <div>
+        <div className='grid gap-5 lg:grid-cols-[1fr_320px] lg:items-end'>
           <div>
             <h2 className='text-2xl font-bold text-foreground'>{selectedDevelopment.name}</h2>
             <p className='mt-1 text-sm text-muted'>
               {selectedDevelopment.company.name} · {receivables.length} parcela(s) no recorte financeiro atual.
             </p>
           </div>
+          <FinanceDevelopmentSelect
+            developments={developments.map((development) => ({ id: development.id, name: development.name }))}
+            selectedDevelopmentId={selectedDevelopment.id}
+          />
         </div>
       </section>
 
+      <nav className='flex flex-wrap gap-2 rounded-2xl border border-border bg-surface p-2'>
+        {([
+          ['calendar', 'Calendario'],
+          ['list', 'Lista'],
+          ['summary', 'Resumo mensal'],
+        ] as const).map(([value, label]) => (
+          <Link
+            key={value}
+            href={`/finance?developmentId=${selectedDevelopment.id}&view=${value}${value === 'calendar' ? `&month=${monthKey(selectedMonth)}` : ''}`}
+            className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${view === value ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary hover:text-foreground'}`}
+          >
+            {label}
+          </Link>
+        ))}
+      </nav>
+
+      {view === 'calendar' && (
+        <section className='panel flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between'>
+          <div className='flex items-center justify-between gap-2 sm:justify-start'>
+            <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(addMonths(selectedMonth, -1))}`} className='rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-surface-secondary' aria-label='Mes anterior'>←</Link>
+            <h2 className='min-w-48 text-center text-lg font-bold text-foreground'>{monthLabel(selectedMonth)}</h2>
+            <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(addMonths(selectedMonth, 1))}`} className='rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-surface-secondary' aria-label='Proximo mes'>→</Link>
+          </div>
+          <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(now)}&day=${formatDateInput(now)}`} className='rounded-xl border border-border px-4 py-2 text-center text-sm font-semibold text-foreground hover:bg-surface-secondary'>Hoje</Link>
+        </section>
+      )}
+
       <section className='grid gap-4 md:grid-cols-2 xl:grid-cols-5'>
         <div className='metric-card px-5 py-4'>
-          <p className='metric-label'>Previsto</p>
+          <p className='metric-label'>{view === 'calendar' ? 'Previsto no mes' : 'Previsto'}</p>
           <p className='metric-value'>{formatCurrency(summary.expected)}</p>
         </div>
         <div className='metric-card px-5 py-4'>
-          <p className='metric-label'>Recebido</p>
+          <p className='metric-label'>{view === 'calendar' ? 'Recebido no mes' : 'Recebido'}</p>
           <p className='metric-value text-emerald-700'>{formatCurrency(summary.received)}</p>
         </div>
         <div className='metric-card px-5 py-4'>
-          <p className='metric-label'>A receber</p>
+          <p className='metric-label'>Em aberto</p>
           <p className='metric-value'>{formatCurrency(summary.open)}</p>
         </div>
         <div className='metric-card px-5 py-4'>
@@ -301,6 +451,146 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
           <p className={`metric-value ${summary.overdueCount > 0 ? 'text-red-700' : ''}`}>{summary.overdueCount}</p>
         </div>
       </section>
+
+      {view === 'calendar' && (
+        <div className='grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]'>
+          <section className='panel overflow-hidden'>
+            <div className='grid grid-cols-7 border-b border-border bg-surface-secondary'>
+              {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'].map((label) => (
+                <div key={label} className='px-1 py-3 text-center text-[10px] font-bold uppercase text-muted sm:text-xs'>{label}</div>
+              ))}
+            </div>
+            <div className='grid grid-cols-7'>
+              {calendarDays.map((date) => {
+                const key = formatDateInput(date)
+                const items = receivablesByDay.get(key) ?? []
+                const inMonth = date.getMonth() === selectedMonth.getMonth() && date.getFullYear() === selectedMonth.getFullYear()
+                const total = items.reduce((sum, item) => sum + Number(item.amount), 0)
+                const allPaid = items.length > 0 && items.every((item) => item.status === 'paid')
+                const hasOverdue = items.some((item) => item.status !== 'paid' && item.dueDate < today)
+                const hasDueToday = items.some((item) => item.status !== 'paid' && sameDay(item.dueDate, today))
+                const tone = hasOverdue
+                  ? 'bg-red-50 text-red-800'
+                  : hasDueToday
+                    ? 'bg-amber-50 text-amber-800'
+                    : allPaid
+                      ? 'bg-emerald-50 text-emerald-800'
+                      : items.length > 0
+                        ? 'bg-blue-50 text-blue-800'
+                        : 'bg-surface text-foreground'
+                return (
+                  <Link
+                    key={key}
+                    href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(selectedMonth)}&day=${key}`}
+                    className={`min-h-20 border-b border-r border-border p-1.5 transition hover:brightness-95 sm:min-h-28 sm:p-3 ${tone} ${!inMonth ? 'opacity-35' : ''} ${key === selectedDayKey ? 'relative z-10 ring-2 ring-inset ring-primary' : ''}`}
+                  >
+                    <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold sm:text-sm ${sameDay(date, today) ? 'bg-primary text-white' : ''}`}>{date.getDate()}</span>
+                    {items.length > 0 && (
+                      <div className='mt-1'>
+                        <p className='text-[10px] font-bold sm:text-xs'>{items.length} {items.length === 1 ? 'parcela' : 'parcelas'}</p>
+                        <p className='mt-1 hidden text-xs font-semibold sm:block'>{formatCurrency(total)}</p>
+                      </div>
+                    )}
+                  </Link>
+                )
+              })}
+            </div>
+            <div className='flex flex-wrap gap-4 border-t border-border px-4 py-3 text-xs text-muted'>
+              <span><i className='mr-1 inline-block h-2.5 w-2.5 rounded-full bg-emerald-500' />Pagas</span>
+              <span><i className='mr-1 inline-block h-2.5 w-2.5 rounded-full bg-blue-500' />A vencer</span>
+              <span><i className='mr-1 inline-block h-2.5 w-2.5 rounded-full bg-amber-500' />Hoje</span>
+              <span><i className='mr-1 inline-block h-2.5 w-2.5 rounded-full bg-red-500' />Vencidas</span>
+            </div>
+          </section>
+
+          <section className='panel self-start overflow-hidden'>
+            <div className='panel-header px-5 py-4'>
+              <h2 className='text-base font-bold text-foreground'>{formatDate(selectedDay)}</h2>
+              <p className='mt-1 text-sm text-muted'>{selectedDayReceivables.length} parcela(s) com vencimento nesta data.</p>
+            </div>
+            {selectedDayReceivables.length === 0 ? (
+              <p className='px-5 py-10 text-center text-sm text-muted'>Nenhum vencimento neste dia.</p>
+            ) : (
+              <div className='divide-y divide-border'>
+                {selectedDayReceivables.map((receivable) => {
+                  const itemStatus = getStatusMeta(receivable)
+                  return (
+                    <article key={receivable.id} className='space-y-3 px-5 py-4'>
+                      <div className='flex items-start justify-between gap-3'>
+                        <div>
+                          <p className='text-sm font-semibold text-foreground'>{receivable.sale.user.name}</p>
+                          <p className='mt-1 text-xs text-muted'>Quadra {receivable.sale.lot.block.identifier}, Lote {receivable.sale.lot.identifier} · {getReceivableLabel(receivable)}</p>
+                        </div>
+                        <span className={`pill shrink-0 ${itemStatus.className}`}>{itemStatus.label}</span>
+                      </div>
+                      <p className='text-lg font-bold text-foreground'>{formatCurrency(Number(receivable.amount))}</p>
+                      <ReceivableActions
+                        canManagePayments={canManagePayments}
+                        receivable={{
+                          id: receivable.id,
+                          amount: Number(receivable.amount),
+                          balance: Number(receivable.balance),
+                          paidAmount: Number(receivable.paidAmount),
+                          status: receivable.status,
+                          notes: receivable.notes,
+                        }}
+                      />
+                    </article>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
+      {view === 'summary' && (
+        <section className='panel overflow-hidden'>
+          <form action='/finance' className='panel-header grid gap-4 px-6 py-5 sm:grid-cols-[1fr_1fr_auto] sm:items-end'>
+            <input type='hidden' name='developmentId' value={selectedDevelopment.id} />
+            <input type='hidden' name='view' value='summary' />
+            <label className='block'>
+              <span className='mb-2 block text-xs font-semibold uppercase text-muted'>De</span>
+              <input type='date' name='dueFrom' defaultValue={formatDateInput(dueFrom ?? defaultSummaryFrom)} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
+            </label>
+            <label className='block'>
+              <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Ate</span>
+              <input type='date' name='dueTo' defaultValue={formatDateInput(dueTo ?? defaultSummaryTo)} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
+            </label>
+            <button type='submit' className='rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white hover:bg-primary-strong'>Aplicar periodo</button>
+          </form>
+          {monthlyRows.length === 0 ? (
+            <p className='px-6 py-12 text-center text-sm text-muted'>Nenhuma movimentacao encontrada no periodo.</p>
+          ) : (
+            <div className='overflow-x-auto'>
+              <table className='min-w-full divide-y divide-border'>
+                <thead className='bg-surface-secondary'>
+                  <tr>
+                    <th className='table-head px-6 py-4 text-left'>Mes</th>
+                    <th className='table-head px-6 py-4 text-right'>Previsto</th>
+                    <th className='table-head px-6 py-4 text-right'>Recebido</th>
+                    <th className='table-head px-6 py-4 text-right'>Em aberto</th>
+                    <th className='table-head px-6 py-4 text-right'>Vencido</th>
+                    <th className='table-head px-6 py-4 text-right'>Parcelas</th>
+                  </tr>
+                </thead>
+                <tbody className='divide-y divide-border'>
+                  {monthlyRows.map((row) => (
+                    <tr key={monthKey(row.month)} className='hover:bg-surface-secondary/70'>
+                      <td className='px-6 py-4 font-semibold text-foreground'><Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(row.month)}`} className='hover:text-primary'>{monthLabel(row.month)}</Link></td>
+                      <td className='whitespace-nowrap px-6 py-4 text-right text-sm'>{formatCurrency(row.expected)}</td>
+                      <td className='whitespace-nowrap px-6 py-4 text-right text-sm font-semibold text-emerald-700'>{formatCurrency(row.received)}</td>
+                      <td className='whitespace-nowrap px-6 py-4 text-right text-sm'>{formatCurrency(row.open)}</td>
+                      <td className={`whitespace-nowrap px-6 py-4 text-right text-sm ${row.overdue > 0 ? 'font-semibold text-red-700' : ''}`}>{formatCurrency(row.overdue)}</td>
+                      <td className='whitespace-nowrap px-6 py-4 text-right text-sm text-muted'>{row.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
 
       <PaymentOperationsPanel
         connections={connections.map((connection) => ({
@@ -333,9 +623,11 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
         }))}
       />
 
+      {view === 'list' && (
       <section className='panel overflow-hidden'>
         <form action='/finance' className='panel-header grid gap-4 px-6 py-5 lg:grid-cols-[1fr_180px_150px_150px_auto] lg:items-end'>
           <input type='hidden' name='developmentId' value={selectedDevelopment.id} />
+          <input type='hidden' name='view' value='list' />
           <label className='block'>
             <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Busca</span>
             <input
@@ -468,6 +760,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
           </div>
         )}
       </section>
+      )}
     </div>
   )
 }
