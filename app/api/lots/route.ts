@@ -3,7 +3,6 @@ import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, lotAccessWhere, blockAccessWhere, lotEventAccessWhere, proposalAccessWhere } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
-import { createLotEvent } from '@/lib/lot-events'
 
 export async function GET() {
   const auth = await requireAuthenticatedUser()
@@ -41,7 +40,9 @@ export async function GET() {
         orderBy: { createdAt: 'asc' },
       },
       events: {
-        where: lotEventAccessWhere(userId),
+        where: {
+          AND: [lotEventAccessWhere(userId), { type: { not: 'lot_created' } }],
+        },
         include: {
           user: { select: { id: true, name: true, email: true } },
         },
@@ -150,14 +151,6 @@ export async function POST(req: Request) {
         price: data.price,
         status: data.status || 'available',
       },
-    })
-
-    await createLotEvent(tx, {
-      lotId: lot.id,
-      userId,
-      type: 'lot_created',
-      title: 'Lote cadastrado',
-      description: `Lote ${lot.identifier} criado com status ${lot.status}.`,
     })
 
     return lot

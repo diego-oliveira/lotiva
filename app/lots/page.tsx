@@ -1810,7 +1810,7 @@ function LotsContent() {
                     {selectedLotStatus === 'available' && (
                       <>
                         <button onClick={() => void openSimulator()} className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
-                          Simular venda
+                          Criar proposta
                         </button>
                         <button onClick={() => void openReservationForm()} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
                           Reservar lote
@@ -1846,7 +1846,7 @@ function LotsContent() {
                           </>
                         )}
                         <button onClick={() => void openSimulator()} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
-                          Simular nova condicao
+                          Nova proposta
                         </button>
                         {selectedLotReservation?.canManage ? (
                           <button onClick={cancelReservation} disabled={reservationSaving} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background disabled:opacity-60'>
@@ -1872,7 +1872,7 @@ function LotsContent() {
                           </p>
                         )}
                         <button onClick={() => void openSimulator()} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-background'>
-                          Simular venda
+                          Criar proposta
                         </button>
                       </>
                     )}
@@ -2016,7 +2016,7 @@ function LotsContent() {
         <>
           <button
             type='button'
-            aria-label='Fechar simulador financeiro'
+            aria-label='Fechar proposta comercial'
             className='fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-[1px] lg:left-[290px]'
             onClick={() => setShowSimulator(false)}
           />
@@ -2025,7 +2025,7 @@ function LotsContent() {
               <div className='border-b border-border px-6 py-5'>
                 <div className='flex items-start justify-between gap-4'>
                   <div>
-                    <p className='text-xs font-semibold uppercase tracking-[0.2em] text-muted'>Simulador financeiro</p>
+                    <p className='text-xs font-semibold uppercase tracking-[0.2em] text-muted'>Proposta comercial</p>
                     <h2 className='mt-2 text-2xl font-bold text-foreground'>Quadra {selectedLot.block.identifier}, Lote {selectedLot.identifier}</h2>
                     <p className='mt-2 text-sm leading-6 text-muted'>
                       {selectedLot.block.development?.name ?? 'Sem empreendimento'} · {formatArea(selectedLot.totalArea)} · valor base {formatCurrency(selectedLot.price)}
@@ -2233,6 +2233,15 @@ function LotsContent() {
                             Maximo configurado: {commercialRules.maxInstallments} parcelas
                           </span>
                         </label>
+                        <label className='block'>
+                          <span className='mb-2 block text-sm font-semibold text-foreground'>Primeiro vencimento</span>
+                          <input
+                            type='date'
+                            value={simulatorForm.firstDueDate}
+                            onChange={(event) => setSimulatorForm((current) => ({ ...current, firstDueDate: event.target.value }))}
+                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                          />
+                        </label>
                         <label className='block md:col-span-2'>
                           <span className='mb-2 block text-sm font-semibold text-foreground'>Observacao</span>
                           <textarea
@@ -2246,7 +2255,7 @@ function LotsContent() {
                       </div>
                     </section>
 
-                    <section className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                    {canManageSettings && <section className='rounded-2xl border border-border bg-surface-secondary p-5'>
                       <h3 className='text-base font-semibold text-foreground'>Juros e correcao</h3>
                       <div className='mt-5 grid gap-4 md:grid-cols-2'>
                         <label className='block'>
@@ -2286,21 +2295,12 @@ function LotsContent() {
                             <option value='fixed'>Percentual fixo</option>
                           </select>
                         </label>
-                        <label className='block'>
-                          <span className='mb-2 block text-sm font-semibold text-foreground'>Primeiro vencimento</span>
-                          <input
-                            type='date'
-                            value={simulatorForm.firstDueDate}
-                            onChange={(event) => setSimulatorForm((current) => ({ ...current, firstDueDate: event.target.value }))}
-                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
-                          />
-                        </label>
                       </div>
-                    </section>
+                    </section>}
 
-                    <div className='rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-800'>
+                    {canManageSettings && <div className='rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-800'>
                       A correcao {simulatorForm.correctionIndex === 'none' ? 'nao sera aplicada nesta estimativa' : `${simulatorForm.correctionIndex.toUpperCase()} sera considerada como regra da proposta`}.
-                    </div>
+                    </div>}
 
                     {commercialRules.hasException && (
                       <div className={`rounded-2xl border px-5 py-4 text-sm leading-6 ${
@@ -2364,7 +2364,7 @@ function LotsContent() {
                       proposalCanBeSaved ? 'bg-primary hover:bg-primary-strong' : 'bg-primary opacity-60'
                     }`}
                   >
-                    {proposalSaving ? 'Salvando...' : 'Salvar proposta'}
+                    {proposalSaving ? 'Enviando...' : 'Enviar proposta'}
                   </button>
                 </div>
               </div>

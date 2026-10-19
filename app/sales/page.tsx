@@ -344,14 +344,16 @@ function SalesContent() {
           <p className='page-subtitle'>Conclua vendas, acompanhe contratos e revise as condicoes comerciais fechadas.</p>
         </div>
         <div className='flex flex-wrap gap-3'>
-          <button
-            onClick={() => setShowLegacyImport(true)}
-            disabled={!developmentFilter}
-            title={!developmentFilter ? 'Selecione um empreendimento para importar vendas legadas' : 'Importar vendas legadas'}
-            className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:cursor-not-allowed disabled:opacity-60'
-          >
-            Importar vendas
-          </button>
+          {canCorrectSales && (
+            <button
+              onClick={() => setShowLegacyImport(true)}
+              disabled={!developmentFilter}
+              title={!developmentFilter ? 'Selecione um empreendimento para importar vendas legadas' : 'Importar vendas legadas'}
+              className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary disabled:cursor-not-allowed disabled:opacity-60'
+            >
+              Importar vendas
+            </button>
+          )}
           <button onClick={handleAddSale} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
             Nova venda
           </button>
@@ -511,12 +513,14 @@ function SalesContent() {
         correctionReason={correctionReason}
       />
 
-      <LegacySalesImportDrawer
-        developmentId={developmentFilter}
-        isOpen={showLegacyImport}
-        onClose={() => setShowLegacyImport(false)}
-        onImported={handleLegacyImport}
-      />
+      {canCorrectSales && (
+        <LegacySalesImportDrawer
+          developmentId={developmentFilter}
+          isOpen={showLegacyImport}
+          onClose={() => setShowLegacyImport(false)}
+          onImported={handleLegacyImport}
+        />
+      )}
 
       {correctionSale && (
         <div className='fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4'>

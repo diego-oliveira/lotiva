@@ -102,7 +102,7 @@ export async function POST(req: Request) {
   const developmentId = String(payload.developmentId || '')
   const rows = Array.isArray(payload.sales) ? payload.sales as LegacySaleInput[] : []
 
-  if (!developmentId || !(await hasDevelopmentPermission(currentUserId, developmentId, 'sales'))) {
+  if (!developmentId || !(await hasDevelopmentPermission(currentUserId, developmentId, 'admin'))) {
     return forbiddenResponse()
   }
 

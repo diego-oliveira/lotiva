@@ -973,7 +973,7 @@ export default function DevelopmentLotMap({
                     onClick={() => { setMobileLotId(null); onSimulateLot(mobileLot.id) }}
                     className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white'
                   >
-                    Simular venda
+                    Criar proposta
                   </button>
                   <button
                     type='button'
@@ -991,7 +991,7 @@ export default function DevelopmentLotMap({
                     onClick={() => { setMobileLotId(null); onSimulateLot(mobileLot.id) }}
                     className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white'
                   >
-                    Simular nova condicao
+                    Nova proposta
                   </button>
                   <button
                     type='button'

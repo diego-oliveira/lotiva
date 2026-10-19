@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, hasAccessToDevelopment } from '@/lib/access-control'
-import { createLotEvent } from '@/lib/lot-events'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -138,14 +137,6 @@ export async function POST(req: NextRequest, { params }: Params) {
           price: toNumber(lotInput.price),
           status: allowedStatuses.has(lotInput.status || '') ? lotInput.status! : 'available',
         },
-      })
-
-      await createLotEvent(tx, {
-        lotId: lot.id,
-        userId,
-        type: 'lot_created',
-        title: 'Lote cadastrado',
-        description: `Lote ${lot.identifier} criado pela geracao em lote da quadra ${block.identifier}.`,
       })
 
       createdLots.push(lot)

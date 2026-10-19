@@ -227,7 +227,8 @@ function WorkspaceSelectorContent({
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const enabled = isWorkspaceRoute(pathname)
+  const choosingDevelopment = pathname === '/' && searchParams.get('chooseDevelopment') === '1'
+  const enabled = isWorkspaceRoute(pathname) && !choosingDevelopment
   const [pendingDevelopmentId, setPendingDevelopmentId] = useState<string | null>(null)
 
   const currentDevelopmentId = searchParams.get('developmentId') ?? ''
