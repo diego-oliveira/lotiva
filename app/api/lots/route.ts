@@ -5,13 +5,17 @@ import { forbiddenResponse, lotAccessWhere, blockAccessWhere, lotEventAccessWher
 import { hasDevelopmentPermission } from '@/lib/permissions'
 import { NextResponse } from 'next/server'
 
-export async function GET() {
+export async function GET(req: Request) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
   const userId = auth.session.user.id
+  const developmentId = new URL(req.url).searchParams.get('developmentId')?.trim() || null
 
   const lots = await prisma.lot.findMany({
-    where: lotAccessWhere(userId),
+    where: {
+      ...lotAccessWhere(userId),
+      ...(developmentId ? { block: { developmentId } } : {}),
+    },
     include: {
       block: { include: { development: { include: { settings: true, map: true } } } },
       reservations: {

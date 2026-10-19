@@ -1,7 +1,29 @@
 import { NextResponse } from 'next/server'
 import { requireAuthenticatedUser } from '@/lib/auth'
-import { hasAccessToDevelopment } from '@/lib/access-control'
+import { hasAccessToDevelopment, membershipWhere } from '@/lib/access-control'
 import { prisma } from '@/lib/prisma'
+
+export async function GET() {
+  const auth = await requireAuthenticatedUser()
+  if (auth.response) return auth.response
+
+  const [preference, developments] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: auth.session.user.id },
+      select: { lastDevelopmentId: true },
+    }),
+    prisma.development.findMany({
+      where: membershipWhere(auth.session.user.id),
+      select: { id: true },
+      orderBy: { name: 'asc' },
+    }),
+  ])
+  const developmentId = developments.some((development) => development.id === preference?.lastDevelopmentId)
+    ? preference?.lastDevelopmentId
+    : developments[0]?.id ?? null
+
+  return NextResponse.json({ developmentId })
+}
 
 export async function PATCH(req: Request) {
   const auth = await requireAuthenticatedUser()

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import DevelopmentLotMap from './components/DevelopmentLotMap'
 import { CurrencyTextInput, NumberTextInput } from '@/app/components/NumberTextInput'
@@ -287,6 +287,7 @@ function calculateInstallment(balance: number, installmentCount: number, monthly
 }
 
 function LotsContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const developmentFilter = searchParams.get('developmentId') ?? ''
   const requestedView = searchParams.get('view')
@@ -360,10 +361,11 @@ function LotsContent() {
   const [lotEditError, setLotEditError] = useState<string | null>(null)
   const [lotEditSuccess, setLotEditSuccess] = useState<string | null>(null)
 
-  async function fetchLots() {
+  async function fetchLots(activeDevelopmentId = developmentFilter) {
     try {
       setLoading(true)
-      const response = await fetch('/api/lots', { cache: 'no-store' })
+      const query = activeDevelopmentId ? `?developmentId=${encodeURIComponent(activeDevelopmentId)}` : ''
+      const response = await fetch(`/api/lots${query}`, { cache: 'no-store' })
       if (!response.ok) throw new Error('Nao foi possivel carregar os lotes')
       setLots(await response.json())
       setError(null)
@@ -375,7 +377,6 @@ function LotsContent() {
   }
 
   useEffect(() => {
-    void fetchLots()
     fetch('/api/me/permissions', { cache: 'no-store' })
       .then((response) => response.ok ? response.json() : null)
       .then((payload) => {
@@ -396,6 +397,32 @@ function LotsContent() {
         setCanAdmin(false)
       })
   }, [])
+
+  useEffect(() => {
+    if (developmentFilter) {
+      void fetchLots(developmentFilter)
+      return
+    }
+
+    setLoading(true)
+    fetch('/api/me/workspace', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        const developmentId = String(payload?.developmentId || '')
+        if (!developmentId) {
+          setLots([])
+          setLoading(false)
+          return
+        }
+        const nextParams = new URLSearchParams(searchParams.toString())
+        nextParams.set('developmentId', developmentId)
+        router.replace(`/lots?${nextParams.toString()}`)
+      })
+      .catch(() => {
+        setError('Nao foi possivel identificar o empreendimento ativo')
+        setLoading(false)
+      })
+  }, [developmentFilter, router, searchParams])
 
   useEffect(() => {
     const userId = searchParams.get('userId')
@@ -1148,7 +1175,7 @@ function LotsContent() {
       <div className='rounded-2xl border border-red-200 bg-red-50 p-5 text-red-700'>
         <p className='font-semibold'>Erro ao carregar lotes</p>
         <p className='mt-1 text-sm'>{error}</p>
-        <button onClick={fetchLots} className='mt-4 rounded-xl bg-red-100 px-4 py-2 text-sm font-semibold text-red-800 transition hover:bg-red-200'>
+        <button onClick={() => void fetchLots()} className='mt-4 rounded-xl bg-red-100 px-4 py-2 text-sm font-semibold text-red-800 transition hover:bg-red-200'>
           Tentar novamente
         </button>
       </div>

@@ -8,7 +8,6 @@ import { hasAnyDevelopmentPermission, hasDevelopmentPermission } from '@/lib/per
 import ReceivableActions from './components/ReceivableActions'
 import PaymentOperationsPanel from './components/PaymentOperationsPanel'
 import { hasCompanyPermission } from '@/lib/permissions'
-import FinanceDevelopmentSelect from './components/FinanceDevelopmentSelect'
 
 type FinancePageProps = {
   searchParams?: Promise<{
@@ -388,17 +387,13 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
       </div>
 
       <section className='panel px-6 py-5'>
-        <div className='grid gap-5 lg:grid-cols-[1fr_320px] lg:items-end'>
+        <div>
           <div>
             <h2 className='text-2xl font-bold text-foreground'>{selectedDevelopment.name}</h2>
             <p className='mt-1 text-sm text-muted'>
               {selectedDevelopment.company.name} · {receivables.length} parcela(s) no recorte financeiro atual.
             </p>
           </div>
-          <FinanceDevelopmentSelect
-            developments={developments.map((development) => ({ id: development.id, name: development.name }))}
-            selectedDevelopmentId={selectedDevelopment.id}
-          />
         </div>
       </section>
 
@@ -481,7 +476,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                 return (
                   <Link
                     key={key}
-                    href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(selectedMonth)}&day=${key}`}
+                    href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(date)}&day=${key}`}
                     className={`min-h-20 border-b border-r border-border p-1.5 transition hover:brightness-95 sm:min-h-28 sm:p-3 ${tone} ${!inMonth ? 'opacity-35' : ''} ${key === selectedDayKey ? 'relative z-10 ring-2 ring-inset ring-primary' : ''}`}
                   >
                     <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold sm:text-sm ${sameDay(date, today) ? 'bg-primary text-white' : ''}`}>{date.getDate()}</span>
@@ -524,15 +519,19 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                         <span className={`pill shrink-0 ${itemStatus.className}`}>{itemStatus.label}</span>
                       </div>
                       <p className='text-lg font-bold text-foreground'>{formatCurrency(Number(receivable.amount))}</p>
+                      {receivable.paidAt && <p className='text-xs font-semibold text-emerald-700'>Paga em {formatDate(receivable.paidAt)}</p>}
                       <ReceivableActions
                         canManagePayments={canManagePayments}
                         receivable={{
                           id: receivable.id,
+                          kind: receivable.kind,
+                          dueDate: receivable.dueDate.toISOString(),
                           amount: Number(receivable.amount),
                           balance: Number(receivable.balance),
                           paidAmount: Number(receivable.paidAmount),
                           status: receivable.status,
                           notes: receivable.notes,
+                          hasActiveCharge: Boolean(receivable.externalCharges[0] && !['cancelled', 'refunded'].includes(receivable.externalCharges[0].status)),
                         }}
                       />
                     </article>
@@ -673,7 +672,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
             <button type='submit' className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
               Filtrar
             </button>
-            <Link href={`/finance?developmentId=${selectedDevelopment.id}`} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+            <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=list`} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
               Limpar
             </Link>
           </div>
@@ -686,7 +685,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
               Ajuste os filtros ou crie uma venda parcelada para gerar a agenda financeira automaticamente.
             </p>
             <div className='mt-6 flex flex-col justify-center gap-3 sm:flex-row'>
-              <Link href={`/finance?developmentId=${selectedDevelopment.id}`} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+              <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=list`} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
                 Limpar filtros
               </Link>
               <Link href={`/sales?developmentId=${selectedDevelopment.id}`} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
@@ -728,6 +727,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                         {Number(receivable.paidAmount) > 0 && (
                           <p className='mt-1 text-xs text-muted'>Pago {formatCurrency(Number(receivable.paidAmount))}</p>
                         )}
+                        {receivable.paidAt && <p className='mt-1 text-xs font-semibold text-emerald-700'>Em {formatDate(receivable.paidAt)}</p>}
                       </td>
                       <td className='whitespace-nowrap px-6 py-4'>
                         <span className={`pill ${statusMeta.className}`}>{statusMeta.label}</span>
@@ -744,11 +744,14 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                           canManagePayments={canManagePayments}
                           receivable={{
                             id: receivable.id,
+                            kind: receivable.kind,
+                            dueDate: receivable.dueDate.toISOString(),
                             amount: Number(receivable.amount),
                             balance: Number(receivable.balance),
                             paidAmount: Number(receivable.paidAmount),
                             status: receivable.status,
                             notes: receivable.notes,
+                            hasActiveCharge: Boolean(receivable.externalCharges[0] && !['cancelled', 'refunded'].includes(receivable.externalCharges[0].status)),
                           }}
                         />
                       </td>

@@ -46,16 +46,15 @@ export async function POST(req: Request, { params }: Params) {
 
   try {
     const data = await req.json().catch(() => ({}))
-    if (!['asaas', 'inter'].includes(data.provider)) {
-      return NextResponse.json({ error: 'Selecione uma conta de pagamento configurada.' }, { status: 400 })
-    }
-    const providerName = data.provider as 'asaas' | 'inter'
+    const providerName = ['asaas', 'inter'].includes(data.provider)
+      ? data.provider as 'asaas' | 'inter'
+      : null
     const requestedEnvironment = data.environment === 'production'
       ? 'production'
       : data.environment === 'sandbox'
         ? 'sandbox'
         : null
-    const connection = requestedEnvironment
+    const connection = providerName && requestedEnvironment
       ? await prisma.paymentProviderConnection.findUnique({
           where: {
             companyId_provider_environment: {
@@ -65,7 +64,8 @@ export async function POST(req: Request, { params }: Params) {
             },
           },
         })
-      : await prisma.paymentProviderConnection.findFirst({
+      : providerName
+        ? await prisma.paymentProviderConnection.findFirst({
           where: {
             companyId,
             provider: providerName,
@@ -80,9 +80,19 @@ export async function POST(req: Request, { params }: Params) {
             environment: 'sandbox',
           },
         })
+        : await prisma.paymentProviderConnection.findFirst({
+            where: { companyId, status: 'active' },
+            orderBy: [
+              { environment: 'asc' },
+              { provider: 'asc' },
+              { createdAt: 'asc' },
+            ],
+          })
     if (!connection || connection.status !== 'active') {
       return NextResponse.json(
-        { error: `A empresa ainda nao possui uma conta ${providerName === 'inter' ? 'Banco Inter' : 'Asaas'} configurada.` },
+        { error: providerName
+          ? `A empresa ainda nao possui uma conta ${providerName === 'inter' ? 'Banco Inter' : 'Asaas'} configurada.`
+          : 'A empresa ainda nao possui uma conta de pagamento ativa configurada.' },
         { status: 409 },
       )
     }
@@ -107,7 +117,7 @@ export async function POST(req: Request, { params }: Params) {
       return NextResponse.json(result, { status: result.alreadyComplete ? 200 : 201 })
     } catch (issueError) {
       console.error('payment_charge_issue_failed', {
-        provider: providerName,
+        provider: connection.provider,
         environment: connection.environment,
         companyId,
         receivableId: id,
