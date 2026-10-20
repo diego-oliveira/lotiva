@@ -16,6 +16,12 @@ type TemplateSale = {
     cpf?: string | null
     rg?: string | null
     address?: string | null
+    addressNumber?: string | null
+    addressComplement?: string | null
+    neighborhood?: string | null
+    city?: string | null
+    state?: string | null
+    zipCode?: string | null
     birthDate?: Date | string | null
     profession?: string | null
     birthplace?: string | null
@@ -25,6 +31,8 @@ type TemplateSale = {
     relationshipType: string
     user: {
       name: string; email: string; cpf?: string | null; rg?: string | null; address?: string | null
+      addressNumber?: string | null; addressComplement?: string | null; neighborhood?: string | null
+      city?: string | null; state?: string | null; zipCode?: string | null
       birthDate?: Date | string | null; profession?: string | null; birthplace?: string | null; maritalStatus?: string | null
     }
   }>
@@ -135,6 +143,8 @@ export const documentVariableGroups = [
       ['segundo_comprador.estado_civil', 'Estado civil'],
       ['segundo_comprador.vinculo', 'Vinculo com o comprador principal'],
       ['compradores.descricao', 'Descricao conjunta dos compradores'],
+      ['compradores.qualificacao', 'Qualificacao completa de todos os compradores'],
+      ['compradores.assinaturas', 'Nomes e CPFs para assinatura dos compradores'],
     ],
   },
   {
@@ -332,6 +342,20 @@ export function getDocumentValues(sale: TemplateSale, contractNumber: string, ge
   const coBuyer = participant?.user
   const relationshipLabel = participant?.relationshipType === 'spouse' ? 'Conjuge' : participant?.relationshipType === 'partner' ? 'Companheiro(a)' : participant ? 'Segundo comprador independente' : ''
   const buyersDescription = !coBuyer ? sale.user.name : participant?.relationshipType === 'spouse' ? `${sale.user.name}, casado(a) com ${coBuyer.name}` : participant?.relationshipType === 'partner' ? `${sale.user.name}, em uniao estavel com ${coBuyer.name}` : `${sale.user.name} e ${coBuyer.name}, compradores independentes`
+  const formatAddress = (person: typeof sale.user) => [person.address, person.addressNumber, person.addressComplement, person.neighborhood, person.city, person.state, person.zipCode ? `CEP ${person.zipCode}` : ''].filter(Boolean).join(', ')
+  const qualifyBuyer = (person: typeof sale.user) => `${person.name}, CPF nº ${person.cpf ?? ''}, RG nº ${person.rg ?? ''}, residente e domiciliado(a) em ${formatAddress(person)}`
+  const primaryQualification = qualifyBuyer(sale.user)
+  const coBuyerQualification = coBuyer ? qualifyBuyer(coBuyer) : ''
+  const buyersQualification = !coBuyer
+    ? primaryQualification
+    : participant?.relationshipType === 'spouse'
+    ? `${primaryQualification}, e seu(sua) cônjuge ${coBuyerQualification}`
+    : participant?.relationshipType === 'partner'
+    ? `${primaryQualification}, e seu(sua) companheiro(a) ${coBuyerQualification}`
+    : `${primaryQualification}, e ${coBuyerQualification}`
+  const buyersSignatures = !coBuyer
+    ? `${sale.user.name} – CPF ${sale.user.cpf ?? ''}`
+    : `${sale.user.name} – CPF ${sale.user.cpf ?? ''}\n\nCESSIONÁRIO(S): ${coBuyer.name} – CPF ${coBuyer.cpf ?? ''}`
 
   const customDefaults = Object.fromEntries(
     (development?.company?.documentVariables ?? []).map((variable) => [
@@ -383,6 +407,8 @@ export function getDocumentValues(sale: TemplateSale, contractNumber: string, ge
     'segundo_comprador.estado_civil': coBuyer?.maritalStatus ?? '',
     'segundo_comprador.vinculo': relationshipLabel,
     'compradores.descricao': buyersDescription,
+    'compradores.qualificacao': buyersQualification,
+    'compradores.assinaturas': buyersSignatures,
     'lote.numero': sale.lot.identifier,
     'lote.quadra': sale.lot.block.identifier,
     'lote.area': formatNumber(sale.lot.totalArea, ' m2'),
