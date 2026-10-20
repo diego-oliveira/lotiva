@@ -172,6 +172,7 @@ export const documentVariableGroups = [
       ['venda.numero_parcelas_entrada', 'Numero de parcelas da entrada'],
       ['venda.primeiro_vencimento_entrada', 'Primeiro vencimento da entrada'],
       ['venda.valor_parcela_entrada', 'Valor de cada parcela da entrada'],
+      ['venda.descricao_entrada', 'Descricao completa da forma de pagamento da entrada'],
       ['venda.saldo', 'Saldo'],
       ['venda.saldo_numero', 'Saldo sem R$'],
       ['venda.saldo_extenso', 'Saldo por extenso'],
@@ -181,6 +182,7 @@ export const documentVariableGroups = [
       ['venda.valor_parcela_numero', 'Valor da parcela sem R$'],
       ['venda.valor_parcela_extenso', 'Valor da parcela por extenso'],
       ['venda.primeiro_vencimento', 'Primeira parcela do saldo'],
+      ['venda.descricao_saldo', 'Descricao completa do parcelamento do saldo'],
       ['venda.reajuste', 'Regra de reajuste'],
       ['proposta.observacoes', 'Observacoes da proposta'],
     ],
@@ -338,6 +340,8 @@ export function getDocumentValues(sale: TemplateSale, contractNumber: string, ge
   const downPayment = moneyToNumber(sale.downPayment)
   const installmentValue = moneyToNumber(sale.installmentValue)
   const balance = Math.max(totalValue - downPayment, 0)
+  const downPaymentInstallmentCount = Math.max(sale.downPaymentInstallmentCount ?? 1, 1)
+  const downPaymentInstallmentValue = downPayment / downPaymentInstallmentCount
   const participant = sale.participants?.[0]
   const coBuyer = participant?.user
   const relationshipLabel = participant?.relationshipType === 'spouse' ? 'Conjuge' : participant?.relationshipType === 'partner' ? 'Companheiro(a)' : participant ? 'Segundo comprador independente' : ''
@@ -356,6 +360,12 @@ export function getDocumentValues(sale: TemplateSale, contractNumber: string, ge
   const buyersSignatures = !coBuyer
     ? `${sale.user.name} – CPF ${sale.user.cpf ?? ''}`
     : `${sale.user.name} – CPF ${sale.user.cpf ?? ''}\n\nCESSIONÁRIO(S): ${coBuyer.name} – CPF ${coBuyer.cpf ?? ''}`
+  const downPaymentDescription = downPayment <= 0
+    ? 'Sem entrada.'
+    : downPaymentInstallmentCount === 1
+    ? `Entrada: R$ ${formatCurrencyNumber(downPayment)}, em parcela unica, com vencimento em ${formatDate(sale.downPaymentFirstDueDate)}.`
+    : `Entrada: R$ ${formatCurrencyNumber(downPayment)}, em ${downPaymentInstallmentCount} parcelas mensais de R$ ${formatCurrencyNumber(downPaymentInstallmentValue)} cada, com primeiro vencimento em ${formatDate(sale.downPaymentFirstDueDate)}.`
+  const balanceDescription = `Saldo: R$ ${formatCurrencyNumber(balance)}, em ${sale.installmentCount} parcelas mensais de R$ ${formatCurrencyNumber(installmentValue)} cada, com primeiro vencimento em ${formatDate(sale.firstDueDate)}.`
 
   const customDefaults = Object.fromEntries(
     (development?.company?.documentVariables ?? []).map((variable) => [
@@ -427,6 +437,7 @@ export function getDocumentValues(sale: TemplateSale, contractNumber: string, ge
       : '',
     'venda.numero_parcelas_entrada': String(sale.downPaymentInstallmentCount ?? 1),
     'venda.valor_parcela_entrada': formatCurrency(downPayment / Math.max(sale.downPaymentInstallmentCount ?? 1, 1)),
+    'venda.descricao_entrada': downPaymentDescription,
     'venda.primeiro_vencimento_entrada': formatDate(sale.downPaymentFirstDueDate),
     'venda.saldo': formatCurrency(balance),
     'venda.saldo_numero': formatCurrencyNumber(balance),
@@ -437,6 +448,7 @@ export function getDocumentValues(sale: TemplateSale, contractNumber: string, ge
     'venda.valor_parcela_numero': formatCurrencyNumber(installmentValue),
     'venda.valor_parcela_extenso': currencyToWords(installmentValue),
     'venda.primeiro_vencimento': formatDate(sale.firstDueDate),
+    'venda.descricao_saldo': balanceDescription,
     'venda.reajuste': sale.annualAdjustment ? 'Com reajuste anual.' : 'Sem reajuste anual.',
     'proposta.observacoes': sale.proposal?.notes ?? '',
     ...customDefaults,
