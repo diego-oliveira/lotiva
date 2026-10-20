@@ -32,6 +32,12 @@ type CurrentUser = {
   email: string
 }
 
+type Impersonation = {
+  expiresAt: string
+  actor: CurrentUser
+  target: CurrentUser
+}
+
 type WorkspaceDevelopment = {
   id: string
   name: string
@@ -333,6 +339,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [accessChecked, setAccessChecked] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [workspaceDevelopments, setWorkspaceDevelopments] = useState<WorkspaceDevelopment[] | null>(null)
+  const [impersonation, setImpersonation] = useState<Impersonation | null>(null)
+  const [endingImpersonation, setEndingImpersonation] = useState(false)
   const isAuthPage = pathname.startsWith('/signin') || pathname.startsWith('/auth')
   const isPublicPage = pathname.startsWith('/p/')
 
@@ -361,6 +369,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         if (!payload) return
         setPermissions(payload?.permissions ?? null)
         setCurrentUser(payload?.user ?? null)
+        setImpersonation(payload?.impersonation ?? null)
         setAccessChecked(true)
       })
       .catch(() => {
@@ -414,6 +423,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       item.id === notification.id ? { ...item, readAt: new Date().toISOString() } : item
     )))
     await fetch(`/api/notifications/${notification.id}`, { method: 'PATCH' }).catch(() => undefined)
+  }
+
+  const stopImpersonation = async () => {
+    setEndingImpersonation(true)
+    try {
+      const response = await fetch('/api/impersonation', { method: 'DELETE' })
+      if (!response.ok) throw new Error('Nao foi possivel encerrar o acesso.')
+      window.location.assign('/clients')
+    } catch {
+      setEndingImpersonation(false)
+    }
+  }
+
+  const handleSignOut = async () => {
+    if (impersonation) {
+      await fetch('/api/impersonation', { method: 'DELETE' }).catch(() => undefined)
+    }
+    await signOut({ callbackUrl: '/signin' })
   }
 
   const visibleNavSections = useMemo(() => {
@@ -513,7 +540,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </nav>
             <button
               type='button'
-              onClick={() => signOut({ callbackUrl: '/signin' })}
+              onClick={() => void handleSignOut()}
               className='mt-6 flex w-full items-center justify-center rounded-xl border border-white/10 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white md:hidden'
             >
               Sair
@@ -523,6 +550,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className='flex min-h-screen min-w-0 flex-1 flex-col'>
           <header className='sticky top-0 z-30 border-b border-border bg-white/95 backdrop-blur'>
+            {impersonation && (
+              <div className='flex flex-col gap-2 bg-amber-100 px-4 py-2 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8'>
+                <p>
+                  Voce esta acessando como <strong>{impersonation.target.name || impersonation.target.email}</strong>.
+                  <span className='ml-1 text-amber-800'>A sessao termina automaticamente em 30 minutos.</span>
+                </p>
+                <button
+                  type='button'
+                  onClick={() => void stopImpersonation()}
+                  disabled={endingImpersonation}
+                  className='shrink-0 self-start rounded-lg border border-amber-300 bg-white px-3 py-1.5 font-semibold text-amber-900 transition hover:bg-amber-50 disabled:opacity-60 sm:self-auto'
+                >
+                  {endingImpersonation ? 'Encerrando...' : 'Voltar para minha conta'}
+                </button>
+              </div>
+            )}
             <div className='flex min-h-[88px] flex-wrap items-center gap-3 px-4 py-3 sm:px-6 lg:h-[88px] lg:flex-nowrap lg:px-8 lg:py-0'>
               <div className='order-1 flex flex-1 items-center gap-4'>
                 <button
@@ -644,7 +687,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     </div>
                     <button
                       type='button'
-                      onClick={() => signOut({ callbackUrl: '/signin' })}
+                      onClick={() => void handleSignOut()}
                       className='flex w-full items-center justify-between px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'
                     >
                       Sair

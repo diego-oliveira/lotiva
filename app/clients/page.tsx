@@ -64,8 +64,16 @@ export default function ClientsPage() {
   const [personType, setPersonType] = useState<'all' | 'clients' | 'team'>('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [impersonationOwnerId, setImpersonationOwnerId] = useState<string | null>(null)
+  const [impersonatingClientId, setImpersonatingClientId] = useState<string | null>(null)
 
-  useEffect(() => { fetchClients() }, [])
+  useEffect(() => {
+    fetchClients()
+    fetch('/api/impersonation', { cache: 'no-store' })
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((payload) => setImpersonationOwnerId(payload?.ownerId ?? null))
+      .catch(() => setImpersonationOwnerId(null))
+  }, [])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -104,6 +112,24 @@ export default function ClientsPage() {
       setError(err instanceof Error ? err.message : 'Erro ao excluir cliente')
     } finally {
       setDeleteLoading(false)
+    }
+  }
+
+  const startImpersonation = async (client: Client) => {
+    setImpersonatingClientId(client.id)
+    setError(null)
+    try {
+      const response = await fetch('/api/impersonation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetId: client.id }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error ?? 'Nao foi possivel acessar como esta pessoa.')
+      window.location.assign('/')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao foi possivel acessar como esta pessoa.')
+      setImpersonatingClientId(null)
     }
   }
 
@@ -322,6 +348,16 @@ export default function ClientsPage() {
 
                       <td className='px-6 py-4 whitespace-nowrap text-right text-sm font-semibold'>
                         <div className='flex items-center justify-end gap-2'>
+                          {impersonationOwnerId && client.id !== impersonationOwnerId && isTeamMember && (
+                            <button
+                              type='button'
+                              onClick={() => void startImpersonation(client)}
+                              disabled={Boolean(impersonatingClientId)}
+                              className='rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-primary transition hover:bg-primary/10 disabled:cursor-wait disabled:opacity-60'
+                            >
+                              {impersonatingClientId === client.id ? 'Acessando...' : 'Acessar como'}
+                            </button>
+                          )}
                           <button
                             onClick={() => {
                               setEditingClient(client)

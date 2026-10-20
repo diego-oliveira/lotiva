@@ -6,6 +6,7 @@ import { createTransport } from 'nodemailer'
 import type { SendVerificationRequestParams } from 'next-auth/providers/email'
 import { NextResponse } from 'next/server'
 import { prisma } from './prisma'
+import { getActiveImpersonation, isSystemOwner } from './impersonation'
 
 const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET
 
@@ -175,21 +176,40 @@ export const authOptions: NextAuthOptions = {
   },
 }
 
-export async function getCurrentSession() {
+export async function getOriginalSession() {
   return getServerSession(authOptions)
 }
 
-export async function requireAuthenticatedUser() {
-  const session = await getCurrentSession()
+export async function getCurrentSession() {
+  const session = await getOriginalSession()
+  if (!session?.user?.id || !isSystemOwner(session.user)) return session
 
-  if (!session?.user?.email || !session.user.id) {
+  const impersonation = await getActiveImpersonation(session.user.id)
+  if (!impersonation) return session
+
+  return {
+    ...session,
+    user: {
+      ...session.user,
+      id: impersonation.target.id,
+      name: impersonation.target.name,
+      email: impersonation.target.email,
+      image: impersonation.target.image,
+    },
+  }
+}
+
+export async function requireAuthenticatedUser() {
+  const originalSession = await getOriginalSession()
+
+  if (!originalSession?.user?.email || !originalSession.user.id) {
     return {
       session: null,
       response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
     }
   }
 
-  const isEligible = await isAdminEligibleEmail(session.user.email)
+  const isEligible = await isAdminEligibleEmail(originalSession.user.email)
 
   if (!isEligible) {
     return {
@@ -198,5 +218,28 @@ export async function requireAuthenticatedUser() {
     }
   }
 
-  return { session: session as AuthenticatedSession, response: null }
+  let session = originalSession
+  let impersonation: Awaited<ReturnType<typeof getActiveImpersonation>> = null
+  if (isSystemOwner(originalSession.user)) {
+    impersonation = await getActiveImpersonation(originalSession.user.id)
+    if (impersonation) {
+      session = {
+        ...originalSession,
+        user: {
+          ...originalSession.user,
+          id: impersonation.target.id,
+          name: impersonation.target.name,
+          email: impersonation.target.email,
+          image: impersonation.target.image,
+        },
+      }
+    }
+  }
+
+  return {
+    session: session as AuthenticatedSession,
+    originalSession: originalSession as AuthenticatedSession,
+    impersonation,
+    response: null,
+  }
 }

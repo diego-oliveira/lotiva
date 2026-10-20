@@ -165,6 +165,24 @@ model User {
   adjustmentReviewsCreated  AdjustmentReview[] @relation("AdjustmentReviewCreator")
   adjustmentReviewsReviewed AdjustmentReview[] @relation("AdjustmentReviewReviewer")
   financialAuditLogs        FinancialAuditLog[]
+  impersonationSessionsStarted ImpersonationSession[] @relation("ImpersonationActor")
+  impersonationSessionsReceived ImpersonationSession[] @relation("ImpersonationTarget")
+}
+
+model ImpersonationSession {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  actorId   String
+  targetId  String
+  expiresAt DateTime
+  endedAt   DateTime?
+  createdAt DateTime  @default(now())
+
+  actor  User @relation("ImpersonationActor", fields: [actorId], references: [id], onDelete: Cascade)
+  target User @relation("ImpersonationTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@index([actorId, expiresAt])
+  @@index([targetId, expiresAt])
 }
 
 model Account {
