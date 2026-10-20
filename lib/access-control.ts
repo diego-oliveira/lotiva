@@ -46,6 +46,52 @@ export function lotAccessWhere(userId: string) {
   }
 }
 
+const administrativeRoleNames = ['owner', 'administrador', 'admin', 'gestor', 'manager']
+const financialRoleNames = [...administrativeRoleNames, 'financeiro', 'finance']
+
+function developmentRoleAccessWhere(userId: string, roleNames: string[]) {
+  const roleFilter = {
+    roles: {
+      some: {
+        role: {
+          name: {
+            in: roleNames,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+    },
+  }
+
+  return {
+    OR: [
+      {
+        company: {
+          createdById: userId,
+        },
+      },
+      {
+        memberships: {
+          some: {
+            userId,
+            ...roleFilter,
+          },
+        },
+      },
+      {
+        company: {
+          memberships: {
+            some: {
+              userId,
+              ...roleFilter,
+            },
+          },
+        },
+      },
+    ],
+  }
+}
+
 export function lotEventAccessWhere(userId: string) {
   return {
     AND: [
@@ -71,23 +117,7 @@ export function lotEventAccessWhere(userId: string) {
           {
             lot: {
               block: {
-                development: {
-                  memberships: {
-                    some: {
-                      userId,
-                      roles: {
-                        some: {
-                          role: {
-                            name: {
-                              in: ['owner', 'administrador', 'admin', 'gestor', 'manager'],
-                              mode: 'insensitive' as const,
-                            },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
+                development: developmentRoleAccessWhere(userId, administrativeRoleNames),
               },
             },
           },
@@ -109,23 +139,7 @@ export function saleAccessWhere(userId: string) {
           {
             lot: {
               block: {
-                development: {
-                  memberships: {
-                    some: {
-                      userId,
-                      roles: {
-                        some: {
-                          role: {
-                            name: {
-                              in: ['owner', 'administrador', 'admin', 'gestor', 'manager', 'financeiro', 'finance'],
-                              mode: 'insensitive' as const,
-                            },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
+                development: developmentRoleAccessWhere(userId, financialRoleNames),
               },
             },
           },
@@ -155,23 +169,7 @@ export function proposalAccessWhere(userId: string) {
           {
             lot: {
               block: {
-                development: {
-                  memberships: {
-                    some: {
-                      userId,
-                      roles: {
-                        some: {
-                          role: {
-                            name: {
-                              in: ['owner', 'administrador', 'admin', 'gestor', 'manager'],
-                              mode: 'insensitive' as const,
-                            },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
+                development: developmentRoleAccessWhere(userId, administrativeRoleNames),
               },
             },
           },
