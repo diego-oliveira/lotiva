@@ -58,7 +58,7 @@ export function NumberTextInput({
         onBlur?.(event)
       }}
       onChange={(event) => {
-        const nextText = event.target.value
+        const nextText = event.target.value.replace(/[^\d,.-]/g, '')
         setText(nextText)
         const nextValue = parseLocalizedNumber(nextText)
         onValueChange(Number.isFinite(nextValue) ? nextValue! : emptyValue)

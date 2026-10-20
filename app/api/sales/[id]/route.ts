@@ -27,11 +27,17 @@ function toDateKey(value?: Date | null) {
   return value.toISOString().slice(0, 10)
 }
 
+function resolveFirstInstallmentDueDate(requestedDate: Date, downPaymentFirstDueDate: Date, downPayment: number, downPaymentInstallmentCount: number) {
+  if (downPayment <= 0) return requestedDate
+  const firstDateAfterDownPayment = addMonths(downPaymentFirstDueDate, downPaymentInstallmentCount)
+  return requestedDate < firstDateAfterDownPayment ? firstDateAfterDownPayment : requestedDate
+}
+
 function buildReceivables(
   saleId: string,
-  data: { downPayment: number; installmentCount: number; installmentValue: number; firstDueDate?: Date | null },
+  data: { downPayment: number; downPaymentInstallmentCount: number; downPaymentFirstDueDate?: Date | null; installmentCount: number; installmentValue: number; firstDueDate?: Date | null; saleDate?: Date },
 ) {
-  const createdAt = new Date()
+  const createdAt = data.saleDate ?? new Date()
   const firstDueDate = data.firstDueDate ?? addMonths(createdAt, 1)
   const receivables: Array<{
     saleId: string
@@ -43,14 +49,13 @@ function buildReceivables(
   }> = []
 
   if (data.downPayment > 0) {
-    receivables.push({
-      saleId,
-      kind: 'down_payment',
-      sequence: 0,
-      dueDate: createdAt,
-      amount: data.downPayment,
-      balance: data.downPayment,
-    })
+    const count = Math.max(1, data.downPaymentInstallmentCount)
+    const downPaymentFirstDueDate = data.downPaymentFirstDueDate ?? createdAt
+    const regularAmount = Math.floor((data.downPayment * 100) / count) / 100
+    for (let position = 1; position <= count; position += 1) {
+      const amount = position === count ? Math.round((data.downPayment - regularAmount * (count - 1)) * 100) / 100 : regularAmount
+      receivables.push({ saleId, kind: 'down_payment', sequence: count === 1 ? 0 : position, dueDate: addMonths(downPaymentFirstDueDate, position - 1), amount, balance: amount })
+    }
   }
 
   for (let sequence = 1; sequence <= data.installmentCount; sequence += 1) {
@@ -119,6 +124,7 @@ export async function PUT(req: Request, { params }: Params) {
       },
       select: {
         id: true,
+        createdAt: true,
         userId: true,
         lotId: true,
         reservationId: true,
@@ -127,6 +133,8 @@ export async function PUT(req: Request, { params }: Params) {
         installmentCount: true,
         installmentValue: true,
         downPayment: true,
+        downPaymentInstallmentCount: true,
+        downPaymentFirstDueDate: true,
         firstDueDate: true,
         annualAdjustment: true,
         totalValue: true,
@@ -137,6 +145,7 @@ export async function PUT(req: Request, { params }: Params) {
           },
         },
         contract: { select: { id: true } },
+        participants: { select: { id: true, userId: true, relationshipType: true } },
         receivables: {
           select: {
             id: true,
@@ -188,6 +197,14 @@ export async function PUT(req: Request, { params }: Params) {
     })
     if (!buyerMembership) return forbiddenResponse()
 
+    if (data.coBuyerId) {
+      if (data.coBuyerId === data.userId) return NextResponse.json({ error: 'A pessoa adicional deve ser diferente do comprador principal.' }, { status: 400 })
+      const participant = await prisma.user.findFirst({ where: { id: data.coBuyerId, OR: [{ memberships: { some: { developmentId: lot.block.developmentId } } }, { companyMemberships: { some: { companyId: lot.block.development!.companyId } } }] } })
+      if (!participant) return NextResponse.json({ error: 'Selecione uma pessoa adicional valida.' }, { status: 400 })
+      const missing = (['cpf', 'rg', 'address', 'birthDate', 'profession', 'birthplace', 'maritalStatus'] as const).filter((field) => !participant[field])
+      if (missing.length) return NextResponse.json({ error: 'A pessoa adicional nao tem todos os dados legais preenchidos.' }, { status: 400 })
+    }
+
     if (data.reservationId) {
       const reservation = await prisma.reservation.findFirst({
         where: {
@@ -204,6 +221,7 @@ export async function PUT(req: Request, { params }: Params) {
     const requestedDownPayment = Number(data.downPayment)
     const requestedSalePrice = Number(data.salePrice)
     const requestedInstallmentCount = Math.trunc(Number(data.installmentCount))
+    const requestedDownPaymentInstallmentCount = data.downPaymentInstallmentCount == null ? 1 : Math.trunc(Number(data.downPaymentInstallmentCount))
     if (!Number.isFinite(requestedSalePrice) || requestedSalePrice <= 0) {
       return NextResponse.json({ error: 'Informe um valor de venda valido.' }, { status: 400 })
     }
@@ -214,6 +232,7 @@ export async function PUT(req: Request, { params }: Params) {
       return NextResponse.json({ error: 'Informe uma quantidade de parcelas valida.' }, { status: 400 })
     }
     const requestedFirstDueDate = parseDateOnly(data.firstDueDate)
+    const requestedDownPaymentFirstDueDate = parseDateOnly(data.downPaymentFirstDueDate) ?? existingSale.downPaymentFirstDueDate ?? existingSale.createdAt
     if (!requestedFirstDueDate) {
       return NextResponse.json({ error: 'Informe o primeiro vencimento.' }, { status: 400 })
     }
@@ -224,12 +243,20 @@ export async function PUT(req: Request, { params }: Params) {
       (data.reservationId || null) !== existingSale.reservationId ||
       requestedSalePrice !== Number(existingSale.salePrice) ||
       requestedDownPayment !== Number(existingSale.downPayment) ||
+      requestedDownPaymentInstallmentCount !== existingSale.downPaymentInstallmentCount ||
+      toDateKey(requestedDownPaymentFirstDueDate) !== toDateKey(existingSale.downPaymentFirstDueDate) ||
       requestedInstallmentCount !== existingSale.installmentCount ||
       Number(data.installmentValue) !== Number(existingSale.installmentValue) ||
       Number(data.totalValue) !== Number(existingSale.totalValue) ||
       Boolean(data.annualAdjustment) !== existingSale.annualAdjustment
     )
-    const dueDateChanged = toDateKey(requestedFirstDueDate) !== toDateKey(existingSale.firstDueDate)
+    const normalizedFirstDueDate = resolveFirstInstallmentDueDate(
+      requestedFirstDueDate,
+      requestedDownPaymentFirstDueDate,
+      requestedDownPayment,
+      requestedDownPaymentInstallmentCount,
+    )
+    const dueDateChanged = toDateKey(normalizedFirstDueDate) !== toDateKey(existingSale.firstDueDate)
     const hasActiveExternalCharges = existingSale.receivables.some(
       (receivable) => receivable.externalCharges.some(
         (charge) => !['confirmed', 'received', 'cancelled', 'refunded'].includes(charge.status),
@@ -262,6 +289,14 @@ export async function PUT(req: Request, { params }: Params) {
       defaultInterestRate: 0,
       interestCalculation: 'none',
       correctionIndex: 'none',
+      allowDownPaymentInstallments: false,
+      maxDownPaymentInstallments: 1,
+    }
+    if (!Number.isFinite(requestedDownPaymentInstallmentCount) || requestedDownPaymentInstallmentCount < 1 || (!settings.allowDownPaymentInstallments && requestedDownPaymentInstallmentCount !== 1) || requestedDownPaymentInstallmentCount > settings.maxDownPaymentInstallments) {
+      return NextResponse.json({ error: 'O parcelamento da entrada nao atende as regras do empreendimento.' }, { status: 422 })
+    }
+    if (requestedDownPaymentInstallmentCount !== existingSale.downPaymentInstallmentCount && existingSale.receivables.some((item) => item.kind === 'down_payment' && (item.status === 'paid' || Number(item.paidAmount) > 0))) {
+      return NextResponse.json({ error: 'Nao e possivel alterar o parcelamento de uma entrada que ja possui pagamento.' }, { status: 409 })
     }
     const installmentCount = requestedInstallmentCount
     const downPayment = requestedDownPayment
@@ -278,8 +313,10 @@ export async function PUT(req: Request, { params }: Params) {
       downPayment,
       multiplyMoney(installmentValue, installmentCount),
     ))
-    const firstDueDate = requestedFirstDueDate
+    const firstDueDate = normalizedFirstDueDate
     const annualAdjustment = Boolean(data.annualAdjustment)
+    const participantUserId = data.coBuyerId || null
+    const relationshipType = ['spouse', 'partner', 'independent'].includes(data.relationshipType) ? data.relationshipType : 'independent'
 
     const updated = await prisma.$transaction(async (tx) => {
       const sale = await tx.sale.update({
@@ -292,6 +329,8 @@ export async function PUT(req: Request, { params }: Params) {
           installmentCount,
           installmentValue,
           downPayment,
+          downPaymentInstallmentCount: requestedDownPaymentInstallmentCount,
+          downPaymentFirstDueDate: requestedDownPaymentFirstDueDate,
           firstDueDate,
           annualAdjustment,
           totalValue,
@@ -314,6 +353,14 @@ export async function PUT(req: Request, { params }: Params) {
         }
       })
 
+      await tx.saleParticipant.deleteMany({ where: { saleId: id } })
+      if (participantUserId) {
+        await tx.saleParticipant.create({ data: { saleId: id, userId: participantUserId, role: 'buyer', relationshipType } })
+        const [personAId, personBId] = [data.userId, participantUserId].sort()
+        await tx.userRelationship.deleteMany({ where: { personAId, personBId, type: { in: ['spouse', 'partner'] } } })
+        if (relationshipType !== 'independent') await tx.userRelationship.create({ data: { personAId, personBId, type: relationshipType } })
+      }
+
       const onlyDueDateChanged = !changesSaleTerms
       if (onlyDueDateChanged) {
         const pendingInstallments = existingSale.receivables.filter(
@@ -326,9 +373,12 @@ export async function PUT(req: Request, { params }: Params) {
       } else {
         const desiredReceivables = buildReceivables(sale.id, {
           downPayment: Number(sale.downPayment),
+          downPaymentInstallmentCount: sale.downPaymentInstallmentCount,
+          downPaymentFirstDueDate: sale.downPaymentFirstDueDate,
           installmentCount: sale.installmentCount,
           installmentValue: Number(sale.installmentValue),
           firstDueDate: sale.firstDueDate,
+          saleDate: existingSale.createdAt,
         })
         const desiredByKey = new Map(desiredReceivables.map(
           (receivable) => [`${receivable.kind}:${receivable.sequence}`, receivable],

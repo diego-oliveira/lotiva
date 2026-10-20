@@ -25,6 +25,7 @@ export async function POST(req: Request) {
       },
       include: {
         user: true,
+        participants: { include: { user: true } },
         lot: {
           include: {
             block: {

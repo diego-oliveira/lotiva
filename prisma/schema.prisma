@@ -76,6 +76,8 @@ model DevelopmentSettings {
   correctionIndex          String   @default("none")
   correctionFrequency      String   @default("monthly")
   minDownPaymentPercentage Float    @default(10)
+  allowDownPaymentInstallments Boolean @default(false)
+  maxDownPaymentInstallments Int    @default(1)
   maxInstallments          Int      @default(120)
   paymentMethods           String   @default("cash,installments")
   allowCustomTerms         Boolean  @default(true)
@@ -144,6 +146,9 @@ model User {
   sales               Sale[]
   createdSales        Sale[]                    @relation("SaleCreator")
   proposals           Proposal[]                @relation("ProposalBuyer")
+  saleParticipations  SaleParticipant[]
+  relationshipsAsA   UserRelationship[]         @relation("RelationshipPersonA")
+  relationshipsAsB   UserRelationship[]         @relation("RelationshipPersonB")
   createdProposals    Proposal[]                @relation("ProposalCreator")
   reviewedProposals   Proposal[]                @relation("ProposalReviewer")
   notifications       Notification[]
@@ -376,6 +381,8 @@ model Proposal {
   rejectionReason     String?
   salePrice           Decimal   @db.Decimal(15, 2)
   downPayment         Decimal   @db.Decimal(15, 2)
+  downPaymentInstallmentCount Int @default(1)
+  downPaymentFirstDueDate DateTime?
   installmentCount    Int
   installmentValue    Decimal   @db.Decimal(15, 2)
   balance             Decimal   @db.Decimal(15, 2)
@@ -412,6 +419,8 @@ model Sale {
   installmentCount Int
   installmentValue Decimal   @db.Decimal(15, 2)
   downPayment      Decimal   @db.Decimal(15, 2)
+  downPaymentInstallmentCount Int @default(1)
+  downPaymentFirstDueDate DateTime?
   firstDueDate     DateTime?
   annualAdjustment Boolean   @default(true)
   totalValue       Decimal   @db.Decimal(15, 2)
@@ -427,8 +436,40 @@ model Sale {
   receivables Receivable[]
   billingCycles BillingCycle[]
   adjustmentReviews AdjustmentReview[]
+  participants SaleParticipant[]
 
   @@index([createdById, createdAt])
+}
+
+model SaleParticipant {
+  id               String   @id @default(uuid())
+  saleId           String
+  userId           String
+  role             String   @default("buyer")
+  relationshipType String   @default("independent")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([saleId, userId])
+  @@index([userId])
+}
+
+model UserRelationship {
+  id        String   @id @default(uuid())
+  personAId String
+  personBId String
+  type      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  personA User @relation("RelationshipPersonA", fields: [personAId], references: [id], onDelete: Cascade)
+  personB User @relation("RelationshipPersonB", fields: [personBId], references: [id], onDelete: Cascade)
+
+  @@unique([personAId, personBId, type])
+  @@index([personBId])
 }
 
 model Contract {

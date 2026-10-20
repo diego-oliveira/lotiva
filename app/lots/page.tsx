@@ -31,6 +31,8 @@ interface DevelopmentSettings {
   correctionIndex: 'none' | 'ipca' | 'incc' | 'igpm' | 'fixed'
   correctionFrequency: 'monthly' | 'annual'
   minDownPaymentPercentage: number
+  allowDownPaymentInstallments: boolean
+  maxDownPaymentInstallments: number
   maxInstallments: number
   paymentMethods: string
   allowCustomTerms: boolean
@@ -80,6 +82,8 @@ interface LotProposal {
   status: string
   salePrice: number
   downPayment: number
+  downPaymentInstallmentCount: number
+  downPaymentFirstDueDate?: string | null
   installmentCount: number
   installmentValue: number
   balance: number
@@ -243,6 +247,14 @@ function getDefaultDueDate() {
   return formatDateInput(date)
 }
 
+function getMinimumBalanceDueDate(entryDueDate: string, installmentCount: number) {
+  if (!entryDueDate) return ''
+  const date = new Date(`${entryDueDate}T12:00:00`)
+  if (Number.isNaN(date.getTime())) return ''
+  date.setMonth(date.getMonth() + Math.max(installmentCount, 1))
+  return formatDateInput(date)
+}
+
 function getDefaultExpirationDate(days = 7) {
   const date = new Date()
   date.setDate(date.getDate() + days)
@@ -326,6 +338,8 @@ function LotsContent() {
   const [simulatorForm, setSimulatorForm] = useState({
     salePrice: 0,
     downPayment: 0,
+    downPaymentInstallmentCount: 1,
+    downPaymentFirstDueDate: formatDateInput(new Date()),
     installmentCount: 120,
     interestRate: 0,
     interestCalculation: 'none' as DevelopmentSettings['interestCalculation'],
@@ -663,9 +677,11 @@ function LotsContent() {
       simulatorForm.salePrice > 0 &&
       simulatorForm.downPayment >= 0 &&
       simulatorForm.downPayment <= simulatorForm.salePrice &&
+      simulatorForm.downPaymentInstallmentCount >= 1 &&
+      simulatorForm.downPaymentInstallmentCount <= (selectedDevelopmentSettings?.maxDownPaymentInstallments ?? 1) &&
       simulatorForm.installmentCount > 0 &&
       simulation.installmentValue > 0,
-    [simulatorForm, simulation.installmentValue],
+    [simulatorForm, simulation.installmentValue, selectedDevelopmentSettings?.maxDownPaymentInstallments],
   )
 
   const commercialRules = useMemo(() => {
@@ -805,6 +821,8 @@ function LotsContent() {
       setSimulatorForm({
         salePrice,
         downPayment: Math.round((salePrice * minDownPaymentPercentage) / 100),
+        downPaymentInstallmentCount: 1,
+        downPaymentFirstDueDate: formatDateInput(new Date()),
         installmentCount: maxInstallments,
         interestRate: settings?.defaultInterestRate ?? 0,
         interestCalculation: settings?.interestCalculation ?? 'none',
@@ -1078,6 +1096,8 @@ function LotsContent() {
           reservationId,
           salePrice: simulatorForm.salePrice,
           downPayment: simulatorForm.downPayment,
+          downPaymentInstallmentCount: simulatorForm.downPaymentInstallmentCount,
+          downPaymentFirstDueDate: simulatorForm.downPaymentFirstDueDate,
           installmentCount: simulatorForm.installmentCount,
           installmentValue: simulation.installmentValue,
           balance: simulation.balance,
@@ -2149,6 +2169,25 @@ function LotsContent() {
                     <section className='rounded-2xl border border-border bg-surface-secondary p-5'>
                       <h3 className='text-base font-semibold text-foreground'>Condicao comercial</h3>
                       <div className='mt-5 grid gap-4 md:grid-cols-2'>
+                        <label className='block md:col-span-2'>
+                          <span className='mb-2 flex items-center justify-between gap-3 text-sm font-semibold text-foreground'>
+                            <span>Valor da proposta</span>
+                            <span className='text-xs font-medium text-muted'>Valor base: {formatCurrency(selectedLot.price)}</span>
+                          </span>
+                          <CurrencyTextInput
+                            value={simulatorForm.salePrice}
+                            onValueChange={(salePrice) => {
+                              setSimulatorForm((current) => ({
+                                ...current,
+                                salePrice,
+                                downPayment: Math.min(current.downPayment, salePrice),
+                              }))
+                            }}
+                            placeholder='R$ 0,00'
+                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm font-semibold text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                          />
+                          <span className='mt-2 block text-xs text-muted'>O valor pode ser alterado para enviar uma condicao diferente para aprovacao.</span>
+                        </label>
                         <div className='md:col-span-2'>
                           <div className='relative'>
                             <label className='block'>
@@ -2279,21 +2318,6 @@ function LotsContent() {
                           </div>
                           )}
                         </div>
-                        <label className='block md:col-span-2'>
-                          <span className='mb-2 block text-sm font-semibold text-foreground'>Valor de venda</span>
-                          <CurrencyTextInput
-                            value={simulatorForm.salePrice}
-                            onValueChange={(salePrice) => {
-                              setSimulatorForm((current) => ({
-                                ...current,
-                                salePrice,
-                                downPayment: Math.min(current.downPayment, salePrice),
-                              }))
-                            }}
-                            placeholder='R$ 0,00'
-                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
-                          />
-                        </label>
                         <label className='block'>
                           <span className='mb-2 block text-sm font-semibold text-foreground'>Entrada</span>
                           <CurrencyTextInput
@@ -2309,6 +2333,38 @@ function LotsContent() {
                             Minimo do empreendimento: {formatCurrency(commercialRules.minDownPayment)} ({commercialRules.minDownPaymentPercentage}%)
                           </span>
                         </label>
+                        {selectedLot.block.development?.settings?.allowDownPaymentInstallments && (
+                          <label className='block'>
+                            <span className='mb-2 block text-sm font-semibold text-foreground'>Parcelas da entrada</span>
+                            <NumberTextInput
+                              min={1}
+                              max={selectedLot.block.development.settings.maxDownPaymentInstallments}
+                              value={simulatorForm.downPaymentInstallmentCount}
+                              onValueChange={(value) => setSimulatorForm((current) => {
+                                const downPaymentInstallmentCount = Math.trunc(value)
+                                const minimumDueDate = getMinimumBalanceDueDate(current.downPaymentFirstDueDate, downPaymentInstallmentCount)
+                                return { ...current, downPaymentInstallmentCount, firstDueDate: minimumDueDate && current.firstDueDate < minimumDueDate ? minimumDueDate : current.firstDueDate }
+                              })}
+                              className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                            />
+                            <span className='mt-2 block text-xs text-muted'>Ate {selectedLot.block.development.settings.maxDownPaymentInstallments} vezes.</span>
+                          </label>
+                        )}
+                        {simulatorForm.downPayment > 0 && (
+                          <label className='block'>
+                            <span className='mb-2 block text-sm font-semibold text-foreground'>Primeiro vencimento da entrada</span>
+                            <input
+                              type='date'
+                              value={simulatorForm.downPaymentFirstDueDate}
+                              onChange={(event) => setSimulatorForm((current) => {
+                                const downPaymentFirstDueDate = event.target.value
+                                const minimumDueDate = getMinimumBalanceDueDate(downPaymentFirstDueDate, current.downPaymentInstallmentCount)
+                                return { ...current, downPaymentFirstDueDate, firstDueDate: minimumDueDate && current.firstDueDate < minimumDueDate ? minimumDueDate : current.firstDueDate }
+                              })}
+                              className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
+                            />
+                          </label>
+                        )}
                         <label className='block'>
                           <span className='mb-2 block text-sm font-semibold text-foreground'>Parcelas</span>
                           <NumberTextInput
@@ -2323,9 +2379,10 @@ function LotsContent() {
                           </span>
                         </label>
                         <label className='block'>
-                          <span className='mb-2 block text-sm font-semibold text-foreground'>Primeiro vencimento</span>
+                          <span className='mb-2 block text-sm font-semibold text-foreground'>Primeira parcela do saldo</span>
                           <input
                             type='date'
+                            min={getMinimumBalanceDueDate(simulatorForm.downPaymentFirstDueDate, simulatorForm.downPaymentInstallmentCount) || undefined}
                             value={simulatorForm.firstDueDate}
                             onChange={(event) => setSimulatorForm((current) => ({ ...current, firstDueDate: event.target.value }))}
                             className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'

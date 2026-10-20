@@ -11,6 +11,8 @@ interface Block {
     name: string
     settings?: {
       minDownPaymentPercentage: number
+      allowDownPaymentInstallments: boolean
+      maxDownPaymentInstallments: number
       maxInstallments: number
       defaultInterestRate: number
       interestCalculation: string
@@ -35,6 +37,8 @@ interface ProposalSummary {
   status: string
   salePrice: number
   downPayment: number
+  downPaymentInstallmentCount?: number
+  downPaymentFirstDueDate?: string | null
   installmentCount: number
   installmentValue: number
   totalValue: number
@@ -93,6 +97,8 @@ interface User {
 
 interface SaleFormData {
   userId: string
+  coBuyerId: string
+  relationshipType: 'spouse' | 'partner' | 'independent'
   lotId: string
   reservationId?: string
   proposalId?: string
@@ -100,6 +106,8 @@ interface SaleFormData {
   installmentCount: number
   installmentValue: number
   downPayment: number
+  downPaymentInstallmentCount: number
+  downPaymentFirstDueDate: string
   firstDueDate: string
   annualAdjustment: boolean
   totalValue: number
@@ -192,6 +200,12 @@ function getDefaultFirstDueDate() {
   return formatDateInput(date)
 }
 
+function getMinimumBalanceDueDate(saleDate: Date, downPaymentInstallmentCount: number) {
+  const date = new Date(saleDate)
+  date.setMonth(date.getMonth() + Math.max(downPaymentInstallmentCount, 1))
+  return formatDateInput(date)
+}
+
 function getInitials(name: string) {
   return name.split(' ').map((part) => part[0]).join('').toUpperCase().slice(0, 2)
 }
@@ -269,6 +283,12 @@ export default function SalesForm({
   const [documentSaving, setDocumentSaving] = useState(false)
   const [documentDirty, setDocumentDirty] = useState(false)
   const [documentNotice, setDocumentNotice] = useState<string | null>(null)
+  const [activeDocumentPerson, setActiveDocumentPerson] = useState<'primary' | 'additional'>('primary')
+  const [sameAddressAsPrimary, setSameAddressAsPrimary] = useState(true)
+  const [showQuickCoBuyerForm, setShowQuickCoBuyerForm] = useState(false)
+  const [coBuyerSearch, setCoBuyerSearch] = useState('')
+  const [quickCoBuyer, setQuickCoBuyer] = useState({ name: '', email: '' })
+  const [quickCoBuyerSaving, setQuickCoBuyerSaving] = useState(false)
   const [documentForm, setDocumentForm] = useState({
     cpf: '',
     rg: '',
@@ -284,19 +304,36 @@ export default function SalesForm({
     birthplace: '',
     maritalStatus: '',
   })
+  const [coBuyerDocumentForm, setCoBuyerDocumentForm] = useState({ cpf: '', rg: '', address: '', addressNumber: '', addressComplement: '', neighborhood: '', city: '', state: '', zipCode: '', birthDate: '', profession: '', birthplace: '', maritalStatus: '' })
 
   const [formData, setFormData] = useState<SaleFormData>({
     userId: '',
+    coBuyerId: '',
+    relationshipType: 'independent',
     lotId: '',
     reservationId: '',
     installmentCount: 1,
     salePrice: 0,
     installmentValue: 0,
     downPayment: 0,
+    downPaymentInstallmentCount: 1,
+    downPaymentFirstDueDate: formatDateInput(new Date()),
     firstDueDate: getDefaultFirstDueDate(),
     annualAdjustment: true,
     totalValue: 0,
   })
+
+  const minimumBalanceDueDate = useMemo(() => {
+    if (formData.downPayment <= 0) return ''
+    const entryDate = new Date(`${formData.downPaymentFirstDueDate}T12:00:00`)
+    if (Number.isNaN(entryDate.getTime())) return ''
+    return getMinimumBalanceDueDate(entryDate, formData.downPaymentInstallmentCount)
+  }, [formData.downPayment, formData.downPaymentFirstDueDate, formData.downPaymentInstallmentCount])
+
+  useEffect(() => {
+    if (!minimumBalanceDueDate || formData.firstDueDate >= minimumBalanceDueDate) return
+    setFormData((current) => ({ ...current, firstDueDate: minimumBalanceDueDate }))
+  }, [minimumBalanceDueDate, formData.firstDueDate])
 
   useEffect(() => {
     if (!isOpen) return
@@ -307,6 +344,8 @@ export default function SalesForm({
     if (sale) {
       setFormData({
         userId: sale.userId,
+        coBuyerId: sale.participants?.[0]?.userId ?? '',
+        relationshipType: sale.participants?.[0]?.relationshipType ?? 'independent',
         lotId: sale.lotId,
         reservationId: sale.reservationId || '',
         proposalId: sale.proposalId || '',
@@ -314,6 +353,8 @@ export default function SalesForm({
         installmentCount: sale.installmentCount,
         installmentValue: sale.installmentValue,
         downPayment: sale.downPayment,
+        downPaymentInstallmentCount: sale.downPaymentInstallmentCount ?? 1,
+        downPaymentFirstDueDate: toDateInputValue(sale.downPaymentFirstDueDate) || formatDateInput(new Date(sale.createdAt ?? Date.now())),
         firstDueDate: toDateInputValue(sale.firstDueDate) || getDefaultFirstDueDate(),
         annualAdjustment: sale.annualAdjustment,
         totalValue: sale.totalValue,
@@ -321,6 +362,8 @@ export default function SalesForm({
     } else {
       setFormData({
         userId: initialData?.userId ?? '',
+        coBuyerId: '',
+        relationshipType: 'independent',
         lotId: initialData?.lotId ?? '',
         reservationId: initialData?.reservationId ?? '',
         proposalId: initialData?.proposalId ?? '',
@@ -328,6 +371,8 @@ export default function SalesForm({
         installmentCount: 1,
         installmentValue: 0,
         downPayment: 0,
+        downPaymentInstallmentCount: 1,
+        downPaymentFirstDueDate: formatDateInput(new Date()),
         firstDueDate: getDefaultFirstDueDate(),
         annualAdjustment: true,
         totalValue: 0,
@@ -340,6 +385,11 @@ export default function SalesForm({
     setLotSearch('')
     setDocumentNotice(null)
     setDocumentDirty(false)
+    setActiveDocumentPerson('primary')
+    setSameAddressAsPrimary(true)
+    setShowQuickCoBuyerForm(false)
+    setQuickCoBuyer({ name: '', email: '' })
+    setCoBuyerSearch('')
     setErrors({})
   }, [isOpen, sale, initialData, developmentId])
 
@@ -383,7 +433,22 @@ export default function SalesForm({
     }
   }
 
+  const createQuickCoBuyer = () => {
+    const targetDevelopmentId = developmentId ?? selectedLot?.block.development?.id
+    if (!targetDevelopmentId) return setErrors((current) => ({ ...current, coBuyerId: 'Selecione primeiro o empreendimento da venda.' }))
+    if (!quickCoBuyer.name.trim() || !quickCoBuyer.email.trim()) return setErrors((current) => ({ ...current, coBuyerId: 'Informe nome e email do conjuge.' }))
+    const client = { id: 'new-sale-participant', name: quickCoBuyer.name.trim(), email: quickCoBuyer.email.trim() }
+    setUsers((current) => [client, ...current.filter((user) => user.id !== client.id)])
+    setFormData((current) => ({ ...current, coBuyerId: client.id }))
+    setActiveDocumentPerson('additional')
+    setCoBuyerSearch(client.name)
+    setShowQuickCoBuyerForm(false)
+    setDocumentDirty(true)
+    setErrors((current) => ({ ...current, coBuyerId: '' }))
+  }
+
   const selectedUser = users.find((user) => user.id === formData.userId)
+  const selectedCoBuyer = users.find((user) => user.id === formData.coBuyerId)
   const selectedLot = lots.find((lot) => lot.id === formData.lotId)
   const selectedReservation = selectedLot?.reservations.find(
     (reservation) => !reservation.cancelledAt && reservation.status !== 'cancelled' && reservation.user.id === formData.userId,
@@ -408,9 +473,14 @@ export default function SalesForm({
     ? (selectedLot.price * (commercialSettings?.minDownPaymentPercentage ?? 10)) / 100
     : 0
   const maximumInstallments = commercialSettings?.maxInstallments ?? 120
+  const allowsDownPaymentInstallments = commercialSettings?.allowDownPaymentInstallments ?? false
+  const maximumDownPaymentInstallments = allowsDownPaymentInstallments ? commercialSettings?.maxDownPaymentInstallments ?? 1 : 1
   const missingDocumentFields = selectedUser
     ? REQUIRED_DOCUMENT_FIELDS.filter((field) => !selectedUser[field.key])
     : REQUIRED_DOCUMENT_FIELDS
+  const missingCoBuyerDocumentFields = selectedCoBuyer
+    ? ['cpf', 'rg', 'address', 'neighborhood', 'city', 'state', 'zipCode', 'birthDate', 'profession', 'birthplace', 'maritalStatus'].filter((field) => !coBuyerDocumentForm[field as keyof typeof coBuyerDocumentForm].trim())
+    : []
 
   useEffect(() => {
     if (!selectedUser) return
@@ -433,6 +503,21 @@ export default function SalesForm({
     setDocumentDirty(false)
   }, [selectedUser?.id])
 
+  useEffect(() => {
+    setCoBuyerDocumentForm({
+      cpf: selectedCoBuyer?.cpf ?? '', rg: selectedCoBuyer?.rg ?? '', address: selectedCoBuyer?.address ?? '',
+      addressNumber: selectedCoBuyer?.addressNumber ?? '', addressComplement: selectedCoBuyer?.addressComplement ?? '',
+      neighborhood: selectedCoBuyer?.neighborhood ?? '', city: selectedCoBuyer?.city ?? '', state: selectedCoBuyer?.state ?? '', zipCode: selectedCoBuyer?.zipCode ?? '',
+      birthDate: selectedCoBuyer?.birthDate?.slice(0, 10) ?? '', profession: selectedCoBuyer?.profession ?? '',
+      birthplace: selectedCoBuyer?.birthplace ?? '', maritalStatus: selectedCoBuyer?.maritalStatus ?? '',
+    })
+  }, [selectedCoBuyer?.id])
+
+  useEffect(() => {
+    if (!selectedCoBuyer || !sameAddressAsPrimary) return
+    setCoBuyerDocumentForm((current) => ({ ...current, address: documentForm.address, addressNumber: documentForm.addressNumber, addressComplement: documentForm.addressComplement, neighborhood: documentForm.neighborhood, city: documentForm.city, state: documentForm.state, zipCode: documentForm.zipCode }))
+  }, [selectedCoBuyer?.id, sameAddressAsPrimary, formData.relationshipType, documentForm.address, documentForm.addressNumber, documentForm.addressComplement, documentForm.neighborhood, documentForm.city, documentForm.state, documentForm.zipCode])
+
   const filteredUsers = users.filter((user) => {
     if (!userSearch) return true
     const searchLower = userSearch.toLowerCase()
@@ -442,6 +527,13 @@ export default function SalesForm({
       user.email.toLowerCase().includes(searchLower) ||
       Boolean(digits && user.cpf?.replace(/\D/g, '').includes(digits))
     )
+  })
+  const filteredCoBuyerUsers = users.filter((user) => {
+    if (user.id === formData.userId) return false
+    const query = coBuyerSearch.trim().toLowerCase()
+    const digits = coBuyerSearch.replace(/\D/g, '')
+    if (!query) return false
+    return user.name.toLowerCase().includes(query) || user.email.toLowerCase().includes(query) || Boolean(digits && user.cpf?.replace(/\D/g, '').includes(digits))
   })
 
   const filteredLots = lots.filter((lot) => {
@@ -486,6 +578,8 @@ export default function SalesForm({
         proposalId: selectedProposal.id,
         salePrice: selectedProposal.salePrice,
         downPayment: selectedProposal.downPayment,
+        downPaymentInstallmentCount: selectedProposal.downPaymentInstallmentCount ?? 1,
+        downPaymentFirstDueDate: toDateInputValue(selectedProposal.downPaymentFirstDueDate) || formatDateInput(new Date()),
         installmentCount: selectedProposal.installmentCount,
         installmentValue: selectedProposal.installmentValue,
         firstDueDate: toDateInputValue(selectedProposal.firstDueDate) || prev.firstDueDate,
@@ -513,6 +607,8 @@ export default function SalesForm({
         salePrice,
         reservationId: selectedReservation?.id ?? prev.reservationId,
         downPayment,
+        downPaymentInstallmentCount: 1,
+        downPaymentFirstDueDate: formatDateInput(new Date()),
         installmentCount,
         annualAdjustment: commercialSettings?.correctionIndex !== 'none',
         totalValue: downPayment + installmentValue * installmentCount,
@@ -536,7 +632,7 @@ export default function SalesForm({
 
   const handleInputChange = (field: keyof SaleFormData, value: any) => {
     if (field === 'userId' || field === 'lotId') setPaymentTouched(false)
-    if (field === 'salePrice' || field === 'downPayment' || field === 'installmentCount' || field === 'installmentValue' || field === 'firstDueDate') setPaymentTouched(true)
+    if (field === 'salePrice' || field === 'downPayment' || field === 'downPaymentFirstDueDate' || field === 'installmentCount' || field === 'installmentValue' || field === 'firstDueDate') setPaymentTouched(true)
     setFormData((prev) => {
       const next = {
         ...prev,
@@ -564,15 +660,17 @@ export default function SalesForm({
     const newErrors: Record<string, string> = {}
 
     if (step === 1 && !formData.userId) newErrors.userId = 'Selecione um cliente'
+    if (step === 4 && formData.coBuyerId === formData.userId) newErrors.coBuyerId = 'A pessoa adicional deve ser diferente do comprador principal'
     if (step === 2 && !formData.lotId) newErrors.lotId = 'Selecione um lote'
     if (step === 3) {
       if (proposalNeedsApproval) {
         newErrors.proposal = 'A proposta mais recente precisa ser aprovada antes de gerar a venda.'
       }
       if (formData.salePrice <= 0) newErrors.salePrice = 'Informe o valor da venda'
-      if (formData.installmentCount < 1) newErrors.installmentCount = 'Minimo 1 parcela'
+      if (!Number.isFinite(formData.installmentCount) || formData.installmentCount < 1) newErrors.installmentCount = 'Minimo 1 parcela'
       if (formData.downPayment < 0) newErrors.downPayment = 'Entrada nao pode ser negativa'
       if (formData.downPayment > formData.salePrice) newErrors.downPayment = 'Entrada nao pode ser maior que o valor da venda'
+      if (!Number.isFinite(formData.downPaymentInstallmentCount) || formData.downPaymentInstallmentCount < 1 || formData.downPaymentInstallmentCount > maximumDownPaymentInstallments) newErrors.downPaymentInstallmentCount = `A entrada pode ser dividida em ate ${maximumDownPaymentInstallments} vezes`
       if (!sale && !financialTermsLocked && formData.downPayment < minimumDownPayment) {
         newErrors.downPayment = `Entrada minima: ${formatCurrency(minimumDownPayment)}`
       }
@@ -580,6 +678,7 @@ export default function SalesForm({
         newErrors.installmentCount = `Maximo de ${maximumInstallments} parcelas`
       }
       if (!formData.firstDueDate) newErrors.firstDueDate = 'Informe o primeiro vencimento'
+      if (formData.downPayment > 0 && !formData.downPaymentFirstDueDate) newErrors.downPaymentFirstDueDate = 'Informe o primeiro vencimento da entrada'
     }
     if (step === 4) {
       const missing = REQUIRED_DOCUMENT_FIELDS.filter((field) => {
@@ -588,6 +687,11 @@ export default function SalesForm({
       })
       if (missing.length > 0) {
         newErrors.documents = `Complete os dados do cliente: ${missing.map((field) => field.label).join(', ')}`
+      }
+      if (selectedCoBuyer) {
+        const requiredCoBuyerFields = { cpf: 'CPF', rg: 'RG', address: 'Endereco', neighborhood: 'Bairro', city: 'Cidade', state: 'UF', zipCode: 'CEP', birthDate: 'Data de nascimento', profession: 'Profissao', birthplace: 'Naturalidade', maritalStatus: 'Estado civil' } as const
+        const missingCoBuyer = Object.entries(requiredCoBuyerFields).filter(([key]) => !coBuyerDocumentForm[key as keyof typeof coBuyerDocumentForm].trim()).map(([, label]) => label)
+        if (missingCoBuyer.length > 0) newErrors.coBuyerDocuments = `Complete os dados do conjuge: ${missingCoBuyer.join(', ')}`
       }
     }
 
@@ -654,6 +758,39 @@ export default function SalesForm({
     if (errors.documents) setErrors((current) => ({ ...current, documents: '' }))
   }
 
+  const updateCoBuyerDocumentField = (field: keyof typeof coBuyerDocumentForm, value: string) => {
+    setCoBuyerDocumentForm((current) => ({ ...current, [field]: value }))
+    setDocumentDirty(true)
+    setDocumentNotice(null)
+    setErrors((current) => ({ ...current, coBuyerDocuments: '' }))
+  }
+
+  const copyPrimaryAddress = () => {
+    setCoBuyerDocumentForm((current) => ({
+      ...current,
+      address: documentForm.address,
+      addressNumber: documentForm.addressNumber,
+      addressComplement: documentForm.addressComplement,
+      neighborhood: documentForm.neighborhood,
+      city: documentForm.city,
+      state: documentForm.state,
+      zipCode: documentForm.zipCode,
+    }))
+    setDocumentDirty(true)
+  }
+
+  const updateRelationshipType = (relationshipType: SaleFormData['relationshipType']) => {
+    handleInputChange('relationshipType', relationshipType)
+    if (relationshipType === 'spouse') {
+      updateDocumentField('maritalStatus', 'Casado')
+      updateCoBuyerDocumentField('maritalStatus', 'Casado')
+    } else if (relationshipType === 'partner') {
+      updateDocumentField('maritalStatus', 'Uniao estavel')
+      updateCoBuyerDocumentField('maritalStatus', 'Uniao estavel')
+    }
+    if (relationshipType !== 'independent' && sameAddressAsPrimary) copyPrimaryAddress()
+  }
+
   async function saveClientDocuments(): Promise<boolean> {
     if (!selectedUser) return false
 
@@ -702,6 +839,28 @@ export default function SalesForm({
 
       const updatedUser = await response.json()
       setUsers((current) => current.map((user) => (user.id === updatedUser.id ? { ...user, ...updatedUser } : user)))
+      if (selectedCoBuyer) {
+        const isNewParticipant = selectedCoBuyer.id === 'new-sale-participant'
+        const targetDevelopmentId = developmentId ?? selectedLot?.block.development?.id
+        const coBuyerResponse = await fetch(isNewParticipant ? '/api/clients' : `/api/clients/${selectedCoBuyer.id}`, {
+          method: isNewParticipant ? 'POST' : 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: selectedCoBuyer.name,
+            email: selectedCoBuyer.email,
+            ...coBuyerDocumentForm,
+            memberships: isNewParticipant && targetDevelopmentId ? [{ developmentId: targetDevelopmentId, roleId: '' }] : selectedCoBuyer.memberships?.map((membership) => ({ developmentId: membership.development.id, roleId: membership.roles[0]?.role.id ?? '' })) ?? [],
+            companyMemberships: selectedCoBuyer.companyMemberships?.map((membership) => ({ companyId: membership.company.id, roleId: membership.roles[0]?.role.id ?? '' })) ?? [],
+          }),
+        })
+        if (!coBuyerResponse.ok) {
+          const payload = await coBuyerResponse.json()
+          throw new Error(payload.error || 'Erro ao atualizar dados do conjuge')
+        }
+        const updatedCoBuyer = await coBuyerResponse.json()
+        setUsers((current) => [updatedCoBuyer, ...current.filter((user) => user.id !== selectedCoBuyer.id && user.id !== updatedCoBuyer.id)])
+        if (isNewParticipant) setFormData((current) => ({ ...current, coBuyerId: updatedCoBuyer.id }))
+      }
       setDocumentDirty(false)
       setDocumentNotice('Dados do cliente salvos.')
       return true
@@ -1021,14 +1180,39 @@ export default function SalesForm({
                         )}
                         {errors.installmentCount && <p className='mt-2 text-sm font-medium text-red-600'>{errors.installmentCount}</p>}
                       </label>
+                      {allowsDownPaymentInstallments && (
+                        <label className='block'>
+                          <span className='mb-2 block text-sm font-semibold text-foreground'>Parcelas da entrada</span>
+                          <NumberTextInput min={1} max={maximumDownPaymentInstallments} value={formData.downPaymentInstallmentCount} onValueChange={(value) => handleInputChange('downPaymentInstallmentCount', Math.trunc(value))} disabled={financialTermsLocked} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:bg-surface-secondary disabled:text-muted' />
+                          <p className='mt-2 text-xs text-muted'>Cada parcela: {formatCurrency(formData.downPayment / Math.max(formData.downPaymentInstallmentCount, 1))}</p>
+                          {errors.downPaymentInstallmentCount && <p className='mt-2 text-sm font-medium text-red-600'>{errors.downPaymentInstallmentCount}</p>}
+                        </label>
+                      )}
+                      {formData.downPayment > 0 && (
+                        <label className='block'>
+                          <span className='mb-2 block text-sm font-semibold text-foreground'>Primeiro vencimento da entrada</span>
+                          <input
+                            type='date'
+                            value={formData.downPaymentFirstDueDate}
+                            onChange={(event) => handleInputChange('downPaymentFirstDueDate', event.target.value)}
+                            disabled={financialTermsLocked}
+                            className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:bg-surface-secondary disabled:text-muted'
+                          />
+                          {errors.downPaymentFirstDueDate && <p className='mt-2 text-sm font-medium text-red-600'>{errors.downPaymentFirstDueDate}</p>}
+                        </label>
+                      )}
                       <label className='block'>
-                        <span className='mb-2 block text-sm font-semibold text-foreground'>Primeiro vencimento</span>
+                        <span className='mb-2 block text-sm font-semibold text-foreground'>Primeira parcela do saldo</span>
                         <input
                           type='date'
+                          min={minimumBalanceDueDate || undefined}
                           value={formData.firstDueDate}
                           onChange={(event) => handleInputChange('firstDueDate', event.target.value)}
                           className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-primary'
                         />
+                        {minimumBalanceDueDate && (
+                          <p className='mt-2 text-xs text-muted'>As parcelas do saldo comecam depois da ultima parcela da entrada.</p>
+                        )}
                         {sale && (
                           <p className='mt-2 text-xs text-muted'>A nova data reorganiza mensalmente apenas as parcelas que ainda nao foram pagas.</p>
                         )}
@@ -1069,7 +1253,7 @@ export default function SalesForm({
                       <span className='font-semibold text-foreground'>{formatCurrency(formData.salePrice - formData.downPayment)}</span>
                     </div>
                     <div className='flex justify-between gap-3'>
-                      <span className='text-muted'>Primeiro vencimento</span>
+                      <span className='text-muted'>Primeira parcela do saldo</span>
                       <span className='font-semibold text-foreground'>{formatDate(formData.firstDueDate)}</span>
                     </div>
                     <div className='flex justify-between gap-3'>
@@ -1087,6 +1271,40 @@ export default function SalesForm({
                   <h3 className='text-base font-semibold text-foreground'>Documentos</h3>
                   <p className='mt-1 text-sm text-muted'>Complete os dados contratuais sem sair do fluxo de venda.</p>
                 </div>
+                <div className='grid grid-cols-2 gap-2 rounded-2xl border border-border bg-surface-secondary p-2'>
+                  <button type='button' onClick={() => setActiveDocumentPerson('primary')} className={`rounded-xl px-4 py-3 text-left text-sm transition ${activeDocumentPerson === 'primary' ? 'bg-surface text-primary shadow-sm ring-1 ring-primary/20' : 'text-muted'}`}><span className='flex items-center justify-between gap-2 text-xs font-semibold uppercase'><span>Comprador principal</span><span>{missingDocumentFields.length ? 'Dados incompletos' : 'Dados completos ✓'}</span></span><span className='mt-1 block truncate font-semibold'>{selectedUser?.name}</span></button>
+                  <button type='button' disabled={!selectedCoBuyer} onClick={() => setActiveDocumentPerson('additional')} className={`rounded-xl px-4 py-3 text-left text-sm transition disabled:opacity-50 ${activeDocumentPerson === 'additional' ? 'bg-surface text-primary shadow-sm ring-1 ring-primary/20' : 'text-muted'}`}><span className='flex items-center justify-between gap-2 text-xs font-semibold uppercase'><span>Pessoa adicional</span>{selectedCoBuyer && <span>{missingCoBuyerDocumentFields.length ? 'Dados incompletos' : 'Dados completos ✓'}</span>}</span><span className='mt-1 block truncate font-semibold'>{selectedCoBuyer?.name ?? 'Nao adicionada'}</span></button>
+                </div>
+                <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
+                  <div className='flex items-center justify-between gap-3'>
+                    <div><h4 className='text-sm font-semibold text-foreground'>Outra pessoa no contrato</h4><p className='mt-1 text-xs text-muted'>Opcional. Busque uma pessoa existente ou cadastre uma nova.</p></div>
+                    {selectedCoBuyer && <button type='button' onClick={() => { handleInputChange('coBuyerId', ''); setCoBuyerSearch(''); setActiveDocumentPerson('primary') }} className='rounded-xl border border-border bg-surface px-3 py-2 text-xs font-semibold text-foreground'>Remover</button>}
+                  </div>
+                  <input value={coBuyerSearch} onChange={(event) => setCoBuyerSearch(event.target.value)} placeholder='Buscar por nome, email ou CPF...' className='mt-4 w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
+                  {selectedCoBuyer && <div className='mt-3 rounded-xl border border-primary/30 bg-primary/6 px-4 py-3'><p className='text-xs font-semibold uppercase text-primary'>Pessoa selecionada</p><p className='mt-1 text-sm font-semibold text-foreground'>{selectedCoBuyer.name}</p><p className='text-xs text-muted'>{selectedCoBuyer.email}</p></div>}
+                  {coBuyerSearch.trim() && !selectedCoBuyer && <div className='mt-2 max-h-52 overflow-y-auto rounded-xl border border-border bg-surface'>{filteredCoBuyerUsers.map((user) => <button key={user.id} type='button' onClick={() => { handleInputChange('coBuyerId', user.id); setCoBuyerSearch(user.name); setActiveDocumentPerson('additional') }} className='block w-full border-b border-border px-4 py-3 text-left last:border-b-0 hover:bg-surface-secondary'><span className='block text-sm font-semibold text-foreground'>{user.name}</span><span className='block text-xs text-muted'>{user.email} · CPF: {user.cpf || 'Nao informado'}</span></button>)}</div>}
+                  {!selectedCoBuyer && <button type='button' onClick={() => setShowQuickCoBuyerForm((current) => !current)} className='mt-3 text-sm font-semibold text-primary'>{showQuickCoBuyerForm ? 'Cancelar cadastro' : '+ Cadastrar nova pessoa'}</button>}
+                  {showQuickCoBuyerForm && !selectedCoBuyer && <div className='mt-3 grid gap-3 md:grid-cols-[1fr_1fr_auto]'><input value={quickCoBuyer.name} onChange={(event) => setQuickCoBuyer((current) => ({ ...current, name: event.target.value }))} placeholder='Nome completo' className='rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary' /><input type='email' value={quickCoBuyer.email} onChange={(event) => setQuickCoBuyer((current) => ({ ...current, email: event.target.value }))} placeholder='Email' className='rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary' /><button type='button' onClick={createQuickCoBuyer} disabled={quickCoBuyerSaving} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-60'>{quickCoBuyerSaving ? 'Criando...' : 'Criar e selecionar'}</button></div>}
+                  {selectedCoBuyer && <label className='mt-4 block'><span className='mb-2 block text-sm font-semibold text-foreground'>Vinculo com o comprador principal</span><select value={formData.relationshipType} onChange={(event) => updateRelationshipType(event.target.value as SaleFormData['relationshipType'])} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary'><option value='spouse'>Conjuge</option><option value='partner'>Companheiro(a) / uniao estavel</option><option value='independent'>Segundo comprador independente</option></select></label>}
+                  {errors.coBuyerId && <p className='mt-2 text-sm font-medium text-red-600'>{errors.coBuyerId}</p>}
+                  {selectedCoBuyer && activeDocumentPerson === 'additional' && (
+                    <div className='mt-5 border-t border-border pt-5'>
+                      <h5 className='text-sm font-semibold text-foreground'>Dados de {selectedCoBuyer.name}</h5>
+                      <p className='mt-1 text-xs text-muted'>Complete os dados desta pessoa para o contrato.</p>
+                      {errors.coBuyerDocuments && <div className='mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700'>{errors.coBuyerDocuments}</div>}
+                      <div className='mt-4 grid gap-4 md:grid-cols-2'>
+                        <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>CPF</span><input value={coBuyerDocumentForm.cpf} onChange={(event) => updateCoBuyerDocumentField('cpf', event.target.value)} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary' /></label>
+                        <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>RG</span><input value={coBuyerDocumentForm.rg} onChange={(event) => updateCoBuyerDocumentField('rg', event.target.value)} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary' /></label>
+                        <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Data de nascimento</span><input type='date' value={coBuyerDocumentForm.birthDate} onChange={(event) => updateCoBuyerDocumentField('birthDate', event.target.value)} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary' /></label>
+                        <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Profissao</span><input value={coBuyerDocumentForm.profession} onChange={(event) => updateCoBuyerDocumentField('profession', event.target.value)} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary' /></label>
+                        <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Naturalidade</span><input value={coBuyerDocumentForm.birthplace} onChange={(event) => updateCoBuyerDocumentField('birthplace', event.target.value)} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary' /></label>
+                        <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Estado civil</span><select value={coBuyerDocumentForm.maritalStatus} onChange={(event) => updateCoBuyerDocumentField('maritalStatus', event.target.value)} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary'>{MARITAL_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+                        <label className='flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 text-sm font-semibold text-foreground md:col-span-2'><input type='checkbox' checked={sameAddressAsPrimary} onChange={(event) => { setSameAddressAsPrimary(event.target.checked); if (event.target.checked) copyPrimaryAddress() }} className='h-4 w-4 rounded border-border text-primary' />Usar o mesmo endereco do comprador principal</label>
+                        {sameAddressAsPrimary ? <div className='rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted md:col-span-2'><span className='block text-xs font-semibold uppercase text-primary'>Endereco copiado</span><span className='mt-1 block'>{[documentForm.address, documentForm.addressNumber, documentForm.addressComplement, documentForm.neighborhood, documentForm.city, documentForm.state, documentForm.zipCode].filter(Boolean).join(', ') || 'Preencha o endereco do comprador principal.'}</span></div> : <><label className='block md:col-span-2'><span className='mb-2 block text-sm font-semibold text-foreground'>Endereco / logradouro</span><textarea rows={2} value={coBuyerDocumentForm.address} onChange={(event) => updateCoBuyerDocumentField('address', event.target.value)} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary' /></label><label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Numero</span><input value={coBuyerDocumentForm.addressNumber} onChange={(event) => updateCoBuyerDocumentField('addressNumber', event.target.value)} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary' /></label><label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Complemento</span><input value={coBuyerDocumentForm.addressComplement} onChange={(event) => updateCoBuyerDocumentField('addressComplement', event.target.value)} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary' /></label><label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Bairro</span><input value={coBuyerDocumentForm.neighborhood} onChange={(event) => updateCoBuyerDocumentField('neighborhood', event.target.value)} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary' /></label><label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Cidade</span><input value={coBuyerDocumentForm.city} onChange={(event) => updateCoBuyerDocumentField('city', event.target.value)} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary' /></label><label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>UF</span><input value={coBuyerDocumentForm.state} onChange={(event) => updateCoBuyerDocumentField('state', event.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2))} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary' /></label><label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>CEP</span><input value={coBuyerDocumentForm.zipCode} onChange={(event) => updateCoBuyerDocumentField('zipCode', event.target.value.replace(/\D/g, '').slice(0, 8))} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary' /></label></>}
+                      </div>
+                    </div>
+                  )}
+                </div>
                 {documentNotice && (
                   <div className='rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800'>
                     {documentNotice}
@@ -1097,6 +1315,12 @@ export default function SalesForm({
                     {errors.documents}
                   </div>
                 )}
+                <div className={activeDocumentPerson === 'primary' ? 'contents' : 'hidden'}>
+                <div className='rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4'>
+                  <p className='text-xs font-semibold uppercase tracking-wide text-primary'>Comprador principal</p>
+                  <p className='mt-1 text-base font-semibold text-foreground'>{selectedUser?.name}</p>
+                  <p className='text-sm text-muted'>{selectedUser?.email}</p>
+                </div>
                 <div className='grid gap-4 md:grid-cols-2'>
                   <label className='block'>
                     <span className='mb-2 block text-sm font-semibold text-foreground'>CPF</span>
@@ -1211,6 +1435,7 @@ export default function SalesForm({
                     />
                   </label>
                 </div>
+                </div>
                 <div className='flex flex-col gap-3 md:flex-row md:items-center'>
                   {!documentDirty && missingDocumentFields.length === 0 && (
                     <span className='pill bg-emerald-50 text-emerald-700'>Dados completos</span>
@@ -1235,6 +1460,13 @@ export default function SalesForm({
                       <p className='font-semibold text-foreground'>{selectedUser?.name}</p>
                       <p>{selectedUser?.email}</p>
                       <p>CPF: {selectedUser?.cpf || 'Nao informado'}</p>
+                      {selectedCoBuyer && (
+                        <div className='mt-3 border-t border-border pt-3'>
+                          <p className='text-xs font-semibold uppercase text-muted'>Segundo comprador</p>
+                          <p className='font-semibold text-foreground'>{selectedCoBuyer.name}</p>
+                          <p>CPF: {selectedCoBuyer.cpf || 'Nao informado'}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
@@ -1248,9 +1480,10 @@ export default function SalesForm({
                   <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
                     <h4 className='text-sm font-semibold text-foreground'>Pagamento</h4>
                     <div className='mt-3 text-sm leading-6 text-muted'>
-                      <p>Entrada: <span className='font-semibold text-foreground'>{formatCurrency(formData.downPayment)}</span></p>
+                      <p>Entrada: <span className='font-semibold text-foreground'>{formatCurrency(formData.downPayment)}</span>{formData.downPaymentInstallmentCount > 1 ? ` em ${formData.downPaymentInstallmentCount}x` : ''}</p>
+                      {formData.downPayment > 0 && <p>Primeira entrada: <span className='font-semibold text-foreground'>{formatDate(formData.downPaymentFirstDueDate)}</span></p>}
                       <p>{formData.installmentCount}x de <span className='font-semibold text-foreground'>{formatCurrency(formData.installmentValue)}</span></p>
-                      <p>Primeiro vencimento: <span className='font-semibold text-foreground'>{formatDate(formData.firstDueDate)}</span></p>
+                      <p>Primeira parcela do saldo: <span className='font-semibold text-foreground'>{formatDate(formData.firstDueDate)}</span></p>
                       <p>Total: <span className='font-semibold text-foreground'>{formatCurrency(formData.totalValue)}</span></p>
                     </div>
                   </div>

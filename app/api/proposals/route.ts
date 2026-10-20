@@ -23,6 +23,12 @@ function parseDate(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
+function addMonths(date: Date, months: number) {
+  const next = new Date(date)
+  next.setMonth(next.getMonth() + months)
+  return next
+}
+
 function getDefaultExpiration(days = 7) {
   const expiresAt = new Date()
   expiresAt.setDate(expiresAt.getDate() + days)
@@ -121,8 +127,12 @@ export async function POST(req: Request) {
     })
     if (!buyerMembership) return forbiddenResponse()
 
+
     const salePrice = toNumber(data.salePrice)
     const downPayment = toNumber(data.downPayment)
+    const downPaymentInstallmentCount = data.downPaymentInstallmentCount == null ? 1 : toInt(data.downPaymentInstallmentCount)
+    const downPaymentFirstDueDate = parseDate(data.downPaymentFirstDueDate)
+    const requestedFirstDueDate = parseDate(data.firstDueDate)
     const installmentCount = toInt(data.installmentCount)
     const interestRate = toNumber(data.interestRate)
     const interestCalculation = data.interestCalculation || 'none'
@@ -149,7 +159,22 @@ export async function POST(req: Request) {
       correctionIndex: 'none',
       correctionFrequency: 'monthly',
       allowCustomTerms: true,
+      allowDownPaymentInstallments: false,
+      maxDownPaymentInstallments: 1,
     }
+    if (downPaymentInstallmentCount < 1 || (!settings.allowDownPaymentInstallments && downPaymentInstallmentCount !== 1) || downPaymentInstallmentCount > settings.maxDownPaymentInstallments) {
+      return NextResponse.json({ error: 'O parcelamento da entrada nao atende as regras do empreendimento.' }, { status: 400 })
+    }
+    if (downPayment > 0 && !downPaymentFirstDueDate) {
+      return NextResponse.json({ error: 'Informe o primeiro vencimento da entrada.' }, { status: 400 })
+    }
+    if (!requestedFirstDueDate) {
+      return NextResponse.json({ error: 'Informe a primeira parcela do saldo.' }, { status: 400 })
+    }
+    const minimumBalanceDueDate = downPayment > 0 && downPaymentFirstDueDate
+      ? addMonths(downPaymentFirstDueDate, downPaymentInstallmentCount)
+      : requestedFirstDueDate
+    const firstDueDate = requestedFirstDueDate < minimumBalanceDueDate ? minimumBalanceDueDate : requestedFirstDueDate
     const evaluation = evaluateProposalTerms(settings, {
       basePrice: Number(lot.price),
       salePrice,
@@ -227,6 +252,8 @@ export async function POST(req: Request) {
           exceptionReasons: evaluation.reasons.join('\n') || null,
           salePrice,
           downPayment,
+          downPaymentInstallmentCount,
+          downPaymentFirstDueDate,
           installmentCount,
           installmentValue,
           balance,
@@ -235,7 +262,7 @@ export async function POST(req: Request) {
           interestCalculation,
           correctionIndex,
           correctionFrequency,
-          firstDueDate: parseDate(data.firstDueDate),
+          firstDueDate,
           notes: data.notes || null,
         },
         include: {

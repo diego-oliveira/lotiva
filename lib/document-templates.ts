@@ -4,6 +4,8 @@ import { moneyToNumber } from './money'
 type TemplateSale = {
   totalValue: MoneyInput
   downPayment: MoneyInput
+  downPaymentInstallmentCount?: number
+  downPaymentFirstDueDate?: Date | string | null
   installmentCount: number
   installmentValue: MoneyInput
   firstDueDate?: Date | string | null
@@ -19,6 +21,13 @@ type TemplateSale = {
     birthplace?: string | null
     maritalStatus?: string | null
   }
+  participants?: Array<{
+    relationshipType: string
+    user: {
+      name: string; email: string; cpf?: string | null; rg?: string | null; address?: string | null
+      birthDate?: Date | string | null; profession?: string | null; birthplace?: string | null; maritalStatus?: string | null
+    }
+  }>
   lot: {
     identifier: string
     totalArea: number
@@ -113,6 +122,22 @@ export const documentVariableGroups = [
     ],
   },
   {
+    label: 'Segundo comprador',
+    variables: [
+      ['segundo_comprador.nome', 'Nome'],
+      ['segundo_comprador.email', 'Email'],
+      ['segundo_comprador.cpf', 'CPF'],
+      ['segundo_comprador.rg', 'RG'],
+      ['segundo_comprador.endereco', 'Endereco'],
+      ['segundo_comprador.nascimento', 'Data de nascimento'],
+      ['segundo_comprador.profissao', 'Profissao'],
+      ['segundo_comprador.naturalidade', 'Naturalidade'],
+      ['segundo_comprador.estado_civil', 'Estado civil'],
+      ['segundo_comprador.vinculo', 'Vinculo com o comprador principal'],
+      ['compradores.descricao', 'Descricao conjunta dos compradores'],
+    ],
+  },
+  {
     label: 'Lote',
     variables: [
       ['lote.numero', 'Numero do lote'],
@@ -134,6 +159,9 @@ export const documentVariableGroups = [
       ['venda.entrada_numero', 'Entrada sem R$'],
       ['venda.entrada_extenso', 'Entrada por extenso'],
       ['venda.entrada_percentual', 'Percentual da entrada'],
+      ['venda.numero_parcelas_entrada', 'Numero de parcelas da entrada'],
+      ['venda.primeiro_vencimento_entrada', 'Primeiro vencimento da entrada'],
+      ['venda.valor_parcela_entrada', 'Valor de cada parcela da entrada'],
       ['venda.saldo', 'Saldo'],
       ['venda.saldo_numero', 'Saldo sem R$'],
       ['venda.saldo_extenso', 'Saldo por extenso'],
@@ -142,7 +170,7 @@ export const documentVariableGroups = [
       ['venda.valor_parcela', 'Valor da parcela'],
       ['venda.valor_parcela_numero', 'Valor da parcela sem R$'],
       ['venda.valor_parcela_extenso', 'Valor da parcela por extenso'],
-      ['venda.primeiro_vencimento', 'Primeiro vencimento'],
+      ['venda.primeiro_vencimento', 'Primeira parcela do saldo'],
       ['venda.reajuste', 'Regra de reajuste'],
       ['proposta.observacoes', 'Observacoes da proposta'],
     ],
@@ -300,6 +328,10 @@ export function getDocumentValues(sale: TemplateSale, contractNumber: string, ge
   const downPayment = moneyToNumber(sale.downPayment)
   const installmentValue = moneyToNumber(sale.installmentValue)
   const balance = Math.max(totalValue - downPayment, 0)
+  const participant = sale.participants?.[0]
+  const coBuyer = participant?.user
+  const relationshipLabel = participant?.relationshipType === 'spouse' ? 'Conjuge' : participant?.relationshipType === 'partner' ? 'Companheiro(a)' : participant ? 'Segundo comprador independente' : ''
+  const buyersDescription = !coBuyer ? sale.user.name : participant?.relationshipType === 'spouse' ? `${sale.user.name}, casado(a) com ${coBuyer.name}` : participant?.relationshipType === 'partner' ? `${sale.user.name}, em uniao estavel com ${coBuyer.name}` : `${sale.user.name} e ${coBuyer.name}, compradores independentes`
 
   const customDefaults = Object.fromEntries(
     (development?.company?.documentVariables ?? []).map((variable) => [
@@ -340,6 +372,17 @@ export function getDocumentValues(sale: TemplateSale, contractNumber: string, ge
     'cliente.profissao': sale.user.profession ?? '',
     'cliente.naturalidade': sale.user.birthplace ?? '',
     'cliente.estado_civil': sale.user.maritalStatus ?? '',
+    'segundo_comprador.nome': coBuyer?.name ?? '',
+    'segundo_comprador.email': coBuyer?.email ?? '',
+    'segundo_comprador.cpf': coBuyer?.cpf ?? '',
+    'segundo_comprador.rg': coBuyer?.rg ?? '',
+    'segundo_comprador.endereco': coBuyer?.address ?? '',
+    'segundo_comprador.nascimento': formatDate(coBuyer?.birthDate),
+    'segundo_comprador.profissao': coBuyer?.profession ?? '',
+    'segundo_comprador.naturalidade': coBuyer?.birthplace ?? '',
+    'segundo_comprador.estado_civil': coBuyer?.maritalStatus ?? '',
+    'segundo_comprador.vinculo': relationshipLabel,
+    'compradores.descricao': buyersDescription,
     'lote.numero': sale.lot.identifier,
     'lote.quadra': sale.lot.block.identifier,
     'lote.area': formatNumber(sale.lot.totalArea, ' m2'),
@@ -356,6 +399,9 @@ export function getDocumentValues(sale: TemplateSale, contractNumber: string, ge
     'venda.entrada_percentual': totalValue > 0
       ? `${formatNumber((downPayment / totalValue) * 100)}%`
       : '',
+    'venda.numero_parcelas_entrada': String(sale.downPaymentInstallmentCount ?? 1),
+    'venda.valor_parcela_entrada': formatCurrency(downPayment / Math.max(sale.downPaymentInstallmentCount ?? 1, 1)),
+    'venda.primeiro_vencimento_entrada': formatDate(sale.downPaymentFirstDueDate),
     'venda.saldo': formatCurrency(balance),
     'venda.saldo_numero': formatCurrencyNumber(balance),
     'venda.saldo_extenso': currencyToWords(balance),

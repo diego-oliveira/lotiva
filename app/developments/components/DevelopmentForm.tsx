@@ -38,6 +38,8 @@ type DevelopmentSettings = {
   correctionIndex: 'none' | 'ipca' | 'incc' | 'igpm' | 'fixed'
   correctionFrequency: 'monthly' | 'annual'
   minDownPaymentPercentage: number
+  allowDownPaymentInstallments: boolean
+  maxDownPaymentInstallments: number
   maxInstallments: number
   paymentMethods: string[] | string
   allowCustomTerms: boolean
@@ -75,6 +77,8 @@ const defaultSettings: DevelopmentSettingsFormData = {
   correctionIndex: 'none',
   correctionFrequency: 'monthly',
   minDownPaymentPercentage: 10,
+  allowDownPaymentInstallments: false,
+  maxDownPaymentInstallments: 1,
   maxInstallments: 120,
   paymentMethods: ['cash', 'installments'],
   allowCustomTerms: true,
@@ -182,6 +186,7 @@ export default function DevelopmentForm({
       if (settingsData.defaultInterestRate < 0 || settingsData.defaultInterestRate > 10) newErrors.defaultInterestRate = 'Informe entre 0% e 10% ao mes.'
       if (settingsData.minDownPaymentPercentage < 0 || settingsData.minDownPaymentPercentage > 100) newErrors.minDownPaymentPercentage = 'Informe entre 0% e 100%.'
       if (settingsData.maxInstallments < 1 || settingsData.maxInstallments > 240) newErrors.maxInstallments = 'Informe ate 240 parcelas.'
+      if (settingsData.allowDownPaymentInstallments && (settingsData.maxDownPaymentInstallments < 2 || settingsData.maxDownPaymentInstallments > 24)) newErrors.maxDownPaymentInstallments = 'Informe entre 2 e 24 parcelas.'
       if (settingsData.paymentMethods.length === 0) newErrors.paymentMethods = 'Selecione pelo menos uma forma de pagamento.'
     }
 
@@ -399,6 +404,20 @@ export default function DevelopmentForm({
                 />
                 {errors.maxInstallments && <p className='mt-2 text-sm text-red-600'>{errors.maxInstallments}</p>}
               </label>
+
+              <div className='rounded-xl border border-border bg-surface p-4 md:col-span-2'>
+                <label className='flex items-center gap-3 text-sm font-semibold text-foreground'>
+                  <input type='checkbox' checked={settingsData.allowDownPaymentInstallments} onChange={(event) => setSettingsData((current) => ({ ...current, allowDownPaymentInstallments: event.target.checked, maxDownPaymentInstallments: event.target.checked ? Math.max(current.maxDownPaymentInstallments, 2) : 1 }))} className='h-4 w-4 rounded border-border text-primary focus:ring-primary' />
+                  Permitir parcelamento da entrada
+                </label>
+                {settingsData.allowDownPaymentInstallments && (
+                  <label className='mt-4 block max-w-xs'>
+                    <span className='mb-2 block text-sm font-semibold text-foreground'>Maximo de parcelas da entrada</span>
+                    <NumberTextInput min={2} max={24} value={settingsData.maxDownPaymentInstallments} onValueChange={(value) => updateSettingNumber('maxDownPaymentInstallments', Math.trunc(value))} className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary ${errors.maxDownPaymentInstallments ? 'border-red-300' : 'border-border'}`} />
+                    {errors.maxDownPaymentInstallments && <p className='mt-2 text-sm text-red-600'>{errors.maxDownPaymentInstallments}</p>}
+                  </label>
+                )}
+              </div>
 
               <label className='block'>
                 <span className='mb-2 block text-sm font-semibold text-foreground'>Juros ao mes (%)</span>

@@ -74,6 +74,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
   const defaultInterestRate = asNumber(data.defaultInterestRate)
   const minDownPaymentPercentage = asNumber(data.minDownPaymentPercentage)
   const maxInstallments = asNumber(data.maxInstallments)
+  const maxDownPaymentInstallments = asNumber(data.maxDownPaymentInstallments)
   const paymentMethods = normalizePaymentMethods(data.paymentMethods)
 
   if (!reservationValidityDays || reservationValidityDays < 1 || reservationValidityDays > 180) {
@@ -103,6 +104,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
   if (!maxInstallments || maxInstallments < 1 || maxInstallments > 240) {
     errors.maxInstallments = 'Informe ate 240 parcelas.'
   }
+  if (data.allowDownPaymentInstallments && (!maxDownPaymentInstallments || maxDownPaymentInstallments < 2 || maxDownPaymentInstallments > 24)) {
+    errors.maxDownPaymentInstallments = 'Informe entre 2 e 24 parcelas para a entrada.'
+  }
 
   if (!paymentMethods?.length) {
     errors.paymentMethods = 'Selecione pelo menos uma forma de pagamento.'
@@ -121,6 +125,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
       correctionIndex: data.correctionIndex,
       correctionFrequency: data.correctionFrequency,
       minDownPaymentPercentage: minDownPaymentPercentage!,
+      allowDownPaymentInstallments: Boolean(data.allowDownPaymentInstallments),
+      maxDownPaymentInstallments: data.allowDownPaymentInstallments ? Math.round(maxDownPaymentInstallments!) : 1,
       maxInstallments: Math.round(maxInstallments!),
       paymentMethods: paymentMethods!.join(','),
       allowCustomTerms: Boolean(data.allowCustomTerms),
@@ -133,6 +139,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
       correctionIndex: data.correctionIndex,
       correctionFrequency: data.correctionFrequency,
       minDownPaymentPercentage: minDownPaymentPercentage!,
+      allowDownPaymentInstallments: Boolean(data.allowDownPaymentInstallments),
+      maxDownPaymentInstallments: data.allowDownPaymentInstallments ? Math.round(maxDownPaymentInstallments!) : 1,
       maxInstallments: Math.round(maxInstallments!),
       paymentMethods: paymentMethods!.join(','),
       allowCustomTerms: Boolean(data.allowCustomTerms),

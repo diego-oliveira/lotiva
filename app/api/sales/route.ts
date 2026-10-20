@@ -23,11 +23,17 @@ function parseDateOnly(value?: string | null) {
   return new Date(year, month - 1, day, 12)
 }
 
+function resolveFirstInstallmentDueDate(requestedDate: Date, downPaymentFirstDueDate: Date, downPayment: number, downPaymentInstallmentCount: number) {
+  if (downPayment <= 0) return requestedDate
+  const firstDateAfterDownPayment = addMonths(downPaymentFirstDueDate, downPaymentInstallmentCount)
+  return requestedDate < firstDateAfterDownPayment ? firstDateAfterDownPayment : requestedDate
+}
+
 function buildReceivables(
   saleId: string,
-  data: { downPayment: number; installmentCount: number; installmentValue: number; firstDueDate?: Date | null },
+  data: { downPayment: number; downPaymentInstallmentCount: number; downPaymentFirstDueDate?: Date | null; installmentCount: number; installmentValue: number; firstDueDate?: Date | null; saleDate?: Date },
 ) {
-  const createdAt = new Date()
+  const createdAt = data.saleDate ?? new Date()
   const firstDueDate = data.firstDueDate ?? addMonths(createdAt, 1)
   const receivables: Array<{
     saleId: string
@@ -39,14 +45,15 @@ function buildReceivables(
   }> = []
 
   if (data.downPayment > 0) {
-    receivables.push({
-      saleId,
-      kind: 'down_payment',
-      sequence: 0,
-      dueDate: createdAt,
-      amount: data.downPayment,
-      balance: data.downPayment,
-    })
+    const count = Math.max(1, data.downPaymentInstallmentCount)
+    const downPaymentFirstDueDate = data.downPaymentFirstDueDate ?? createdAt
+    const regularAmount = Math.floor((data.downPayment * 100) / count) / 100
+    for (let sequence = 1; sequence <= count; sequence += 1) {
+      const amount = sequence === count
+        ? Math.round((data.downPayment - regularAmount * (count - 1)) * 100) / 100
+        : regularAmount
+      receivables.push({ saleId, kind: 'down_payment', sequence: count === 1 ? 0 : sequence, dueDate: addMonths(downPaymentFirstDueDate, sequence - 1), amount, balance: amount })
+    }
   }
 
   for (let sequence = 1; sequence <= data.installmentCount; sequence += 1) {
@@ -73,6 +80,7 @@ export async function GET() {
     where: saleAccessWhere(currentUserId),
     include: { 
       user: true, 
+      participants: { include: { user: true } },
       lot: {
         include: {
           block: { include: { development: true } }
@@ -262,9 +270,15 @@ export async function POST(req: Request) {
       defaultInterestRate: 0,
       interestCalculation: 'none',
       correctionIndex: 'none',
+      allowDownPaymentInstallments: false,
+      maxDownPaymentInstallments: 1,
     }
     const requestedDownPayment = Number(data.downPayment)
     const requestedInstallmentCount = Math.trunc(Number(data.installmentCount))
+    const requestedDownPaymentInstallmentCount = data.downPaymentInstallmentCount == null ? 1 : Math.trunc(Number(data.downPaymentInstallmentCount))
+    if (!Number.isFinite(requestedDownPaymentInstallmentCount) || requestedDownPaymentInstallmentCount < 1 || (!settings.allowDownPaymentInstallments && requestedDownPaymentInstallmentCount !== 1) || requestedDownPaymentInstallmentCount > settings.maxDownPaymentInstallments) {
+      return NextResponse.json({ error: 'O parcelamento da entrada nao atende as regras do empreendimento.' }, { status: 422 })
+    }
     const directSaleEvaluation = evaluateDirectSaleTerms(settings, {
       basePrice: Number(lot.price),
       downPayment: requestedDownPayment,
@@ -311,10 +325,32 @@ export async function POST(req: Request) {
         { status: 400 },
       )
     }
+    const coBuyerId = data.coBuyerId ?? null
+    const relationshipType = ['spouse', 'partner', 'independent'].includes(data.relationshipType) ? data.relationshipType : 'independent'
+    const coBuyer = coBuyerId ? await prisma.user.findFirst({
+      where: {
+        id: coBuyerId,
+        OR: [
+          { memberships: { some: { developmentId: development.id } } },
+          { companyMemberships: { some: { companyId: development.companyId } } },
+        ],
+      },
+    }) : null
+    if (coBuyerId && (!coBuyer || coBuyerId === data.userId)) {
+      return NextResponse.json({ error: 'Selecione um segundo comprador valido.' }, { status: 400 })
+    }
+    if (coBuyer) {
+      const coBuyerMissing = (['cpf', 'rg', 'address', 'birthDate', 'profession', 'birthplace', 'maritalStatus'] as const).filter((field) => !coBuyer[field])
+      if (coBuyerMissing.length > 0) return NextResponse.json({ error: 'O segundo comprador nao tem todos os dados legais preenchidos. Complete o cadastro antes de criar a venda.', missingFields: coBuyerMissing }, { status: 400 })
+    }
 
     // Start a transaction to ensure data consistency
-    const firstDueDate = approvedProposal?.firstDueDate ?? parseDateOnly(data.firstDueDate) ?? addMonths(new Date(), 1)
+    const saleDate = new Date()
+    const requestedFirstDueDate = approvedProposal?.firstDueDate ?? parseDateOnly(data.firstDueDate) ?? addMonths(saleDate, 1)
     const downPayment = approvedProposal ? Number(approvedProposal.downPayment) : requestedDownPayment
+    const downPaymentInstallmentCount = approvedProposal?.downPaymentInstallmentCount ?? requestedDownPaymentInstallmentCount
+    const downPaymentFirstDueDate = approvedProposal?.downPaymentFirstDueDate ?? parseDateOnly(data.downPaymentFirstDueDate) ?? saleDate
+    const firstDueDate = resolveFirstInstallmentDueDate(requestedFirstDueDate, downPaymentFirstDueDate, downPayment, downPaymentInstallmentCount)
     const installmentCount = approvedProposal?.installmentCount ?? requestedInstallmentCount
     const salePrice = approvedProposal ? Number(approvedProposal.salePrice) : Number(lot.price)
     const financedBalance = moneyToNumber(subtractMoney(salePrice, downPayment))
@@ -350,12 +386,16 @@ export async function POST(req: Request) {
           installmentCount,
           installmentValue,
           downPayment,
+          downPaymentInstallmentCount,
+          downPaymentFirstDueDate,
           firstDueDate,
           annualAdjustment,
           totalValue,
+          participants: coBuyerId ? { create: { userId: coBuyerId, role: 'buyer', relationshipType } } : undefined,
         },
         include: {
           user: true,
+          participants: { include: { user: true } },
           lot: {
             include: {
               block: true
@@ -367,13 +407,22 @@ export async function POST(req: Request) {
 
       const receivables = buildReceivables(sale.id, {
         downPayment: Number(sale.downPayment),
+        downPaymentInstallmentCount: sale.downPaymentInstallmentCount,
+        downPaymentFirstDueDate: sale.downPaymentFirstDueDate,
         installmentCount: sale.installmentCount,
         installmentValue: Number(sale.installmentValue),
         firstDueDate,
+        saleDate: sale.createdAt,
       })
 
       if (receivables.length > 0) {
         await prisma.receivable.createMany({ data: receivables })
+      }
+
+      if (coBuyerId) {
+        const [personAId, personBId] = [data.userId, coBuyerId].sort()
+        await prisma.userRelationship.deleteMany({ where: { personAId, personBId, type: { in: ['spouse', 'partner'] } } })
+        if (relationshipType !== 'independent') await prisma.userRelationship.create({ data: { personAId, personBId, type: relationshipType } })
       }
 
       // Update lot status to sold
