@@ -206,6 +206,24 @@ function getMinimumBalanceDueDate(saleDate: Date, downPaymentInstallmentCount: n
   return formatDateInput(date)
 }
 
+function getDocumentFormatError(form: { cpf: string; zipCode: string; state: string; birthDate: string }) {
+  if (form.cpf && form.cpf.replace(/\D/g, '').length !== 11) return 'CPF deve ter 11 digitos.'
+  if (form.zipCode && form.zipCode.replace(/\D/g, '').length !== 8) return 'CEP deve ter 8 digitos.'
+  if (form.state && !/^[A-Za-z]{2}$/.test(form.state)) return 'UF deve ter 2 letras.'
+  if (form.birthDate) {
+    const birthDate = new Date(`${form.birthDate}T12:00:00`)
+    if (Number.isNaN(birthDate.getTime()) || birthDate > new Date()) return 'Informe uma data de nascimento valida.'
+  }
+  return ''
+}
+
+function getAutosaveLabel(status: 'idle' | 'saving' | 'saved' | 'error') {
+  if (status === 'saving') return 'Salvando...'
+  if (status === 'saved') return 'Alteracoes salvas ✓'
+  if (status === 'error') return 'Revise os campos destacados'
+  return ''
+}
+
 function getInitials(name: string) {
   return name.split(' ').map((part) => part[0]).join('').toUpperCase().slice(0, 2)
 }
@@ -282,8 +300,13 @@ export default function SalesForm({
   const [paymentTouched, setPaymentTouched] = useState(false)
   const [documentSaving, setDocumentSaving] = useState(false)
   const [documentDirty, setDocumentDirty] = useState(false)
+  const [primaryDocumentDirty, setPrimaryDocumentDirty] = useState(false)
+  const [additionalDocumentDirty, setAdditionalDocumentDirty] = useState(false)
+  const [primarySaveStatus, setPrimarySaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [additionalSaveStatus, setAdditionalSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [documentNotice, setDocumentNotice] = useState<string | null>(null)
-  const [activeDocumentPerson, setActiveDocumentPerson] = useState<'primary' | 'additional'>('primary')
+  const [activeDocumentPerson, setActiveDocumentPerson] = useState<'primary' | 'additional' | 'none'>('primary')
+  const [showAdditionalPerson, setShowAdditionalPerson] = useState(false)
   const [sameAddressAsPrimary, setSameAddressAsPrimary] = useState(true)
   const [showQuickCoBuyerForm, setShowQuickCoBuyerForm] = useState(false)
   const [coBuyerSearch, setCoBuyerSearch] = useState('')
@@ -385,7 +408,14 @@ export default function SalesForm({
     setLotSearch('')
     setDocumentNotice(null)
     setDocumentDirty(false)
+    setPrimaryDocumentDirty(false)
+    setPrimarySaveStatus('idle')
+    setPrimaryDocumentDirty(false)
+    setAdditionalDocumentDirty(false)
+    setPrimarySaveStatus('idle')
+    setAdditionalSaveStatus('idle')
     setActiveDocumentPerson('primary')
+    setShowAdditionalPerson(Boolean(sale?.participants?.[0]))
     setSameAddressAsPrimary(true)
     setShowQuickCoBuyerForm(false)
     setQuickCoBuyer({ name: '', email: '' })
@@ -439,7 +469,11 @@ export default function SalesForm({
     if (!quickCoBuyer.name.trim() || !quickCoBuyer.email.trim()) return setErrors((current) => ({ ...current, coBuyerId: 'Informe nome e email do conjuge.' }))
     const client = { id: 'new-sale-participant', name: quickCoBuyer.name.trim(), email: quickCoBuyer.email.trim() }
     setUsers((current) => [client, ...current.filter((user) => user.id !== client.id)])
-    setFormData((current) => ({ ...current, coBuyerId: client.id }))
+    setFormData((current) => ({ ...current, coBuyerId: client.id, relationshipType: 'spouse' }))
+    setDocumentForm((current) => ({ ...current, maritalStatus: 'Casado' }))
+    setCoBuyerDocumentForm((current) => ({ ...current, maritalStatus: 'Casado' }))
+    setPrimaryDocumentDirty(true)
+    setAdditionalDocumentDirty(true)
     setActiveDocumentPerson('additional')
     setCoBuyerSearch(client.name)
     setShowQuickCoBuyerForm(false)
@@ -504,14 +538,43 @@ export default function SalesForm({
   }, [selectedUser?.id])
 
   useEffect(() => {
+    const relationshipMaritalStatus = formData.relationshipType === 'spouse'
+      ? 'Casado'
+      : formData.relationshipType === 'partner'
+      ? 'Uniao estavel'
+      : ''
     setCoBuyerDocumentForm({
       cpf: selectedCoBuyer?.cpf ?? '', rg: selectedCoBuyer?.rg ?? '', address: selectedCoBuyer?.address ?? '',
       addressNumber: selectedCoBuyer?.addressNumber ?? '', addressComplement: selectedCoBuyer?.addressComplement ?? '',
       neighborhood: selectedCoBuyer?.neighborhood ?? '', city: selectedCoBuyer?.city ?? '', state: selectedCoBuyer?.state ?? '', zipCode: selectedCoBuyer?.zipCode ?? '',
       birthDate: selectedCoBuyer?.birthDate?.slice(0, 10) ?? '', profession: selectedCoBuyer?.profession ?? '',
-      birthplace: selectedCoBuyer?.birthplace ?? '', maritalStatus: selectedCoBuyer?.maritalStatus ?? '',
+      birthplace: selectedCoBuyer?.birthplace ?? '', maritalStatus: relationshipMaritalStatus || selectedCoBuyer?.maritalStatus || '',
     })
+    if (selectedCoBuyer?.id === 'new-sale-participant') {
+      setAdditionalDocumentDirty(true)
+    } else {
+      setAdditionalDocumentDirty(false)
+      setAdditionalSaveStatus('idle')
+    }
   }, [selectedCoBuyer?.id])
+
+  useEffect(() => {
+    if (!selectedCoBuyer) return
+    const maritalStatus = formData.relationshipType === 'spouse'
+      ? 'Casado'
+      : formData.relationshipType === 'partner'
+      ? 'Uniao estavel'
+      : ''
+    if (!maritalStatus) return
+    setDocumentForm((current) => current.maritalStatus === maritalStatus ? current : { ...current, maritalStatus })
+    setCoBuyerDocumentForm((current) => current.maritalStatus === maritalStatus ? current : { ...current, maritalStatus })
+    setPrimaryDocumentDirty(true)
+    setAdditionalDocumentDirty(true)
+  }, [formData.relationshipType, selectedCoBuyer?.id])
+
+  useEffect(() => {
+    setDocumentDirty(primaryDocumentDirty || additionalDocumentDirty)
+  }, [primaryDocumentDirty, additionalDocumentDirty])
 
   useEffect(() => {
     if (!selectedCoBuyer || !sameAddressAsPrimary) return
@@ -754,6 +817,8 @@ export default function SalesForm({
   const updateDocumentField = (field: keyof typeof documentForm, value: string) => {
     setDocumentForm((current) => ({ ...current, [field]: value }))
     setDocumentDirty(true)
+    setPrimaryDocumentDirty(true)
+    setPrimarySaveStatus('idle')
     setDocumentNotice(null)
     if (errors.documents) setErrors((current) => ({ ...current, documents: '' }))
   }
@@ -761,6 +826,8 @@ export default function SalesForm({
   const updateCoBuyerDocumentField = (field: keyof typeof coBuyerDocumentForm, value: string) => {
     setCoBuyerDocumentForm((current) => ({ ...current, [field]: value }))
     setDocumentDirty(true)
+    setAdditionalDocumentDirty(true)
+    setAdditionalSaveStatus('idle')
     setDocumentNotice(null)
     setErrors((current) => ({ ...current, coBuyerDocuments: '' }))
   }
@@ -777,6 +844,8 @@ export default function SalesForm({
       zipCode: documentForm.zipCode,
     }))
     setDocumentDirty(true)
+    setAdditionalDocumentDirty(true)
+    setAdditionalSaveStatus('idle')
   }
 
   const updateRelationshipType = (relationshipType: SaleFormData['relationshipType']) => {
@@ -794,6 +863,18 @@ export default function SalesForm({
   async function saveClientDocuments(): Promise<boolean> {
     if (!selectedUser) return false
 
+    const primaryFormatError = getDocumentFormatError(documentForm)
+    const additionalFormatError = selectedCoBuyer ? getDocumentFormatError(coBuyerDocumentForm) : ''
+    if (primaryFormatError || additionalFormatError) {
+      setErrors((current) => ({
+        ...current,
+        primaryDocumentFormat: primaryFormatError,
+        additionalDocumentFormat: additionalFormatError,
+      }))
+      setActiveDocumentPerson(primaryFormatError ? 'primary' : 'additional')
+      return false
+    }
+
     const missing = REQUIRED_DOCUMENT_FIELDS.filter((field) => {
       const value = documentForm[field.key as keyof typeof documentForm]
       return !String(value ?? '').trim()
@@ -803,6 +884,12 @@ export default function SalesForm({
         ...current,
         documents: `Complete os dados do cliente: ${missing.map((field) => field.label).join(', ')}`,
       }))
+      setActiveDocumentPerson('primary')
+      return false
+    }
+    if (selectedCoBuyer && missingCoBuyerDocumentFields.length > 0) {
+      setErrors((current) => ({ ...current, coBuyerDocuments: `Complete os dados da pessoa adicional: ${missingCoBuyerDocumentFields.join(', ')}` }))
+      setActiveDocumentPerson('additional')
       return false
     }
 
@@ -862,6 +949,10 @@ export default function SalesForm({
         if (isNewParticipant) setFormData((current) => ({ ...current, coBuyerId: updatedCoBuyer.id }))
       }
       setDocumentDirty(false)
+      setPrimaryDocumentDirty(false)
+      setAdditionalDocumentDirty(false)
+      setPrimarySaveStatus('saved')
+      if (selectedCoBuyer) setAdditionalSaveStatus('saved')
       setDocumentNotice('Dados do cliente salvos.')
       return true
     } catch (error) {
@@ -874,6 +965,67 @@ export default function SalesForm({
       setDocumentSaving(false)
     }
   }
+
+  useEffect(() => {
+    if (currentStep !== 4 || !selectedUser || !primaryDocumentDirty) return
+    const formatError = getDocumentFormatError(documentForm)
+    if (formatError) {
+      setPrimarySaveStatus('error')
+      setErrors((current) => ({ ...current, primaryDocumentFormat: formatError }))
+      return
+    }
+    setErrors((current) => ({ ...current, primaryDocumentFormat: '' }))
+    const timeout = window.setTimeout(async () => {
+      setPrimarySaveStatus('saving')
+      const memberships = selectedUser.memberships?.map((membership) => ({ developmentId: membership.development.id, roleId: membership.roles[0]?.role.id ?? '' })) ?? []
+      const companyMemberships = selectedUser.companyMemberships?.map((membership) => ({ companyId: membership.company.id, roleId: membership.roles[0]?.role.id ?? '' })) ?? []
+      try {
+        const response = await fetch(`/api/clients/${selectedUser.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: selectedUser.name, email: selectedUser.email, ...documentForm, memberships, companyMemberships }) })
+        if (!response.ok) throw new Error((await response.json()).error || 'Erro ao salvar')
+        const updatedUser = await response.json()
+        setUsers((current) => current.map((user) => user.id === updatedUser.id ? { ...user, ...updatedUser } : user))
+        setPrimaryDocumentDirty(false)
+        setPrimarySaveStatus('saved')
+      } catch {
+        setPrimarySaveStatus('error')
+        setErrors((current) => ({ ...current, primaryDocumentFormat: 'Nao foi possivel salvar automaticamente.' }))
+      }
+    }, 800)
+    return () => window.clearTimeout(timeout)
+  }, [currentStep, documentForm, primaryDocumentDirty, selectedUser])
+
+  useEffect(() => {
+    if (currentStep !== 4 || !selectedCoBuyer || !additionalDocumentDirty) return
+    const formatError = getDocumentFormatError(coBuyerDocumentForm)
+    if (formatError) {
+      setAdditionalSaveStatus('error')
+      setErrors((current) => ({ ...current, additionalDocumentFormat: formatError }))
+      return
+    }
+    setErrors((current) => ({ ...current, additionalDocumentFormat: '' }))
+    const timeout = window.setTimeout(async () => {
+      setAdditionalSaveStatus('saving')
+      const isNewParticipant = selectedCoBuyer.id === 'new-sale-participant'
+      const targetDevelopmentId = developmentId ?? selectedLot?.block.development?.id
+      const memberships = isNewParticipant && targetDevelopmentId
+        ? [{ developmentId: targetDevelopmentId, roleId: '' }]
+        : selectedCoBuyer.memberships?.map((membership) => ({ developmentId: membership.development.id, roleId: membership.roles[0]?.role.id ?? '' })) ?? []
+      const companyMemberships = selectedCoBuyer.companyMemberships?.map((membership) => ({ companyId: membership.company.id, roleId: membership.roles[0]?.role.id ?? '' })) ?? []
+      try {
+        const response = await fetch(isNewParticipant ? '/api/clients' : `/api/clients/${selectedCoBuyer.id}`, { method: isNewParticipant ? 'POST' : 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: selectedCoBuyer.name, email: selectedCoBuyer.email, ...coBuyerDocumentForm, memberships, companyMemberships }) })
+        if (!response.ok) throw new Error((await response.json()).error || 'Erro ao salvar')
+        const updatedUser = await response.json()
+        setUsers((current) => [updatedUser, ...current.filter((user) => user.id !== selectedCoBuyer.id && user.id !== updatedUser.id)])
+        if (isNewParticipant) setFormData((current) => ({ ...current, coBuyerId: updatedUser.id }))
+        setAdditionalDocumentDirty(false)
+        setAdditionalSaveStatus('saved')
+      } catch {
+        setAdditionalSaveStatus('error')
+        setErrors((current) => ({ ...current, additionalDocumentFormat: 'Nao foi possivel salvar automaticamente.' }))
+      }
+    }, 800)
+    return () => window.clearTimeout(timeout)
+  }, [additionalDocumentDirty, coBuyerDocumentForm, currentStep, developmentId, selectedCoBuyer, selectedLot?.block.development?.id])
 
   if (!isOpen) return null
 
@@ -935,8 +1087,8 @@ export default function SalesForm({
 
           <div className='min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6'>
             {currentStep === 1 && (
-              <section className='space-y-5'>
-                <div>
+              <section className='flex flex-col gap-5'>
+                <div className='order-0'>
                   <h3 className='text-base font-semibold text-foreground'>Cliente</h3>
                   <p className='mt-1 text-sm text-muted'>Escolha o comprador da venda.</p>
                 </div>
@@ -1266,31 +1418,33 @@ export default function SalesForm({
             )}
 
             {currentStep === 4 && (
-              <section className='space-y-5'>
-                <div>
+              <section className='flex flex-col gap-5'>
+                <div className='order-0'>
                   <h3 className='text-base font-semibold text-foreground'>Documentos</h3>
                   <p className='mt-1 text-sm text-muted'>Complete os dados contratuais sem sair do fluxo de venda.</p>
                 </div>
-                <div className='grid grid-cols-2 gap-2 rounded-2xl border border-border bg-surface-secondary p-2'>
-                  <button type='button' onClick={() => setActiveDocumentPerson('primary')} className={`rounded-xl px-4 py-3 text-left text-sm transition ${activeDocumentPerson === 'primary' ? 'bg-surface text-primary shadow-sm ring-1 ring-primary/20' : 'text-muted'}`}><span className='flex items-center justify-between gap-2 text-xs font-semibold uppercase'><span>Comprador principal</span><span>{missingDocumentFields.length ? 'Dados incompletos' : 'Dados completos ✓'}</span></span><span className='mt-1 block truncate font-semibold'>{selectedUser?.name}</span></button>
-                  <button type='button' disabled={!selectedCoBuyer} onClick={() => setActiveDocumentPerson('additional')} className={`rounded-xl px-4 py-3 text-left text-sm transition disabled:opacity-50 ${activeDocumentPerson === 'additional' ? 'bg-surface text-primary shadow-sm ring-1 ring-primary/20' : 'text-muted'}`}><span className='flex items-center justify-between gap-2 text-xs font-semibold uppercase'><span>Pessoa adicional</span>{selectedCoBuyer && <span>{missingCoBuyerDocumentFields.length ? 'Dados incompletos' : 'Dados completos ✓'}</span>}</span><span className='mt-1 block truncate font-semibold'>{selectedCoBuyer?.name ?? 'Nao adicionada'}</span></button>
-                </div>
-                <div className='rounded-2xl border border-border bg-surface-secondary p-5'>
-                  <div className='flex items-center justify-between gap-3'>
-                    <div><h4 className='text-sm font-semibold text-foreground'>Outra pessoa no contrato</h4><p className='mt-1 text-xs text-muted'>Opcional. Busque uma pessoa existente ou cadastre uma nova.</p></div>
-                    {selectedCoBuyer && <button type='button' onClick={() => { handleInputChange('coBuyerId', ''); setCoBuyerSearch(''); setActiveDocumentPerson('primary') }} className='rounded-xl border border-border bg-surface px-3 py-2 text-xs font-semibold text-foreground'>Remover</button>}
+                {!showAdditionalPerson && !selectedCoBuyer && (
+                  <button type='button' onClick={() => { setShowAdditionalPerson(true); setActiveDocumentPerson('additional') }} className='order-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-primary/40 bg-primary/5 px-5 py-4 text-sm font-semibold text-primary transition hover:bg-primary/10'>+ Adicionar outra pessoa ao contrato</button>
+                )}
+                {(showAdditionalPerson || selectedCoBuyer) && <div className='order-2 rounded-2xl border border-border bg-surface-secondary p-5'>
+                  <div className='flex items-start gap-3'>
+                    <button type='button' disabled={!selectedCoBuyer} onClick={() => setActiveDocumentPerson((current) => current === 'additional' ? 'none' : 'additional')} className='flex min-w-0 flex-1 items-center justify-between gap-3 text-left disabled:cursor-default'>
+                      <div className='min-w-0'><p className='text-xs font-semibold uppercase tracking-wide text-primary'>Pessoa adicional · Opcional</p><h4 className='mt-1 truncate text-base font-semibold text-foreground'>{selectedCoBuyer?.name ?? 'Selecione ou cadastre uma pessoa'}</h4><p className='mt-1 truncate text-xs text-muted'>{selectedCoBuyer?.email ?? 'Ela também constará como compradora no contrato.'}</p>{selectedCoBuyer && getAutosaveLabel(additionalSaveStatus) && <p className={`mt-1 text-xs font-semibold ${additionalSaveStatus === 'error' ? 'text-red-600' : additionalSaveStatus === 'saved' ? 'text-emerald-700' : 'text-muted'}`}>{getAutosaveLabel(additionalSaveStatus)}</p>}</div>
+                      {selectedCoBuyer && <div className='flex shrink-0 items-center gap-3'><span className={`rounded-full px-3 py-1 text-xs font-semibold ${missingCoBuyerDocumentFields.length ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{missingCoBuyerDocumentFields.length ? 'Dados incompletos' : 'Dados completos ✓'}</span><span className='text-lg text-muted'>{activeDocumentPerson === 'additional' ? '−' : '+'}</span></div>}
+                    </button>
+                    <button type='button' onClick={() => { handleInputChange('coBuyerId', ''); setCoBuyerSearch(''); setActiveDocumentPerson('primary'); setShowAdditionalPerson(false) }} className='shrink-0 rounded-xl border border-border bg-surface px-3 py-2 text-xs font-semibold text-foreground'>{selectedCoBuyer ? 'Remover' : 'Cancelar'}</button>
                   </div>
-                  <input value={coBuyerSearch} onChange={(event) => setCoBuyerSearch(event.target.value)} placeholder='Buscar por nome, email ou CPF...' className='mt-4 w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
-                  {selectedCoBuyer && <div className='mt-3 rounded-xl border border-primary/30 bg-primary/6 px-4 py-3'><p className='text-xs font-semibold uppercase text-primary'>Pessoa selecionada</p><p className='mt-1 text-sm font-semibold text-foreground'>{selectedCoBuyer.name}</p><p className='text-xs text-muted'>{selectedCoBuyer.email}</p></div>}
-                  {coBuyerSearch.trim() && !selectedCoBuyer && <div className='mt-2 max-h-52 overflow-y-auto rounded-xl border border-border bg-surface'>{filteredCoBuyerUsers.map((user) => <button key={user.id} type='button' onClick={() => { handleInputChange('coBuyerId', user.id); setCoBuyerSearch(user.name); setActiveDocumentPerson('additional') }} className='block w-full border-b border-border px-4 py-3 text-left last:border-b-0 hover:bg-surface-secondary'><span className='block text-sm font-semibold text-foreground'>{user.name}</span><span className='block text-xs text-muted'>{user.email} · CPF: {user.cpf || 'Nao informado'}</span></button>)}</div>}
+                  {!selectedCoBuyer && <input value={coBuyerSearch} onChange={(event) => setCoBuyerSearch(event.target.value)} placeholder='Buscar por nome, email ou CPF...' className='mt-4 w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />}
+                  {coBuyerSearch.trim() && !selectedCoBuyer && <div className='mt-2 max-h-52 overflow-y-auto rounded-xl border border-border bg-surface'>{filteredCoBuyerUsers.map((user) => <button key={user.id} type='button' onClick={() => { handleInputChange('coBuyerId', user.id); setCoBuyerSearch(user.name); setActiveDocumentPerson('additional'); updateRelationshipType('spouse') }} className='block w-full border-b border-border px-4 py-3 text-left last:border-b-0 hover:bg-surface-secondary'><span className='block text-sm font-semibold text-foreground'>{user.name}</span><span className='block text-xs text-muted'>{user.email} · CPF: {user.cpf || 'Nao informado'}</span></button>)}</div>}
                   {!selectedCoBuyer && <button type='button' onClick={() => setShowQuickCoBuyerForm((current) => !current)} className='mt-3 text-sm font-semibold text-primary'>{showQuickCoBuyerForm ? 'Cancelar cadastro' : '+ Cadastrar nova pessoa'}</button>}
                   {showQuickCoBuyerForm && !selectedCoBuyer && <div className='mt-3 grid gap-3 md:grid-cols-[1fr_1fr_auto]'><input value={quickCoBuyer.name} onChange={(event) => setQuickCoBuyer((current) => ({ ...current, name: event.target.value }))} placeholder='Nome completo' className='rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary' /><input type='email' value={quickCoBuyer.email} onChange={(event) => setQuickCoBuyer((current) => ({ ...current, email: event.target.value }))} placeholder='Email' className='rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary' /><button type='button' onClick={createQuickCoBuyer} disabled={quickCoBuyerSaving} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-60'>{quickCoBuyerSaving ? 'Criando...' : 'Criar e selecionar'}</button></div>}
                   {selectedCoBuyer && <label className='mt-4 block'><span className='mb-2 block text-sm font-semibold text-foreground'>Vinculo com o comprador principal</span><select value={formData.relationshipType} onChange={(event) => updateRelationshipType(event.target.value as SaleFormData['relationshipType'])} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary'><option value='spouse'>Conjuge</option><option value='partner'>Companheiro(a) / uniao estavel</option><option value='independent'>Segundo comprador independente</option></select></label>}
                   {errors.coBuyerId && <p className='mt-2 text-sm font-medium text-red-600'>{errors.coBuyerId}</p>}
                   {selectedCoBuyer && activeDocumentPerson === 'additional' && (
                     <div className='mt-5 border-t border-border pt-5'>
-                      <h5 className='text-sm font-semibold text-foreground'>Dados de {selectedCoBuyer.name}</h5>
+                      <h5 className='text-sm font-semibold text-foreground'>Dados pessoais e endereco</h5>
                       <p className='mt-1 text-xs text-muted'>Complete os dados desta pessoa para o contrato.</p>
+                      {errors.additionalDocumentFormat && <div className='mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700'>{errors.additionalDocumentFormat}</div>}
                       {errors.coBuyerDocuments && <div className='mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700'>{errors.coBuyerDocuments}</div>}
                       <div className='mt-4 grid gap-4 md:grid-cols-2'>
                         <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>CPF</span><input value={coBuyerDocumentForm.cpf} onChange={(event) => updateCoBuyerDocumentField('cpf', event.target.value)} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary' /></label>
@@ -1304,23 +1458,25 @@ export default function SalesForm({
                       </div>
                     </div>
                   )}
-                </div>
+                </div>}
                 {documentNotice && (
-                  <div className='rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800'>
+                  <div className='order-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800'>
                     {documentNotice}
                   </div>
                 )}
                 {errors.documents && (
-                  <div className='rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700'>
+                  <div className='order-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700'>
                     {errors.documents}
                   </div>
                 )}
-                <div className={activeDocumentPerson === 'primary' ? 'contents' : 'hidden'}>
-                <div className='rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4'>
-                  <p className='text-xs font-semibold uppercase tracking-wide text-primary'>Comprador principal</p>
-                  <p className='mt-1 text-base font-semibold text-foreground'>{selectedUser?.name}</p>
-                  <p className='text-sm text-muted'>{selectedUser?.email}</p>
-                </div>
+                <div className='order-1 rounded-2xl border border-border bg-surface-secondary p-5'>
+                <button type='button' onClick={() => setActiveDocumentPerson((current) => current === 'primary' ? 'none' : 'primary')} className='flex w-full items-center justify-between gap-3 text-left'>
+                  <div><p className='text-xs font-semibold uppercase tracking-wide text-primary'>Comprador principal</p><p className='mt-1 text-base font-semibold text-foreground'>{selectedUser?.name}</p><p className='text-sm text-muted'>{selectedUser?.email}</p>{getAutosaveLabel(primarySaveStatus) && <p className={`mt-1 text-xs font-semibold ${primarySaveStatus === 'error' ? 'text-red-600' : primarySaveStatus === 'saved' ? 'text-emerald-700' : 'text-muted'}`}>{getAutosaveLabel(primarySaveStatus)}</p>}</div>
+                  <div className='flex items-center gap-3'><span className={`rounded-full px-3 py-1 text-xs font-semibold ${missingDocumentFields.length ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{missingDocumentFields.length ? 'Dados incompletos' : 'Dados completos ✓'}</span><span className='text-lg text-muted'>{activeDocumentPerson === 'primary' ? '−' : '+'}</span></div>
+                </button>
+                {activeDocumentPerson === 'primary' && <>
+                <div className='my-5 border-t border-border pt-5'><h5 className='text-sm font-semibold text-foreground'>Dados pessoais e endereco</h5><p className='mt-1 text-xs text-muted'>Complete os dados desta pessoa para o contrato.</p></div>
+                {errors.primaryDocumentFormat && <div className='mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700'>{errors.primaryDocumentFormat}</div>}
                 <div className='grid gap-4 md:grid-cols-2'>
                   <label className='block'>
                     <span className='mb-2 block text-sm font-semibold text-foreground'>CPF</span>
@@ -1435,8 +1591,9 @@ export default function SalesForm({
                     />
                   </label>
                 </div>
+                </>}
                 </div>
-                <div className='flex flex-col gap-3 md:flex-row md:items-center'>
+                <div className='order-3 flex flex-col gap-3 md:flex-row md:items-center'>
                   {!documentDirty && missingDocumentFields.length === 0 && (
                     <span className='pill bg-emerald-50 text-emerald-700'>Dados completos</span>
                   )}
