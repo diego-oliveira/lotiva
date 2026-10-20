@@ -15,6 +15,12 @@ type ReceivableActionsProps = {
     status: string
     notes?: string | null
     hasActiveCharge?: boolean
+    activeCharge?: {
+      id: string
+      provider: string
+      bankSlipUrl?: string | null
+      invoiceUrl?: string | null
+    } | null
   }
 }
 
@@ -48,6 +54,11 @@ export default function ReceivableActions({ canManagePayments, receivable }: Rec
   const [dueDate, setDueDate] = useState(formatDateInput(new Date(receivable.dueDate)))
   const [dueDateScope, setDueDateScope] = useState<'single' | 'following'>('single')
   const [chargeDueDate, setChargeDueDate] = useState(defaultChargeDueDate())
+  const chargeDownloadUrl = receivable.activeCharge?.provider === 'inter'
+    ? `/api/external-charges/${receivable.activeCharge.id}/pdf?download=1`
+    : receivable.activeCharge?.bankSlipUrl?.startsWith('http')
+    ? receivable.activeCharge.bankSlipUrl
+    : receivable.activeCharge?.invoiceUrl ?? null
 
   if (!canManagePayments) return null
 
@@ -153,6 +164,11 @@ export default function ReceivableActions({ canManagePayments, receivable }: Rec
               <button type='button' onClick={startIssueCharge} disabled={saving} className='rounded-xl border border-border bg-surface px-3 py-2 text-xs font-semibold text-primary transition hover:bg-primary/8 disabled:opacity-60'>
                 {saving ? 'Gerando...' : receivable.kind === 'down_payment' ? 'Gerar boleto da entrada' : 'Gerar boleto'}
               </button>
+            )}
+            {receivable.hasActiveCharge && chargeDownloadUrl && (
+              <a href={chargeDownloadUrl} target='_blank' rel='noreferrer' download={receivable.activeCharge?.provider === 'inter' ? 'boleto.pdf' : undefined} className='rounded-xl border border-border bg-surface px-3 py-2 text-center text-xs font-semibold text-primary transition hover:bg-primary/8'>
+                Baixar boleto
+              </a>
             )}
           </>
         )}

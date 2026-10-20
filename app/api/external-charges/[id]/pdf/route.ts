@@ -8,7 +8,7 @@ import { InterPaymentProvider } from '@/lib/payments/inter-provider'
 export const runtime = 'nodejs'
 type Params = { params: Promise<{ id: string }> }
 
-export async function GET(_: Request, { params }: Params) {
+export async function GET(req: Request, { params }: Params) {
   const auth = await requireAuthenticatedUser()
   if (auth.response) return auth.response
   const { id } = await params
@@ -35,10 +35,11 @@ export async function GET(_: Request, { params }: Params) {
   }
 
   const pdf = await provider.getChargePdfBase64(charge.providerChargeId)
+  const disposition = new URL(req.url).searchParams.get('download') === '1' ? 'attachment' : 'inline'
   return new NextResponse(Buffer.from(pdf, 'base64'), {
     headers: {
       'content-type': 'application/pdf',
-      'content-disposition': `inline; filename="boleto-inter-${charge.providerChargeId}.pdf"`,
+      'content-disposition': `${disposition}; filename="boleto-inter-${charge.providerChargeId}.pdf"`,
     },
   })
 }

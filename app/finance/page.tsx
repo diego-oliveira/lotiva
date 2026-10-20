@@ -568,6 +568,12 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                           status: receivable.status,
                           notes: receivable.notes,
                           hasActiveCharge: Boolean(receivable.externalCharges[0] && !['cancelled', 'refunded'].includes(receivable.externalCharges[0].status)),
+                          activeCharge: receivable.externalCharges[0] && !['cancelled', 'refunded'].includes(receivable.externalCharges[0].status) ? {
+                            id: receivable.externalCharges[0].id,
+                            provider: receivable.externalCharges[0].connection.provider,
+                            bankSlipUrl: receivable.externalCharges[0].bankSlipUrl,
+                            invoiceUrl: receivable.externalCharges[0].invoiceUrl,
+                          } : null,
                         }}
                       />
                     </article>
@@ -788,6 +794,12 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                             status: receivable.status,
                             notes: receivable.notes,
                             hasActiveCharge: Boolean(receivable.externalCharges[0] && !['cancelled', 'refunded'].includes(receivable.externalCharges[0].status)),
+                            activeCharge: receivable.externalCharges[0] && !['cancelled', 'refunded'].includes(receivable.externalCharges[0].status) ? {
+                              id: receivable.externalCharges[0].id,
+                              provider: receivable.externalCharges[0].connection.provider,
+                              bankSlipUrl: receivable.externalCharges[0].bankSlipUrl,
+                              invoiceUrl: receivable.externalCharges[0].invoiceUrl,
+                            } : null,
                           }}
                         />
                       </td>
