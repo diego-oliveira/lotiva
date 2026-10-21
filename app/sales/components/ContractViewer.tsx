@@ -16,6 +16,22 @@ type ContractMeta = {
   emailSentAt?: string | null
   createdAt: string
   updatedAt: string
+  signature?: {
+    provider?: string | null
+    environment?: string | null
+    documentId: string
+    status?: string | null
+    sentAt?: string | null
+    completedAt?: string | null
+    signedDocumentAvailable: boolean
+    signers: Array<{
+      name: string
+      email: string
+      role: 'buyer' | 'seller' | 'witness'
+      signedAt?: string | null
+      rejectedAt?: string | null
+    }>
+  } | null
   missingFields: string[]
   currentDocumentTemplate?: {
     id: string
@@ -57,6 +73,9 @@ export default function ContractViewer({
   const [customMessage, setCustomMessage] = useState('');
   const [regenerationReason, setRegenerationReason] = useState('');
   const [useOriginalTemplate, setUseOriginalTemplate] = useState(false);
+  const [showSignatureDialog, setShowSignatureDialog] = useState(false);
+  const [includeBrokerWitness, setIncludeBrokerWitness] = useState(false);
+  const [signatureLoading, setSignatureLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen && saleId) {
@@ -145,7 +164,9 @@ export default function ContractViewer({
       generated: 'Gerado',
       outdated: 'Requer regeneracao',
       sent: 'Enviado',
+      sent_for_signature: 'Aguardando assinaturas',
       signed: 'Assinado',
+      signature_rejected: 'Assinatura recusada',
       cancelled: 'Cancelado',
       draft: 'Rascunho',
     };
@@ -216,6 +237,49 @@ export default function ContractViewer({
     }
   };
 
+  const handleSendForSignature = async () => {
+    setSignatureLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/contracts/${saleId}/signature`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ includeBrokerWitness }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel enviar para assinatura');
+      setShowSignatureDialog(false);
+      await fetchContractMeta();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao foi possivel enviar para assinatura');
+    } finally {
+      setSignatureLoading(false);
+    }
+  };
+
+  const handleRefreshSignatures = async () => {
+    setSignatureLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/contracts/${saleId}/signature`, { method: 'PATCH' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel atualizar as assinaturas');
+      await fetchContractMeta();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao foi possivel atualizar as assinaturas');
+    } finally {
+      setSignatureLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const signature = contractMeta?.signature;
+    if (!isOpen || !signature?.documentId || signature.status === 'signed' || signature.status === 'rejected') return;
+    void handleRefreshSignatures();
+  // Atualiza uma vez ao abrir um contrato em assinatura; o documentId permanece estavel.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractMeta?.signature?.documentId, isOpen]);
+
   if (!isOpen) return null;
 
   return (
@@ -237,13 +301,15 @@ export default function ContractViewer({
           <div className='flex flex-wrap items-center gap-3'>
             {contractReady && (
               <>
-                <button
-                  onClick={() => setShowRegenerateDialog(true)}
-                  className='inline-flex items-center rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 transition hover:bg-amber-100'
-                  title='Regenerar contrato'
-                >
-                  Regenerar
-                </button>
+                {!contractMeta?.signature && (
+                  <button
+                    onClick={() => setShowRegenerateDialog(true)}
+                    className='inline-flex items-center rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 transition hover:bg-amber-100'
+                    title='Regenerar contrato'
+                  >
+                    Regenerar
+                  </button>
+                )}
 
                 <a
                   href={`/api/contracts/${saleId}/docx`}
@@ -294,6 +360,23 @@ export default function ContractViewer({
                   </svg>
                   Enviar email
                 </button>
+
+                {!contractMeta?.signature ? (
+                  <button
+                    onClick={() => setShowSignatureDialog(true)}
+                    className='inline-flex items-center rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-700 transition hover:bg-violet-100'
+                  >
+                    Enviar para assinatura
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => void handleRefreshSignatures()}
+                    disabled={signatureLoading}
+                    className='inline-flex items-center rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-700 transition hover:bg-violet-100 disabled:opacity-60'
+                  >
+                    {signatureLoading ? 'Atualizando...' : 'Atualizar assinaturas'}
+                  </button>
+                )}
               </>
             )}
 
@@ -366,6 +449,31 @@ export default function ContractViewer({
                   <p><span className='font-semibold text-foreground'>Entrada:</span> {formatCurrency(contractMeta.sale.downPayment)}</p>
                   <p><span className='font-semibold text-foreground'>Parcelas:</span> {contractMeta.sale.installmentCount}x de {formatCurrency(contractMeta.sale.installmentValue)}</p>
                 </div>
+              </div>
+            )}
+
+            {contractMeta?.signature && (
+              <div className='rounded-2xl border border-violet-200 bg-violet-50 p-4'>
+                <p className='text-sm font-semibold text-violet-950'>Assinatura eletrônica</p>
+                <p className='mt-1 text-xs font-semibold uppercase text-violet-700'>
+                  {{ pending: 'Aguardando assinaturas', partially_signed: 'Parcialmente assinado', signed: 'Concluido', rejected: 'Recusado' }[contractMeta.signature.status ?? ''] ?? contractMeta.signature.status}
+                </p>
+                {contractMeta.signature.environment === 'sandbox' && (
+                  <p className='mt-2 rounded-lg bg-amber-100 px-2.5 py-2 text-xs font-semibold text-amber-900'>Documento de teste · sem validade</p>
+                )}
+                <div className='mt-3 space-y-2'>
+                  {contractMeta.signature.signers.map((signer) => (
+                    <div key={`${signer.email}-${signer.role}`} className='rounded-xl bg-white px-3 py-2 text-xs'>
+                      <p className='font-semibold text-foreground'>{signer.name}</p>
+                      <p className='text-muted'>{signer.role === 'seller' ? 'Vendedor' : signer.role === 'witness' ? 'Testemunha' : 'Comprador'} · {signer.signedAt ? 'Assinado' : signer.rejectedAt ? 'Recusado' : 'Pendente'}</p>
+                    </div>
+                  ))}
+                </div>
+                {contractMeta.signature.signedDocumentAvailable && (
+                  <a href={`/api/contracts/${saleId}/signature/signed`} className='mt-3 block rounded-xl bg-violet-600 px-3 py-2 text-center text-sm font-semibold text-white'>
+                    Baixar contrato assinado
+                  </a>
+                )}
               </div>
             )}
 
@@ -470,6 +578,35 @@ export default function ContractViewer({
                 className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50'
               >
                 {emailSending ? 'Enviando...' : 'Enviar email'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSignatureDialog && (
+        <div className='fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 px-4'>
+          <div className='w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-2xl'>
+            <h4 className='text-lg font-semibold text-foreground'>Enviar para assinatura</h4>
+            <p className='mt-2 text-sm leading-6 text-muted'>
+              A Autentique enviara o contrato ao comprador, aos compradores adicionais e ao vendedor. Todos deverao assinar.
+            </p>
+            <label className='mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-surface-secondary p-4'>
+              <input
+                type='checkbox'
+                checked={includeBrokerWitness}
+                onChange={(event) => setIncludeBrokerWitness(event.target.checked)}
+                className='mt-1 h-4 w-4 accent-primary'
+              />
+              <span>
+                <span className='block text-sm font-semibold text-foreground'>Incluir corretor como testemunha</span>
+                <span className='mt-1 block text-xs text-muted'>Opcional. O corretor que registrou a venda recebera uma solicitacao separada.</span>
+              </span>
+            </label>
+            <div className='mt-6 flex justify-end gap-3'>
+              <button type='button' onClick={() => setShowSignatureDialog(false)} disabled={signatureLoading} className='rounded-xl border border-border px-4 py-3 text-sm font-semibold'>Cancelar</button>
+              <button type='button' onClick={() => void handleSendForSignature()} disabled={signatureLoading} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-60'>
+                {signatureLoading ? 'Enviando...' : 'Confirmar envio'}
               </button>
             </div>
           </div>

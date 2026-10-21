@@ -75,6 +75,16 @@ export async function GET(req: Request, { params }: Params) {
         createdAt: contract.createdAt,
         updatedAt: contract.updatedAt,
         lastRegenerationReason: contract.lastRegenerationReason,
+        signature: contract.signatureDocumentId ? {
+          provider: contract.signatureProvider,
+          environment: contract.signatureEnvironment,
+          documentId: contract.signatureDocumentId,
+          status: contract.signatureStatus,
+          signers: contract.signatureSigners,
+          sentAt: contract.signatureSentAt,
+          completedAt: contract.signatureCompletedAt,
+          signedDocumentAvailable: Boolean(contract.signatureSignedUrl && contract.signatureStatus === 'signed'),
+        } : null,
         currentDocumentTemplate: contract.sale.lot.block.development?.documentTemplate?.versions[0] ? {
           id: contract.sale.lot.block.development.documentTemplate.id,
           name: contract.sale.lot.block.development.documentTemplate.name,

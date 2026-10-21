@@ -54,6 +54,8 @@ NEXTAUTH_SECRET
 AUTH_URL
 AUTH_SECRET
 SYSTEM_OWNER_USER_ID
+AUTENTIQUE_API_TOKEN
+AUTENTIQUE_ENVIRONMENT
 PAYMENT_CREDENTIALS_KEY
 PAYMENT_WEBHOOK_BASE_URL
 CRON_SECRET
@@ -71,6 +73,11 @@ openssl rand -base64 32
 Defina `SYSTEM_OWNER_USER_ID` com o ID imutavel do unico usuario autorizado a
 usar **Acessar como**. Durante a configuracao inicial, `SYSTEM_OWNER_EMAIL` pode
 ser usado como alternativa, mas o ID tem prioridade quando ambos existem.
+
+Mantenha `AUTENTIQUE_ENVIRONMENT="sandbox"` durante os testes. A integracao so
+envia documentos reais quando o valor for alterado explicitamente para
+`production`; o padrao seguro, inclusive quando a variavel estiver ausente, e
+sempre sandbox.
 
 Use uma chave separada em `PAYMENT_CREDENTIALS_KEY` para criptografar as
 credenciais financeiras. Ela deve permanecer estável: perdê-la impede

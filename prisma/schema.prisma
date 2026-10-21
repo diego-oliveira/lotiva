@@ -504,12 +504,21 @@ model Contract {
   createdAt                 DateTime  @default(now())
   updatedAt                 DateTime  @updatedAt
   documentTemplateVersionId String?
+  signatureProvider         String?
+  signatureEnvironment      String?
+  signatureDocumentId       String?   @unique
+  signatureStatus           String?
+  signatureSigners          Json?
+  signatureSentAt           DateTime?
+  signatureCompletedAt      DateTime?
+  signatureSignedUrl        String?   @db.Text
 
   sale                    Sale                     @relation(fields: [saleId], references: [id])
   documentTemplateVersion DocumentTemplateVersion? @relation(fields: [documentTemplateVersionId], references: [id], onDelete: SetNull)
   events                  ContractEvent[]
 
   @@index([documentTemplateVersionId])
+  @@index([signatureProvider, signatureStatus])
 }
 
 model DocumentTemplate {

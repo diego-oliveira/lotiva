@@ -74,6 +74,12 @@ export async function POST(req: Request) {
       })
     }
 
+    if (sale.contract?.signatureDocumentId) {
+      return NextResponse.json({
+        error: 'O contrato ja foi enviado para assinatura e nao pode ser regenerado.',
+      }, { status: 409 })
+    }
+
     const contractNumber = sale.contract?.contractNumber ?? generateContractNumber()
     const generatedAt = new Date()
     const selectedPublishedVersion = sale.lot.block.development?.documentTemplate?.versions[0] ?? null
