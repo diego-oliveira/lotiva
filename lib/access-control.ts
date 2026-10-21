@@ -49,6 +49,10 @@ export function lotAccessWhere(userId: string) {
 const administrativeRoleNames = ['owner', 'administrador', 'admin', 'gestor', 'manager']
 const financialRoleNames = [...administrativeRoleNames, 'financeiro', 'finance']
 
+export function financialDevelopmentAccessWhere(userId: string) {
+  return { deletedAt: null, ...developmentRoleAccessWhere(userId, financialRoleNames) }
+}
+
 function developmentRoleAccessWhere(userId: string, roleNames: string[]) {
   const roleFilter = {
     roles: {

@@ -17,6 +17,7 @@ function normalizeSettings(settings: any = {}) {
     correctionIndex: settings.correctionIndex || 'none',
     correctionFrequency: settings.correctionFrequency || 'monthly',
     minDownPaymentPercentage: Number(settings.minDownPaymentPercentage) || 10,
+    defaultCommissionPercentage: Number(settings.defaultCommissionPercentage ?? 6),
     allowDownPaymentInstallments: Boolean(settings.allowDownPaymentInstallments),
     maxDownPaymentInstallments: settings.allowDownPaymentInstallments ? Math.max(2, Math.min(24, Number(settings.maxDownPaymentInstallments) || 2)) : 1,
     maxInstallments: Number(settings.maxInstallments) || 120,

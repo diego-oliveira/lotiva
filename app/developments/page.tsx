@@ -25,6 +25,7 @@ interface Development {
     correctionIndex: 'none' | 'ipca' | 'incc' | 'igpm' | 'fixed'
     correctionFrequency: 'monthly' | 'annual'
     minDownPaymentPercentage: number
+    defaultCommissionPercentage: number
     allowDownPaymentInstallments: boolean
     maxDownPaymentInstallments: number
     maxInstallments: number

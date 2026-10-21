@@ -16,6 +16,7 @@ type DevelopmentSettings = {
   correctionIndex: 'none' | 'ipca' | 'incc' | 'igpm' | 'fixed'
   correctionFrequency: 'monthly' | 'annual'
   minDownPaymentPercentage: number
+  defaultCommissionPercentage: number
   allowDownPaymentInstallments: boolean
   maxDownPaymentInstallments: number
   maxInstallments: number
@@ -37,6 +38,7 @@ const defaultSettings: DevelopmentSettings = {
   correctionIndex: 'none',
   correctionFrequency: 'monthly',
   minDownPaymentPercentage: 10,
+  defaultCommissionPercentage: 6,
   allowDownPaymentInstallments: false,
   maxDownPaymentInstallments: 1,
   maxInstallments: 120,
@@ -122,6 +124,7 @@ export default function DevelopmentSettingsForm({
           correctionIndex: settings.correctionIndex,
           correctionFrequency: settings.correctionFrequency,
           minDownPaymentPercentage: settings.minDownPaymentPercentage,
+          defaultCommissionPercentage: settings.defaultCommissionPercentage,
           allowDownPaymentInstallments: settings.allowDownPaymentInstallments,
           maxDownPaymentInstallments: settings.maxDownPaymentInstallments,
           maxInstallments: settings.maxInstallments,
@@ -165,6 +168,7 @@ export default function DevelopmentSettingsForm({
     if (formData.reservationValidityDays < 1 || formData.reservationValidityDays > 180) nextErrors.reservationValidityDays = 'Informe entre 1 e 180 dias.'
     if (formData.defaultInterestRate < 0 || formData.defaultInterestRate > 10) nextErrors.defaultInterestRate = 'Informe entre 0% e 10% ao mes.'
     if (formData.minDownPaymentPercentage < 0 || formData.minDownPaymentPercentage > 100) nextErrors.minDownPaymentPercentage = 'Informe entre 0% e 100%.'
+    if (formData.defaultCommissionPercentage < 0 || formData.defaultCommissionPercentage > 100) nextErrors.defaultCommissionPercentage = 'Informe entre 0% e 100%.'
     if (formData.maxInstallments < 1 || formData.maxInstallments > 240) nextErrors.maxInstallments = 'Informe ate 240 parcelas.'
     if (formData.allowDownPaymentInstallments && (formData.maxDownPaymentInstallments < 2 || formData.maxDownPaymentInstallments > 24)) nextErrors.maxDownPaymentInstallments = 'Informe entre 2 e 24 parcelas.'
     if (formData.paymentMethods.length === 0) nextErrors.paymentMethods = 'Selecione pelo menos uma forma de pagamento.'
@@ -230,6 +234,7 @@ export default function DevelopmentSettingsForm({
               <div className='mt-4 grid gap-4 md:grid-cols-2'>
                 <NumberInput label='Prazo de reserva' name='reservationValidityDays' value={formData.reservationValidityDays} min={1} max={180} suffix='dias' errors={errors} onChange={updateNumber} />
                 <NumberInput label='Entrada minima' name='minDownPaymentPercentage' value={formData.minDownPaymentPercentage} min={0} max={100} step='0.01' suffix='%' errors={errors} onChange={updateNumber} />
+                <NumberInput label='Comissao padrao' name='defaultCommissionPercentage' value={formData.defaultCommissionPercentage} min={0} max={100} step='0.01' suffix='%' errors={errors} onChange={updateNumber} />
               </div>
               <label className='mt-4 flex items-center gap-3 text-sm font-medium text-foreground'>
                 <input type='checkbox' checked={formData.allowDownPaymentInstallments} onChange={(event) => setFormData((current) => ({ ...current, allowDownPaymentInstallments: event.target.checked, maxDownPaymentInstallments: event.target.checked ? Math.max(current.maxDownPaymentInstallments, 2) : 1 }))} className='h-4 w-4 rounded border-border text-primary focus:ring-primary' />

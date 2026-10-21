@@ -38,6 +38,7 @@ type DevelopmentSettings = {
   correctionIndex: 'none' | 'ipca' | 'incc' | 'igpm' | 'fixed'
   correctionFrequency: 'monthly' | 'annual'
   minDownPaymentPercentage: number
+  defaultCommissionPercentage: number
   allowDownPaymentInstallments: boolean
   maxDownPaymentInstallments: number
   maxInstallments: number
@@ -77,6 +78,7 @@ const defaultSettings: DevelopmentSettingsFormData = {
   correctionIndex: 'none',
   correctionFrequency: 'monthly',
   minDownPaymentPercentage: 10,
+  defaultCommissionPercentage: 6,
   allowDownPaymentInstallments: false,
   maxDownPaymentInstallments: 1,
   maxInstallments: 120,
@@ -185,6 +187,7 @@ export default function DevelopmentForm({
       if (settingsData.reservationValidityDays < 1 || settingsData.reservationValidityDays > 180) newErrors.reservationValidityDays = 'Informe entre 1 e 180 dias.'
       if (settingsData.defaultInterestRate < 0 || settingsData.defaultInterestRate > 10) newErrors.defaultInterestRate = 'Informe entre 0% e 10% ao mes.'
       if (settingsData.minDownPaymentPercentage < 0 || settingsData.minDownPaymentPercentage > 100) newErrors.minDownPaymentPercentage = 'Informe entre 0% e 100%.'
+      if (settingsData.defaultCommissionPercentage < 0 || settingsData.defaultCommissionPercentage > 100) newErrors.defaultCommissionPercentage = 'Informe entre 0% e 100%.'
       if (settingsData.maxInstallments < 1 || settingsData.maxInstallments > 240) newErrors.maxInstallments = 'Informe ate 240 parcelas.'
       if (settingsData.allowDownPaymentInstallments && (settingsData.maxDownPaymentInstallments < 2 || settingsData.maxDownPaymentInstallments > 24)) newErrors.maxDownPaymentInstallments = 'Informe entre 2 e 24 parcelas.'
       if (settingsData.paymentMethods.length === 0) newErrors.paymentMethods = 'Selecione pelo menos uma forma de pagamento.'
@@ -403,6 +406,12 @@ export default function DevelopmentForm({
                   }`}
                 />
                 {errors.maxInstallments && <p className='mt-2 text-sm text-red-600'>{errors.maxInstallments}</p>}
+              </label>
+
+              <label className='block'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Comissao padrao (%)</span>
+                <NumberTextInput min={0} max={100} step='0.01' value={settingsData.defaultCommissionPercentage} onValueChange={(value) => updateSettingNumber('defaultCommissionPercentage', value)} className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:ring-2 focus:ring-primary ${errors.defaultCommissionPercentage ? 'border-red-300' : 'border-border'}`} />
+                {errors.defaultCommissionPercentage && <p className='mt-2 text-sm text-red-600'>{errors.defaultCommissionPercentage}</p>}
               </label>
 
               <div className='rounded-xl border border-border bg-surface p-4 md:col-span-2'>

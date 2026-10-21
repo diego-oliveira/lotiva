@@ -73,6 +73,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
   const reservationValidityDays = asNumber(data.reservationValidityDays)
   const defaultInterestRate = asNumber(data.defaultInterestRate)
   const minDownPaymentPercentage = asNumber(data.minDownPaymentPercentage)
+  const defaultCommissionPercentage = asNumber(data.defaultCommissionPercentage)
   const maxInstallments = asNumber(data.maxInstallments)
   const maxDownPaymentInstallments = asNumber(data.maxDownPaymentInstallments)
   const paymentMethods = normalizePaymentMethods(data.paymentMethods)
@@ -100,6 +101,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
   if (minDownPaymentPercentage === null || minDownPaymentPercentage < 0 || minDownPaymentPercentage > 100) {
     errors.minDownPaymentPercentage = 'Informe entrada minima entre 0% e 100%.'
   }
+  if (defaultCommissionPercentage === null || defaultCommissionPercentage < 0 || defaultCommissionPercentage > 100) {
+    errors.defaultCommissionPercentage = 'Informe uma comissao entre 0% e 100%.'
+  }
 
   if (!maxInstallments || maxInstallments < 1 || maxInstallments > 240) {
     errors.maxInstallments = 'Informe ate 240 parcelas.'
@@ -125,6 +129,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       correctionIndex: data.correctionIndex,
       correctionFrequency: data.correctionFrequency,
       minDownPaymentPercentage: minDownPaymentPercentage!,
+      defaultCommissionPercentage: defaultCommissionPercentage!,
       allowDownPaymentInstallments: Boolean(data.allowDownPaymentInstallments),
       maxDownPaymentInstallments: data.allowDownPaymentInstallments ? Math.round(maxDownPaymentInstallments!) : 1,
       maxInstallments: Math.round(maxInstallments!),
@@ -139,6 +144,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       correctionIndex: data.correctionIndex,
       correctionFrequency: data.correctionFrequency,
       minDownPaymentPercentage: minDownPaymentPercentage!,
+      defaultCommissionPercentage: defaultCommissionPercentage!,
       allowDownPaymentInstallments: Boolean(data.allowDownPaymentInstallments),
       maxDownPaymentInstallments: data.allowDownPaymentInstallments ? Math.round(maxDownPaymentInstallments!) : 1,
       maxInstallments: Math.round(maxInstallments!),

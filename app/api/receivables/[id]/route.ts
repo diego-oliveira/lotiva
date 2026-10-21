@@ -7,6 +7,7 @@ import { hasDevelopmentPermission } from '@/lib/permissions'
 import { createFinancialAuditLog } from '@/lib/payments/audit'
 import { getPaymentProviderForConnection } from '@/lib/payments/factory'
 import { synchronizeExternalCharge } from '@/lib/payments/synchronize-charge'
+import { syncSaleCommissions } from '@/lib/commissions'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -241,6 +242,7 @@ export async function PATCH(req: Request, { params }: Params) {
       return saved
     })
 
+    if (receivable.kind === 'down_payment') await syncSaleCommissions(prisma, receivable.saleId)
     return NextResponse.json(updated)
   }
 
@@ -285,6 +287,7 @@ export async function PATCH(req: Request, { params }: Params) {
       return saved
     })
 
+    if (receivable.kind === 'down_payment') await syncSaleCommissions(prisma, receivable.saleId)
     return NextResponse.json(updated)
   }
 

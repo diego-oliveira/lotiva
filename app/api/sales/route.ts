@@ -9,6 +9,7 @@ import { createLotEvent } from '@/lib/lot-events'
 import { hasDevelopmentPermission } from '@/lib/permissions'
 import { calculateInstallment, evaluateDirectSaleTerms } from '@/lib/proposal-rules'
 import { addMoney, decimal, moneyToNumber, multiplyMoney, subtractMoney } from '@/lib/money'
+import { commissionAmount, syncSaleCommissions } from '@/lib/commissions'
 
 function addMonths(date: Date, months: number) {
   const next = new Date(date)
@@ -272,6 +273,7 @@ export async function POST(req: Request) {
       correctionIndex: 'none',
       allowDownPaymentInstallments: false,
       maxDownPaymentInstallments: 1,
+      defaultCommissionPercentage: 6,
     }
     const requestedDownPayment = Number(data.downPayment)
     const requestedInstallmentCount = Math.trunc(Number(data.installmentCount))
@@ -417,6 +419,20 @@ export async function POST(req: Request) {
 
       if (receivables.length > 0) {
         await prisma.receivable.createMany({ data: receivables })
+      }
+
+      const defaultCommissionPercentage = Number(settings.defaultCommissionPercentage ?? 6)
+      const commissionUserId = approvedProposal?.createdById ?? currentUserId
+      if (defaultCommissionPercentage > 0) {
+        await prisma.saleCommission.create({
+          data: {
+            saleId: sale.id,
+            userId: commissionUserId,
+            percentage: defaultCommissionPercentage,
+            amount: commissionAmount(salePrice, defaultCommissionPercentage),
+          },
+        })
+        await syncSaleCommissions(prisma, sale.id)
       }
 
       if (coBuyerId) {

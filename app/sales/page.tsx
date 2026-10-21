@@ -6,6 +6,7 @@ import SalesForm from './components/SalesForm'
 import ContractViewer from './components/ContractViewer'
 import ReceivablesDrawer from './components/ReceivablesDrawer'
 import LegacySalesImportDrawer from './components/LegacySalesImportDrawer'
+import CommissionDrawer from './components/CommissionDrawer'
 
 interface Block {
   id: string
@@ -125,6 +126,7 @@ function SalesContent() {
   const [receivablesSale, setReceivablesSale] = useState<Sale | null>(null)
   const [canCorrectSales, setCanCorrectSales] = useState(false)
   const [showLegacyImport, setShowLegacyImport] = useState(false)
+  const [commissionSaleId, setCommissionSaleId] = useState('')
 
   useEffect(() => {
     fetchSales()
@@ -484,6 +486,9 @@ function SalesContent() {
                         <button onClick={() => handleViewReceivables(sale)} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>
                           Parcelas
                         </button>
+                        <button onClick={() => setCommissionSaleId(sale.id)} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>
+                          Comissoes
+                        </button>
                         {canCorrectSales && (
                           <button
                             onClick={() => handleEditSale(sale)}
@@ -579,6 +584,7 @@ function SalesContent() {
         onClose={() => setReceivablesSale(null)}
         onUpdated={handleReceivablesUpdated}
       />
+      <CommissionDrawer saleId={commissionSaleId} isOpen={Boolean(commissionSaleId)} onClose={() => setCommissionSaleId('')} />
     </div>
   )
 }
