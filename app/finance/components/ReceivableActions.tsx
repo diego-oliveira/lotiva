@@ -12,6 +12,7 @@ type ReceivableActionsProps = {
     amount: number
     balance: number
     paidAmount: number
+    paidAt?: string | null
     status: string
     notes?: string | null
     hasActiveCharge?: boolean
@@ -24,7 +25,7 @@ type ReceivableActionsProps = {
   }
 }
 
-type Dialog = 'payment' | 'dueDate' | 'chargeDueDate' | null
+type Dialog = 'payment' | 'paymentDate' | 'dueDate' | 'chargeDueDate' | null
 
 function formatDateInput(date: Date) {
   const year = date.getFullYear()
@@ -99,6 +100,13 @@ export default function ReceivableActions({ canManagePayments, receivable }: Rec
 
   const reopen = () => updateReceivable({ status: 'pending', notes: receivable.notes }, 'Parcela reaberta.')
 
+  const changePaymentDate = () => updateReceivable({
+    status: 'paid',
+    paidAmount: receivable.paidAmount,
+    paidAt,
+    notes: receivable.notes,
+  }, 'Data do pagamento atualizada.')
+
   const changeDueDate = () => updateReceivable(
     { dueDate, scope: dueDateScope },
     dueDateScope === 'following' ? 'Vencimento desta parcela e das seguintes atualizado.' : 'Vencimento atualizado.',
@@ -149,9 +157,14 @@ export default function ReceivableActions({ canManagePayments, receivable }: Rec
 
       <div className='flex flex-col gap-2'>
         {receivable.status === 'paid' ? (
+          <>
+          <button type='button' onClick={() => { setPaidAt(formatDateInput(receivable.paidAt ? new Date(receivable.paidAt) : new Date())); setError(null); setDialog('paymentDate') }} disabled={saving} className='rounded-xl border border-border bg-surface px-3 py-2 text-xs font-semibold text-primary transition hover:bg-primary/8 disabled:opacity-60'>
+            Alterar data do pagamento
+          </button>
           <button type='button' onClick={() => void reopen()} disabled={saving} className='rounded-xl border border-border bg-surface px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-surface-secondary disabled:opacity-60'>
             {saving ? 'Salvando...' : 'Reabrir parcela'}
           </button>
+          </>
         ) : (
           <>
             <button type='button' onClick={() => { setPaidAt(formatDateInput(new Date())); setError(null); setDialog('payment') }} disabled={saving} className='rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'>
@@ -179,7 +192,7 @@ export default function ReceivableActions({ canManagePayments, receivable }: Rec
           <div className='w-full max-w-md rounded-2xl border border-border bg-surface shadow-2xl'>
             <div className='border-b border-border px-5 py-4'>
               <h3 className='text-base font-semibold text-foreground'>
-                {dialog === 'payment' ? 'Registrar pagamento' : dialog === 'dueDate' ? 'Alterar vencimento' : 'Novo vencimento do boleto'}
+                {dialog === 'paymentDate' ? 'Alterar data do pagamento' : dialog === 'payment' ? 'Registrar pagamento' : dialog === 'dueDate' ? 'Alterar vencimento' : 'Novo vencimento do boleto'}
               </h3>
               <p className='mt-1 text-sm text-muted'>
                 {dialog === 'chargeDueDate' ? 'A parcela esta vencida. Informe uma data futura para o novo boleto.' : 'Confirme os dados antes de continuar.'}
@@ -189,7 +202,7 @@ export default function ReceivableActions({ canManagePayments, receivable }: Rec
             <div className='space-y-4 px-5 py-5'>
               {error && <div className='rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700'>{error}</div>}
 
-              {dialog === 'payment' && (
+              {(dialog === 'payment' || dialog === 'paymentDate') && (
                 <label className='block'>
                   <span className='mb-2 block text-sm font-semibold text-foreground'>Data de pagamento</span>
                   <input type='date' value={paidAt} onChange={(event) => setPaidAt(event.target.value)} className='w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary' />
@@ -229,11 +242,11 @@ export default function ReceivableActions({ canManagePayments, receivable }: Rec
               <button type='button' onClick={closeDialog} disabled={saving} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground disabled:opacity-60'>Cancelar</button>
               <button
                 type='button'
-                onClick={() => dialog === 'payment' ? void markAsPaid() : dialog === 'dueDate' ? void changeDueDate() : void issueCharge(chargeDueDate)}
-                disabled={saving || (dialog === 'payment' && !paidAt) || (dialog === 'dueDate' && !dueDate) || (dialog === 'chargeDueDate' && !chargeDueDate)}
+                onClick={() => dialog === 'paymentDate' ? void changePaymentDate() : dialog === 'payment' ? void markAsPaid() : dialog === 'dueDate' ? void changeDueDate() : void issueCharge(chargeDueDate)}
+                disabled={saving || ((dialog === 'payment' || dialog === 'paymentDate') && !paidAt) || (dialog === 'dueDate' && !dueDate) || (dialog === 'chargeDueDate' && !chargeDueDate)}
                 className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-60'
               >
-                {saving ? 'Salvando...' : dialog === 'payment' ? 'Confirmar pagamento' : dialog === 'dueDate' ? 'Alterar vencimento' : 'Gerar boleto'}
+                {saving ? 'Salvando...' : dialog === 'paymentDate' ? 'Salvar data' : dialog === 'payment' ? 'Confirmar pagamento' : dialog === 'dueDate' ? 'Alterar vencimento' : 'Gerar boleto'}
               </button>
             </div>
           </div>

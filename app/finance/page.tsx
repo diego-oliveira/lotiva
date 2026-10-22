@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import Form from 'next/form'
+import { financeSearchFilter } from '@/lib/finance-search'
 import { redirect } from 'next/navigation'
 import { getCurrentSession } from '@/lib/auth'
 import { membershipWhere } from '@/lib/access-control'
@@ -173,19 +175,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
             ? {}
             : { status: { not: 'paid' } }
 
-  const containsInsensitive = { contains: search, mode: 'insensitive' as const }
-  const searchFilter: Prisma.ReceivableWhereInput = search
-    ? {
-        OR: [
-          { sale: { is: { id: { contains: search } } } },
-          { sale: { is: { user: { is: { name: containsInsensitive } } } } },
-          { sale: { is: { user: { is: { email: containsInsensitive } } } } },
-          { sale: { is: { user: { is: { cpf: { contains: search.replace(/\D/g, '') } } } } } },
-          { sale: { is: { lot: { is: { identifier: containsInsensitive } } } } },
-          { sale: { is: { lot: { is: { block: { is: { identifier: containsInsensitive } } } } } } },
-        ],
-      }
-    : {}
+  const searchFilter = financeSearchFilter(search)
 
   const receivableWhere: Prisma.ReceivableWhereInput = {
     AND: [
@@ -565,6 +555,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                           amount: Number(receivable.amount),
                           balance: Number(receivable.balance),
                           paidAmount: Number(receivable.paidAmount),
+                          paidAt: receivable.paidAt?.toISOString() ?? null,
                           status: receivable.status,
                           notes: receivable.notes,
                           hasActiveCharge: Boolean(receivable.externalCharges[0] && !['cancelled', 'refunded'].includes(receivable.externalCharges[0].status)),
@@ -666,7 +657,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
 
       {view === 'list' && (
       <section className='panel overflow-hidden'>
-        <form action='/finance' className='panel-header grid gap-4 px-6 py-5 lg:grid-cols-[1fr_180px_150px_150px_auto] lg:items-end'>
+        <Form action='/finance' className='panel-header grid gap-4 px-6 py-5 lg:grid-cols-[1fr_180px_150px_150px_auto] lg:items-end'>
           <input type='hidden' name='developmentId' value={selectedDevelopment.id} />
           <input type='hidden' name='view' value='list' />
           <label className='block'>
@@ -718,7 +709,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
               Limpar
             </Link>
           </div>
-        </form>
+        </Form>
 
         {receivables.length === 0 ? (
           <div className='px-6 py-12 text-center'>
@@ -791,6 +782,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                             amount: Number(receivable.amount),
                             balance: Number(receivable.balance),
                             paidAmount: Number(receivable.paidAmount),
+                            paidAt: receivable.paidAt?.toISOString() ?? null,
                             status: receivable.status,
                             notes: receivable.notes,
                             hasActiveCharge: Boolean(receivable.externalCharges[0] && !['cancelled', 'refunded'].includes(receivable.externalCharges[0].status)),
