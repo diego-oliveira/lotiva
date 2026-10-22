@@ -11,7 +11,8 @@ export async function GET(req: NextRequest) {
   const userId = auth.session.user.id
   const params = req.nextUrl.searchParams
   const mine = params.get('scope') === 'mine'
-  if (!mine && !(await hasAnyDevelopmentPermission(userId, 'finance'))) return forbiddenResponse()
+  // Broker access is temporarily disabled, including requests for their own data.
+  if (!(await hasAnyDevelopmentPermission(userId, 'finance'))) return forbiddenResponse()
   const developmentId = params.get('developmentId') || undefined
   const status = params.get('status') || undefined
   const commissions = await prisma.saleCommission.findMany({

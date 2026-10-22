@@ -92,13 +92,6 @@ const navSections: NavSection[] = [
         icon: 'sale',
         permission: 'sales',
       },
-      {
-        href: '/my-commissions',
-        label: 'Minhas comissões',
-        description: 'Valores a receber e recebidos',
-        icon: 'finance',
-        permission: 'sales',
-      },
     ],
   },
   {
