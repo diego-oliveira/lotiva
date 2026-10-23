@@ -62,6 +62,8 @@ model Development {
   documentTemplate   DocumentTemplate?            @relation(fields: [documentTemplateId], references: [id], onDelete: SetNull)
   documentValues     DevelopmentDocumentValue[]
   publicLotInterests PublicLotInterest[]
+  partnerAgreement PartnerAgreement?
+  partnerSettlements PartnerSettlement[]
 
   @@index([documentTemplateId])
   @@index([deletedAt])
@@ -168,6 +170,10 @@ model User {
   commissionPaymentsCreated CommissionPayment[] @relation("CommissionPaymentCreator")
   adjustmentReviewsReviewed AdjustmentReview[] @relation("AdjustmentReviewReviewer")
   financialAuditLogs        FinancialAuditLog[]
+  partnerSettlementsCreated PartnerSettlement[] @relation("PartnerSettlementCreator")
+  partnerSettlementsClosed PartnerSettlement[] @relation("PartnerSettlementCloser")
+  partnerPaymentsCreated PartnerPayment[]
+  partnerSettlementRevisions PartnerSettlementRevision[]
   impersonationSessionsStarted ImpersonationSession[] @relation("ImpersonationActor")
   impersonationSessionsReceived ImpersonationSession[] @relation("ImpersonationTarget")
 }
@@ -945,4 +951,90 @@ model Notification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt, createdAt])
+}
+
+
+model PartnerAgreement {
+  id             String @id @default(uuid())
+  developmentId  String @unique
+  partnerName    String @default("")
+  pixKey         String @default("")
+  percentage     Decimal @default(0) @db.Decimal(7, 4)
+  participants   Json @default("[]")
+  defaultCosts   Json @default("[]") @map("recurringCosts")
+  version        Int @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Restrict)
+}
+
+model PartnerSettlement {
+  id               String @id @default(uuid())
+  developmentId    String
+  month            String
+  status           String @default("draft")
+  partnerName      String @default("")
+  pixKey           String @default("")
+  percentage       Decimal @default(0) @db.Decimal(7, 4)
+  participants     Json @default("[]")
+  expenses         Json @default("[]")
+  adjustments      Json @default("[]")
+  snapshot         Json?
+  receiptsTotal    Decimal @default(0) @db.Decimal(15, 2)
+  commissionsTotal Decimal @default(0) @db.Decimal(15, 2)
+  costsTotal       Decimal @default(0) @db.Decimal(15, 2)
+  adjustmentsTotal Decimal @default(0) @db.Decimal(15, 2)
+  netAmount        Decimal @default(0) @db.Decimal(15, 2)
+  partnerAmount    Decimal @default(0) @db.Decimal(15, 2)
+  version          Int @default(0)
+  closedAt         DateTime?
+  createdById      String?
+  closedById       String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Restrict)
+  createdBy User? @relation("PartnerSettlementCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  closedBy User? @relation("PartnerSettlementCloser", fields: [closedById], references: [id], onDelete: SetNull)
+  payments PartnerPayment[]
+  revisions PartnerSettlementRevision[]
+
+  @@unique([developmentId, month])
+  @@index([developmentId, status, month])
+}
+
+model PartnerPayment {
+  id           String @id @default(uuid())
+  settlementId String
+  participantId String @default("legacy")
+  participantName String @default("")
+  amount       Decimal @db.Decimal(15, 2)
+  paidAt       DateTime
+  proofUrl     String?
+  notes        String?
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  settlement PartnerSettlement @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([settlementId, paidAt])
+}
+
+model PartnerSettlementRevision {
+  id           String @id @default(uuid())
+  settlementId String
+  number       Int
+  snapshot     Json
+  payments     Json
+  closedAt     DateTime
+  reason       String
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  settlement PartnerSettlement @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([settlementId, number])
 }

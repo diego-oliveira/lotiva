@@ -111,6 +111,13 @@ const navSections: NavSection[] = [
         icon: 'finance',
         permission: 'finance',
       },
+      {
+        href: '/distributions',
+        label: 'Distribuição de resultados',
+        description: 'Resultado, participantes e pagamentos',
+        icon: 'finance',
+        permission: 'finance',
+      },
     ],
   },
   {
@@ -153,7 +160,7 @@ const navSections: NavSection[] = [
   },
 ]
 
-const workspaceRoutes = ['/', '/lots', '/proposals', '/sales', '/finance', '/commissions', '/my-commissions']
+const workspaceRoutes = ['/', '/lots', '/proposals', '/sales', '/finance', '/commissions', '/my-commissions', '/partner-settlements', '/distributions']
 
 function isWorkspaceRoute(pathname: string) {
   return workspaceRoutes.some((route) => (route === '/' ? pathname === '/' : pathname.startsWith(route)))

@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   clearInterTokenCache,
   getCachedInterToken,
+  formatInterError,
   InterPaymentProvider,
   mapInterCharge,
   mapInterStatus,
@@ -17,6 +18,17 @@ const credentials = {
   privateKey: '-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----',
   accountNumber: '1234567',
 }
+
+test('preserva violacoes de campos mesmo quando o Inter retorna uma mensagem generica', () => {
+  const message = formatInterError(400, {
+    detail: 'Verifique se os dados informados estão de acordo com a documentação disponibilizada e tente novamente.',
+    violacoes: [{ propriedade: 'pagador.numero', razao: 'Tamanho inválido.' }],
+  })
+  assert.match(message, /Inter 400/)
+  assert.match(message, /Verifique se os dados/)
+  assert.match(message, /pagador.numero: Tamanho inválido/)
+  assert.equal(formatInterError(500, null, 'Internal Server Error'), 'Inter 500: Internal Server Error')
+})
 
 test('reutiliza token Inter valido e evita estouro do rate limit OAuth', async () => {
   clearInterTokenCache()

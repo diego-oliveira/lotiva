@@ -8,3 +8,4 @@ npm-debug.log*
 tsconfig.tsbuildinfo
 public/uploads/*
 !public/uploads/.gitkeep
+storage/partner-proofs/

@@ -51,6 +51,7 @@ services:
       UPLOAD_DIR: /app/uploads
       UPLOAD_PUBLIC_PATH: /uploads
       DOCUMENT_STORAGE_DIR: /app/documents
+      PARTNER_PROOF_DIR: /app/partner-proofs
       PAYMENT_CREDENTIALS_KEY: ${PAYMENT_CREDENTIALS_KEY}
       PAYMENT_DEBUG_LOG_PAYLOADS: ${PAYMENT_DEBUG_LOG_PAYLOADS:-false}
       PAYMENT_WEBHOOK_BASE_URL: ${PAYMENT_WEBHOOK_BASE_URL}
@@ -58,6 +59,7 @@ services:
     volumes:
       - uploads_data:/app/uploads
       - documents_data:/app/documents
+      - partner_proofs_data:/app/partner-proofs
     ports:
       - '${APP_PORT:-3000}:3000'
     networks:
@@ -67,6 +69,7 @@ volumes:
   postgres_data:
   uploads_data:
   documents_data:
+  partner_proofs_data:
 
 networks:
   lotiva:

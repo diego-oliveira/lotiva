@@ -27,6 +27,7 @@
 !/public/uploads/.gitkeep
 /storage/documents/*
 !/storage/documents/.gitkeep
+/storage/partner-proofs/
 
 # debug
 npm-debug.log*

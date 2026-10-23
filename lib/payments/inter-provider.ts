@@ -269,6 +269,16 @@ function responseStatusText(statusMessage: string | undefined, responseText: str
   return statusMessage || 'erro desconhecido'
 }
 
+export function formatInterError(status: number | undefined, problem: InterProblem | null, statusMessage?: string, responseText = '') {
+  const violations = problem?.violacoes
+    ?.map((item) => [item.propriedade, item.razao].filter(Boolean).join(': '))
+    .filter(Boolean)
+    .join('; ')
+  const summary = problem?.detail || problem?.title
+  const details = [...new Set([summary, violations].filter(Boolean))].join(' — ')
+  return `Inter ${status}: ${details || responseStatusText(statusMessage, responseText)}`
+}
+
 function sanitizeInterPath(path: string) {
   return path.replace(/(cpfCnpjPessoaPagadora=)[^&]+/g, '$1[mascarado]')
 }
@@ -302,11 +312,7 @@ async function httpsJsonRequest<T>(url: string, options: {
           return
         }
         const problem = body as InterProblem | null
-        const violations = problem?.violacoes
-          ?.map((item) => [item.propriedade, item.razao].filter(Boolean).join(': '))
-          .filter(Boolean)
-          .join('; ')
-        reject(new Error(`Inter ${response.statusCode}: ${problem?.detail || problem?.title || violations || responseStatusText(response.statusMessage, text)}`))
+        reject(new Error(formatInterError(response.statusCode, problem, response.statusMessage, text)))
       })
     })
     request.on('error', reject)

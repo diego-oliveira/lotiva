@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "prisma generate && prisma migrate deploy && next build",
     "test": "tsx --test tests/**/*.test.ts",
+    "test:partner-settlements:integration": "node --env-file=.env --import tsx scripts/test-partner-settlements-integration.ts",
     "test:payments:integration": "tsx scripts/test-billing-cycle-integration.ts && tsx scripts/test-payment-webhook-integration.ts",
     "payments:webhooks:configure": "tsx scripts/configure-payment-webhooks.ts",
     "poc:asaas": "tsx scripts/asaas-sandbox-poc.ts",
