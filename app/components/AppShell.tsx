@@ -1,9 +1,11 @@
 'use client'
 
 import Link from 'next/link'
+import WorkspaceContext, { WorkspaceLink } from './WorkspaceContext'
+import { workspaceMode } from '@/lib/workspace'
 import { signOut } from 'next-auth/react'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { usePathname } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
 
 type NavItem = {
   href: string
@@ -42,6 +44,7 @@ type WorkspaceDevelopment = {
   id: string
   name: string
   logo?: string | null
+  finance?: boolean
   company?: {
     name: string
   } | null
@@ -160,11 +163,7 @@ const navSections: NavSection[] = [
   },
 ]
 
-const workspaceRoutes = ['/', '/lots', '/proposals', '/sales', '/finance', '/commissions', '/my-commissions', '/partner-settlements', '/distributions']
-
-function isWorkspaceRoute(pathname: string) {
-  return workspaceRoutes.some((route) => (route === '/' ? pathname === '/' : pathname.startsWith(route)))
-}
+function isWorkspaceRoute(pathname: string) { return workspaceMode(pathname) !== null }
 
 function NavIcon({ icon }: { icon: NavItem['icon'] }) {
   const className = 'h-5 w-5'
@@ -227,122 +226,6 @@ function NavIcon({ icon }: { icon: NavItem['icon'] }) {
   }
 }
 
-function WorkspaceSelector({
-  developments,
-}: {
-  developments: WorkspaceDevelopment[] | null
-}) {
-  return (
-    <Suspense fallback={null}>
-      <WorkspaceSelectorContent developments={developments} />
-    </Suspense>
-  )
-}
-
-function WorkspaceSelectorContent({
-  developments,
-}: {
-  developments: WorkspaceDevelopment[] | null
-}) {
-  const pathname = usePathname()
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const choosingDevelopment = pathname === '/' && searchParams.get('chooseDevelopment') === '1'
-  const enabled = isWorkspaceRoute(pathname) && !choosingDevelopment
-  const [pendingDevelopmentId, setPendingDevelopmentId] = useState<string | null>(null)
-
-  const currentDevelopmentId = searchParams.get('developmentId') ?? ''
-  const urlDevelopment = developments?.find((development) => development.id === currentDevelopmentId) ?? null
-  const pendingDevelopment = developments?.find((development) => development.id === pendingDevelopmentId) ?? null
-  const selectedDevelopment = pendingDevelopment ?? urlDevelopment ?? developments?.[0] ?? null
-
-  useEffect(() => {
-    if (!enabled || !developments || developments.length === 0) return
-
-    const urlDevelopment = developments.find((development) => development.id === currentDevelopmentId)
-
-    if (urlDevelopment) {
-      if (pendingDevelopmentId && pendingDevelopmentId !== urlDevelopment.id) return
-
-      window.localStorage.setItem('lotiva.workspace.developmentId', urlDevelopment.id)
-      setPendingDevelopmentId(null)
-      return
-    }
-
-    if (pendingDevelopmentId) return
-
-    const storedDevelopmentId = window.localStorage.getItem('lotiva.workspace.developmentId') ?? ''
-    const storedDevelopment = developments.find((development) => development.id === storedDevelopmentId)
-    const nextDevelopmentId = storedDevelopment?.id ?? developments[0]?.id
-
-    if (!nextDevelopmentId) return
-
-    setPendingDevelopmentId(nextDevelopmentId)
-    window.localStorage.setItem('lotiva.workspace.developmentId', nextDevelopmentId)
-    const params = new URLSearchParams(searchParams.toString())
-    params.set('developmentId', nextDevelopmentId)
-    router.replace(`${pathname}?${params.toString()}`)
-  }, [currentDevelopmentId, developments, enabled, pathname, pendingDevelopmentId, router, searchParams])
-
-  if (!enabled || !developments) return null
-
-  if (developments.length === 0) {
-    return (
-      <div className='rounded-xl border border-border bg-surface px-3 py-2 text-xs text-muted lg:rounded-2xl lg:px-4 lg:text-sm'>
-        Nenhum empreendimento acessivel
-      </div>
-    )
-  }
-
-  const handleChange = async (developmentId: string) => {
-    if (!developmentId || developmentId === selectedDevelopment?.id) return
-
-    const params = new URLSearchParams()
-    ;['view', 'month', 'calendarBy', 'tab'].forEach((key) => {
-      const value = searchParams.get(key)
-      if (value) params.set(key, value)
-    })
-    params.set('developmentId', developmentId)
-    setPendingDevelopmentId(developmentId)
-    window.localStorage.setItem('lotiva.workspace.developmentId', developmentId)
-    try {
-      await fetch('/api/me/workspace', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ developmentId }),
-      })
-    } finally {
-      window.location.assign(`${pathname}?${params.toString()}`)
-    }
-  }
-
-  return (
-    <div className='flex h-11 w-full min-w-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 shadow-sm lg:h-12 lg:w-auto lg:min-w-[280px] lg:max-w-sm lg:gap-3'>
-      <div className='hidden h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-background sm:flex'>
-        {selectedDevelopment?.logo ? (
-          <img src={selectedDevelopment.logo} alt='' className='h-full w-full object-contain p-1' />
-        ) : (
-          <span className='text-xs font-bold text-primary'>
-            {(selectedDevelopment?.name ?? 'LO').slice(0, 2).toUpperCase()}
-          </span>
-        )}
-      </div>
-      <select
-        aria-label='Empreendimento ativo'
-        value={selectedDevelopment?.id ?? ''}
-        onChange={(event) => void handleChange(event.target.value)}
-        className='min-w-0 flex-1 bg-transparent py-2 text-xs font-semibold text-foreground outline-none lg:text-sm'
-      >
-        {developments.map((development) => (
-          <option key={development.id} value={development.id}>
-            {development.name}{development.company?.name ? ` - ${development.company.name}` : ''}
-          </option>
-        ))}
-      </select>
-    </div>
-  )
-}
-
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -352,6 +235,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [accessChecked, setAccessChecked] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const [workspacePreference, setWorkspacePreference] = useState<string | null>(null)
   const [workspaceDevelopments, setWorkspaceDevelopments] = useState<WorkspaceDevelopment[] | null>(null)
   const [impersonation, setImpersonation] = useState<Impersonation | null>(null)
   const [endingImpersonation, setEndingImpersonation] = useState(false)
@@ -413,9 +297,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (!isWorkspaceRoute(pathname)) return
 
     setWorkspaceDevelopments(null)
-    fetch('/api/developments', { cache: 'no-store' })
+    fetch('/api/me/workspace', { cache: 'no-store' })
       .then((response) => (response.ok ? response.json() : []))
-      .then((payload) => setWorkspaceDevelopments(Array.isArray(payload) ? payload : []))
+      .then((payload) => { setWorkspaceDevelopments(payload.developments ?? []); setWorkspacePreference(payload.developmentId ?? null) })
       .catch(() => setWorkspaceDevelopments([]))
   }, [accessChecked, currentUser, isAuthPage, isPublicPage, pathname])
 
@@ -526,7 +410,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     {section.items.map((item) => {
                       const isActive = item.href === '/' || item.href.startsWith('/?') ? pathname === '/' : pathname.startsWith(item.href)
                       return (
-                        <Link
+                        <WorkspaceLink
                           key={item.href}
                           href={item.href}
                           onClick={() => setSidebarOpen(false)}
@@ -545,7 +429,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                               {item.description}
                             </span>
                           </span>
-                        </Link>
+                        </WorkspaceLink>
                       )
                     })}
                   </div>
@@ -596,10 +480,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   <p className='text-xs font-semibold uppercase tracking-[0.2em] text-muted'>Lotiva</p>
                   <p className='mt-1 hidden text-sm font-medium text-foreground sm:block'>Gestao comercial de loteamentos</p>
                 </div>
-              </div>
-
-              <div className='order-3 w-full lg:order-2 lg:w-auto'>
-                <WorkspaceSelector developments={workspaceDevelopments} />
               </div>
 
               <div className='order-2 flex items-center gap-3 lg:order-3 lg:gap-4'>
@@ -716,7 +596,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </header>
 
-          <main className={`flex-1 px-4 py-4 sm:px-6 sm:py-6 lg:px-8 ${salesOnly ? 'pb-24 lg:pb-6' : ''}`}>{children}</main>
+          <main className={`flex-1 px-4 py-4 sm:px-6 sm:py-6 lg:px-8 ${salesOnly ? 'pb-24 lg:pb-6' : ''}`}><WorkspaceContext developments={workspaceDevelopments} preference={workspacePreference}>{children}</WorkspaceContext></main>
         </div>
       </div>
 
@@ -730,10 +610,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ].map((item) => {
             const active = item.href.startsWith('/?') ? pathname === '/' : pathname.startsWith(item.href)
             return (
-              <Link key={item.href} href={item.href} className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] font-semibold ${active ? 'text-primary' : 'text-muted'}`}>
+              <WorkspaceLink key={item.href} href={item.href} className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] font-semibold ${active ? 'text-primary' : 'text-muted'}`}>
                 <NavIcon icon={item.icon} />
                 <span className='truncate'>{item.label}</span>
-              </Link>
+              </WorkspaceLink>
             )
           })}
         </nav>

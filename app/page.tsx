@@ -1,7 +1,8 @@
+import { resolveWorkspaceScope, scopedDevelopmentIds } from '@/lib/workspace'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getCurrentSession } from '@/lib/auth'
-import { membershipWhere } from '@/lib/access-control'
+import { membershipWhere, financialDevelopmentAccessWhere } from '@/lib/access-control'
 import { prisma } from '@/lib/prisma'
 import { getUserPermissions } from '@/lib/permissions'
 
@@ -43,7 +44,7 @@ export default async function Home({ searchParams }: HomeProps) {
 
   const params = await searchParams
   const developments = await prisma.development.findMany({
-    where: membershipWhere(session.user.id),
+    where: salesOnly ? membershipWhere(session.user.id) : financialDevelopmentAccessWhere(session.user.id),
     include: { company: true, settings: true, map: true },
     orderBy: { name: 'asc' },
   })
@@ -137,10 +138,10 @@ export default async function Home({ searchParams }: HomeProps) {
 
   if (!access.permissions.manageSettings && !access.permissions.finance) redirect('/lots')
 
-  const selectedDevelopment =
-    developments.find((development) => development.id === params?.developmentId) ?? developments[0] ?? null
-
-  if (!selectedDevelopment) {
+  const developmentScope = resolveWorkspaceScope(params?.developmentId, developments.map((item) => item.id))
+  const scopeIds = scopedDevelopmentIds(developmentScope, developments.map((item) => item.id))
+  const scopedDevelopments = developments.filter((item) => scopeIds.includes(item.id))
+  if (!scopeIds.length) {
     return (
       <div className='space-y-6'>
         <div>
@@ -168,7 +169,7 @@ export default async function Home({ searchParams }: HomeProps) {
 
   const [lots, sales, receivables, expiringReservations] = await Promise.all([
     prisma.lot.findMany({
-      where: { block: { developmentId: selectedDevelopment.id } },
+      where: { block: { developmentId: { in: scopeIds } } },
       select: {
         id: true,
         status: true,
@@ -176,20 +177,20 @@ export default async function Home({ searchParams }: HomeProps) {
       },
     }),
     prisma.sale.findMany({
-      where: { lot: { block: { developmentId: selectedDevelopment.id } } },
+      where: { lot: { block: { developmentId: { in: scopeIds } } } },
       include: {
         user: true,
-        lot: { include: { block: true } },
+        lot: { include: { block: { include: { development: { select: { name: true } } } } } },
       },
       orderBy: { createdAt: 'desc' },
     }),
     prisma.receivable.findMany({
-      where: { sale: { lot: { block: { developmentId: selectedDevelopment.id } } } },
+      where: { sale: { lot: { block: { developmentId: { in: scopeIds } } } } },
       include: {
         sale: {
           include: {
             user: true,
-            lot: { include: { block: true } },
+            lot: { include: { block: { include: { development: { select: { name: true } } } } } },
           },
         },
       },
@@ -197,7 +198,7 @@ export default async function Home({ searchParams }: HomeProps) {
     }),
     prisma.reservation.findMany({
       where: {
-        lot: { block: { developmentId: selectedDevelopment.id } },
+        lot: { block: { developmentId: { in: scopeIds } } },
         status: { not: 'cancelled' },
         cancelledAt: null,
         sale: null,
@@ -208,7 +209,7 @@ export default async function Home({ searchParams }: HomeProps) {
       },
       include: {
         user: true,
-        lot: { include: { block: true } },
+        lot: { include: { block: { include: { development: { select: { name: true } } } } } },
       },
       orderBy: { expiresAt: 'asc' },
       take: 5,
@@ -257,11 +258,7 @@ export default async function Home({ searchParams }: HomeProps) {
   const overdueReceivables = receivables
     .filter((receivable) => receivable.status !== 'paid' && receivable.dueDate < today)
     .slice(0, 5)
-  const settingsIncomplete =
-    !selectedDevelopment.settings ||
-    !selectedDevelopment.settings.paymentMethods ||
-    selectedDevelopment.settings.maxInstallments <= 0 ||
-    selectedDevelopment.settings.minDownPaymentPercentage < 0
+  const settingsIncomplete = scopedDevelopments.some((item) => !item.settings || !item.settings.paymentMethods || item.settings.maxInstallments <= 0 || item.settings.minDownPaymentPercentage < 0)
   const actionAlerts = [
     ...(settingsIncomplete
       ? [{
@@ -283,7 +280,7 @@ export default async function Home({ searchParams }: HomeProps) {
       ? [{
           title: 'Sem lotes disponiveis',
           description: 'Libere ou cadastre novos lotes para manter o funil de venda ativo.',
-          href: `/lots?developmentId=${selectedDevelopment.id}`,
+          href: `/lots?developmentId=${developmentScope}`,
           tone: 'red' as const,
         }]
       : []),
@@ -291,7 +288,7 @@ export default async function Home({ searchParams }: HomeProps) {
       ? [{
           title: `${financialMetrics.overdueCount} parcela(s) vencida(s)`,
           description: `${formatCurrency(financialMetrics.overdueAmount)} em aberto exige acompanhamento financeiro.`,
-          href: `/finance?developmentId=${selectedDevelopment.id}&status=overdue`,
+          href: `/finance?developmentId=${developmentScope}&status=overdue`,
           tone: 'red' as const,
         }]
       : []),
@@ -299,7 +296,7 @@ export default async function Home({ searchParams }: HomeProps) {
       ? [{
           title: `${expiringReservations.length} reserva(s) vencem em ate 3 dias`,
           description: 'Priorize contato com os clientes antes de liberar os lotes.',
-          href: `/lots?developmentId=${selectedDevelopment.id}&status=reserved`,
+          href: `/lots?developmentId=${developmentScope}&status=reserved`,
           tone: 'amber' as const,
         }]
       : []),
@@ -420,7 +417,7 @@ export default async function Home({ searchParams }: HomeProps) {
                     <div>
                       <p className='text-sm font-semibold text-foreground'>{receivable.sale.user.name}</p>
                       <p className='mt-1 text-xs text-muted'>
-                        Quadra {receivable.sale.lot.block.identifier}, Lote {receivable.sale.lot.identifier}
+                        {receivable.sale.lot.block.development?.name} · Quadra {receivable.sale.lot.block.identifier}, Lote {receivable.sale.lot.identifier}
                       </p>
                     </div>
                     <span className='pill bg-red-50 text-red-700'>{formatCurrency(Number(receivable.balance))}</span>
@@ -439,7 +436,7 @@ export default async function Home({ searchParams }: HomeProps) {
             <h2 className='text-lg font-semibold text-foreground'>Ultimas vendas</h2>
             <p className='mt-1 text-sm text-muted'>Contratos mais recentes do empreendimento selecionado.</p>
           </div>
-          <Link href={`/sales?developmentId=${selectedDevelopment.id}`} className='text-sm font-semibold text-primary'>
+          <Link href={`/sales?developmentId=${developmentScope}`} className='text-sm font-semibold text-primary'>
             Ver vendas
           </Link>
         </div>
@@ -460,7 +457,7 @@ export default async function Home({ searchParams }: HomeProps) {
                 {sales.slice(0, 6).map((sale) => (
                   <tr key={sale.id} className='transition hover:bg-surface-secondary/70'>
                     <td className='px-6 py-4 text-sm font-semibold text-foreground'>{sale.user.name}</td>
-                    <td className='px-6 py-4 text-sm text-muted'>Quadra {sale.lot.block.identifier}, Lote {sale.lot.identifier}</td>
+                    <td className='px-6 py-4 text-sm text-muted'>{sale.lot.block.development?.name} · Quadra {sale.lot.block.identifier}, Lote {sale.lot.identifier}</td>
                     <td className='px-6 py-4 text-sm font-semibold text-foreground'>{formatCurrency(Number(sale.totalValue))}</td>
                     <td className='px-6 py-4 text-sm text-muted'>{formatDate(sale.createdAt)}</td>
                   </tr>

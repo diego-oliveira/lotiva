@@ -1,9 +1,10 @@
+import { resolveWorkspaceScope, scopedDevelopmentIds } from '@/lib/workspace'
 import Link from 'next/link'
 import Form from 'next/form'
 import { financeSearchFilter } from '@/lib/finance-search'
 import { redirect } from 'next/navigation'
 import { getCurrentSession } from '@/lib/auth'
-import { membershipWhere } from '@/lib/access-control'
+import { financialDevelopmentAccessWhere } from '@/lib/access-control'
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@/app/generated/prisma'
 import { hasAnyDevelopmentPermission, hasDevelopmentPermission } from '@/lib/permissions'
@@ -119,21 +120,18 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
   if (dueTo) dueTo.setHours(23, 59, 59, 999)
 
   const developments = await prisma.development.findMany({
-    where: membershipWhere(session.user.id),
+    where: financialDevelopmentAccessWhere(session.user.id),
     include: { company: true },
     orderBy: { name: 'asc' },
   })
-  const selectedDevelopment =
-    developments.find((development) => development.id === params?.developmentId) ?? developments[0] ?? null
+  const developmentScope = resolveWorkspaceScope(params?.developmentId, developments.map((item) => item.id))
+  const scopeIds = scopedDevelopmentIds(developmentScope, developments.map((item) => item.id))
+  const selectedDevelopment = developments.find((item) => item.id === developmentScope)
+  const userId = session.user.id
+  const paymentPermissions = new Map(await Promise.all(scopeIds.map(async (id) => [id, await hasDevelopmentPermission(userId, id, 'issuePayments')] as const)))
+  const operatingCompanyId = selectedDevelopment?.companyId ?? '__none__'
 
-  if (selectedDevelopment && !(await hasDevelopmentPermission(session.user.id, selectedDevelopment.id, 'finance'))) {
-    redirect('/')
-  }
-  const canManagePayments = selectedDevelopment
-    ? await hasDevelopmentPermission(session.user.id, selectedDevelopment.id, 'issuePayments')
-    : false
-
-  if (!selectedDevelopment) {
+  if (!scopeIds.length) {
     return (
       <div className='space-y-6'>
         <div>
@@ -186,7 +184,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
               is: {
                 block: {
                   is: {
-                    developmentId: selectedDevelopment.id,
+                    developmentId: { in: scopeIds },
                   },
                 },
               },
@@ -206,7 +204,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
       sale: {
         include: {
           user: true,
-          lot: { include: { block: true } },
+          lot: { include: { block: { include: { development: { select: { id: true, name: true } } } } } },
         },
       },
       externalCharges: {
@@ -230,7 +228,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
           paidAt: { gte: dueFrom, lte: dueTo },
           sale: {
             is: {
-              lot: { is: { block: { is: { developmentId: selectedDevelopment.id } } } },
+              lot: { is: { block: { is: { developmentId: { in: scopeIds } } } } },
             },
           },
         },
@@ -238,7 +236,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
           sale: {
             include: {
               user: true,
-              lot: { include: { block: true } },
+              lot: { include: { block: { include: { development: { select: { id: true, name: true } } } } } },
             },
           },
           externalCharges: {
@@ -340,7 +338,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
     divergences,
   ] = await Promise.all([
     prisma.paymentProviderConnection.findMany({
-      where: { companyId: selectedDevelopment.companyId, status: 'active' },
+      where: { companyId: operatingCompanyId, status: 'active' },
       include: {
         reconciliationRuns: {
           orderBy: { startedAt: 'desc' },
@@ -351,22 +349,22 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
     }),
     prisma.paymentWebhookEvent.count({
       where: {
-        connection: { companyId: selectedDevelopment.companyId },
+        connection: { companyId: operatingCompanyId },
         status: 'failed',
       },
     }),
     prisma.reconciliationDivergence.count({
       where: {
         reconciliationRun: {
-          connection: { companyId: selectedDevelopment.companyId },
+          connection: { companyId: operatingCompanyId },
         },
         status: 'pending',
       },
     }),
-    hasCompanyPermission(session.user.id, selectedDevelopment.companyId, 'reconcilePayments'),
+    hasCompanyPermission(session.user.id, operatingCompanyId, 'reconcilePayments'),
     prisma.paymentWebhookEvent.findMany({
       where: {
-        connection: { companyId: selectedDevelopment.companyId },
+        connection: { companyId: operatingCompanyId },
         status: 'failed',
       },
       select: { id: true, eventType: true, errorMessage: true, createdAt: true },
@@ -376,7 +374,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
     prisma.reconciliationDivergence.findMany({
       where: {
         reconciliationRun: {
-          connection: { companyId: selectedDevelopment.companyId },
+          connection: { companyId: operatingCompanyId },
         },
         status: 'pending',
       },
@@ -393,7 +391,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
           <h1 className='page-title'>Financeiro</h1>
           <p className='page-subtitle'>Localize parcelas, acompanhe vencidos e registre baixas de pagamento.</p>
         </div>
-        <Link href={`/sales?developmentId=${selectedDevelopment.id}`} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+        <Link href={`/sales?developmentId=${developmentScope}`} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
           Ver vendas
         </Link>
       </div>
@@ -401,9 +399,9 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
       <section className='panel px-6 py-5'>
         <div>
           <div>
-            <h2 className='text-2xl font-bold text-foreground'>{selectedDevelopment.name}</h2>
+            <h2 className='text-2xl font-bold text-foreground'>{(selectedDevelopment?.name ?? 'Todos os loteamentos')}</h2>
             <p className='mt-1 text-sm text-muted'>
-              {selectedDevelopment.company.name} · {view === 'calendar' ? calendarReceivables.length : receivables.length} registro(s) no recorte financeiro atual.
+              {(selectedDevelopment?.company.name ?? `${scopeIds.length} loteamentos`)} · {view === 'calendar' ? calendarReceivables.length : receivables.length} registro(s) no recorte financeiro atual.
             </p>
           </div>
         </div>
@@ -417,7 +415,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
         ] as const).map(([value, label]) => (
           <Link
             key={value}
-            href={`/finance?developmentId=${selectedDevelopment.id}&view=${value}${value === 'calendar' ? `&month=${monthKey(selectedMonth)}&calendarBy=${calendarBy}` : ''}`}
+            href={`/finance?developmentId=${developmentScope}&view=${value}${value === 'calendar' ? `&month=${monthKey(selectedMonth)}&calendarBy=${calendarBy}` : ''}`}
             className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${view === value ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary hover:text-foreground'}`}
           >
             {label}
@@ -428,16 +426,16 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
       {view === 'calendar' && (
         <section className='panel flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between'>
           <div className='flex items-center justify-between gap-2 sm:justify-start'>
-            <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(addMonths(selectedMonth, -1))}&calendarBy=${calendarBy}`} className='rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-surface-secondary' aria-label='Mes anterior'>←</Link>
+            <Link href={`/finance?developmentId=${developmentScope}&view=calendar&month=${monthKey(addMonths(selectedMonth, -1))}&calendarBy=${calendarBy}`} className='rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-surface-secondary' aria-label='Mes anterior'>←</Link>
             <h2 className='min-w-48 text-center text-lg font-bold text-foreground'>{monthLabel(selectedMonth)}</h2>
-            <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(addMonths(selectedMonth, 1))}&calendarBy=${calendarBy}`} className='rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-surface-secondary' aria-label='Proximo mes'>→</Link>
+            <Link href={`/finance?developmentId=${developmentScope}&view=calendar&month=${monthKey(addMonths(selectedMonth, 1))}&calendarBy=${calendarBy}`} className='rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-surface-secondary' aria-label='Proximo mes'>→</Link>
           </div>
           <div className='flex flex-col gap-2 sm:flex-row'>
             <div className='inline-flex rounded-xl border border-border bg-background p-1'>
-              <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(selectedMonth)}&calendarBy=payment`} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${calendarBy === 'payment' ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary'}`}>Pagamentos</Link>
-              <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(selectedMonth)}&calendarBy=due`} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${calendarBy === 'due' ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary'}`}>Vencimentos</Link>
+              <Link href={`/finance?developmentId=${developmentScope}&view=calendar&month=${monthKey(selectedMonth)}&calendarBy=payment`} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${calendarBy === 'payment' ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary'}`}>Pagamentos</Link>
+              <Link href={`/finance?developmentId=${developmentScope}&view=calendar&month=${monthKey(selectedMonth)}&calendarBy=due`} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${calendarBy === 'due' ? 'bg-primary text-white' : 'text-muted hover:bg-surface-secondary'}`}>Vencimentos</Link>
             </div>
-            <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(now)}&day=${formatDateInput(now)}&calendarBy=${calendarBy}`} className='rounded-xl border border-border px-4 py-2 text-center text-sm font-semibold text-foreground hover:bg-surface-secondary'>Hoje</Link>
+            <Link href={`/finance?developmentId=${developmentScope}&view=calendar&month=${monthKey(now)}&day=${formatDateInput(now)}&calendarBy=${calendarBy}`} className='rounded-xl border border-border px-4 py-2 text-center text-sm font-semibold text-foreground hover:bg-surface-secondary'>Hoje</Link>
           </div>
         </section>
       )}
@@ -496,7 +494,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                 return (
                   <Link
                     key={key}
-                    href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(date)}&day=${key}&calendarBy=${calendarBy}`}
+                    href={`/finance?developmentId=${developmentScope}&view=calendar&month=${monthKey(date)}&day=${key}&calendarBy=${calendarBy}`}
                     className={`min-h-20 border-b border-r border-border p-1.5 transition hover:brightness-95 sm:min-h-28 sm:p-3 ${tone} ${!inMonth ? 'opacity-35' : ''} ${key === selectedDayKey ? 'relative z-10 ring-2 ring-inset ring-primary' : ''}`}
                   >
                     <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold sm:text-sm ${sameDay(date, today) ? 'bg-primary text-white' : ''}`}>{date.getDate()}</span>
@@ -540,14 +538,14 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                       <div className='flex items-start justify-between gap-3'>
                         <div>
                           <p className='text-sm font-semibold text-foreground'>{receivable.sale.user.name}</p>
-                          <p className='mt-1 text-xs text-muted'>Quadra {receivable.sale.lot.block.identifier}, Lote {receivable.sale.lot.identifier} · {getReceivableLabel(receivable)}</p>
+                          <p className='mt-1 text-xs text-muted'>{receivable.sale.lot.block.development?.name} · Quadra {receivable.sale.lot.block.identifier}, Lote {receivable.sale.lot.identifier} · {getReceivableLabel(receivable)}</p>
                         </div>
                         <span className={`pill shrink-0 ${itemStatus.className}`}>{itemStatus.label}</span>
                       </div>
                       <p className='text-lg font-bold text-foreground'>{formatCurrency(Number(calendarBy === 'payment' ? receivable.paidAmount : receivable.amount))}</p>
                       {receivable.paidAt && <p className='text-xs font-semibold text-emerald-700'>Paga em {formatDate(receivable.paidAt)}</p>}
                       <ReceivableActions
-                        canManagePayments={canManagePayments}
+                        canManagePayments={paymentPermissions.get(receivable.sale.lot.block.developmentId ?? '') ?? false}
                         receivable={{
                           id: receivable.id,
                           kind: receivable.kind,
@@ -579,7 +577,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
       {view === 'summary' && (
         <section className='panel overflow-hidden'>
           <form action='/finance' className='panel-header grid gap-4 px-6 py-5 sm:grid-cols-[1fr_1fr_auto] sm:items-end'>
-            <input type='hidden' name='developmentId' value={selectedDevelopment.id} />
+            <input type='hidden' name='developmentId' value={developmentScope} />
             <input type='hidden' name='view' value='summary' />
             <label className='block'>
               <span className='mb-2 block text-xs font-semibold uppercase text-muted'>De</span>
@@ -609,7 +607,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                 <tbody className='divide-y divide-border'>
                   {monthlyRows.map((row) => (
                     <tr key={monthKey(row.month)} className='hover:bg-surface-secondary/70'>
-                      <td className='px-6 py-4 font-semibold text-foreground'><Link href={`/finance?developmentId=${selectedDevelopment.id}&view=calendar&month=${monthKey(row.month)}`} className='hover:text-primary'>{monthLabel(row.month)}</Link></td>
+                      <td className='px-6 py-4 font-semibold text-foreground'><Link href={`/finance?developmentId=${developmentScope}&view=calendar&month=${monthKey(row.month)}`} className='hover:text-primary'>{monthLabel(row.month)}</Link></td>
                       <td className='whitespace-nowrap px-6 py-4 text-right text-sm'>{formatCurrency(row.expected)}</td>
                       <td className='whitespace-nowrap px-6 py-4 text-right text-sm font-semibold text-emerald-700'>{formatCurrency(row.received)}</td>
                       <td className='whitespace-nowrap px-6 py-4 text-right text-sm'>{formatCurrency(row.open)}</td>
@@ -624,7 +622,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
         </section>
       )}
 
-      <PaymentOperationsPanel
+      {selectedDevelopment && <PaymentOperationsPanel
         connections={connections.map((connection) => ({
           id: connection.id,
           provider: connection.provider,
@@ -653,12 +651,12 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
           ...divergence,
           createdAt: divergence.createdAt.toISOString(),
         }))}
-      />
+      />}
 
       {view === 'list' && (
       <section className='panel overflow-hidden'>
         <Form action='/finance' className='panel-header grid gap-4 px-6 py-5 lg:grid-cols-[1fr_180px_150px_150px_auto] lg:items-end'>
-          <input type='hidden' name='developmentId' value={selectedDevelopment.id} />
+          <input type='hidden' name='developmentId' value={developmentScope} />
           <input type='hidden' name='view' value='list' />
           <label className='block'>
             <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Busca</span>
@@ -705,7 +703,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
             <button type='submit' className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
               Filtrar
             </button>
-            <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=list`} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+            <Link href={`/finance?developmentId=${developmentScope}&view=list`} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
               Limpar
             </Link>
           </div>
@@ -718,10 +716,10 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
               Ajuste os filtros ou crie uma venda parcelada para gerar a agenda financeira automaticamente.
             </p>
             <div className='mt-6 flex flex-col justify-center gap-3 sm:flex-row'>
-              <Link href={`/finance?developmentId=${selectedDevelopment.id}&view=list`} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+              <Link href={`/finance?developmentId=${developmentScope}&view=list`} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
                 Limpar filtros
               </Link>
-              <Link href={`/sales?developmentId=${selectedDevelopment.id}`} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+              <Link href={`/sales?developmentId=${developmentScope}`} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
                 Criar venda
               </Link>
             </div>
@@ -751,7 +749,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                       <td className='px-6 py-4'>
                         <p className='text-sm font-semibold text-foreground'>{getReceivableLabel(receivable)}</p>
                         <p className='mt-1 text-xs text-muted'>
-                          Quadra {receivable.sale.lot.block.identifier}, Lote {receivable.sale.lot.identifier}
+                          {receivable.sale.lot.block.development?.name} · Quadra {receivable.sale.lot.block.identifier}, Lote {receivable.sale.lot.identifier}
                         </p>
                       </td>
                       <td className='whitespace-nowrap px-6 py-4 text-sm text-muted'>{formatDate(receivable.dueDate)}</td>
@@ -774,7 +772,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                       </td>
                       <td className='whitespace-nowrap px-6 py-4 text-right'>
                         <ReceivableActions
-                          canManagePayments={canManagePayments}
+                          canManagePayments={paymentPermissions.get(receivable.sale.lot.block.developmentId ?? '') ?? false}
                           receivable={{
                             id: receivable.id,
                             kind: receivable.kind,

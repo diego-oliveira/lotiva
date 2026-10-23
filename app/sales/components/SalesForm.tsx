@@ -294,6 +294,8 @@ export default function SalesForm({
   const [loading, setLoading] = useState(false)
   const [users, setUsers] = useState<User[]>([])
   const [lots, setLots] = useState<Lot[]>([])
+  const [chosenDevelopmentId, setChosenDevelopmentId] = useState('')
+  const formDevelopmentId = developmentId || chosenDevelopmentId
   const [userSearch, setUserSearch] = useState('')
   const [lotSearch, setLotSearch] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -361,6 +363,7 @@ export default function SalesForm({
   useEffect(() => {
     if (!isOpen) return
 
+    setChosenDevelopmentId('')
     void fetchUsers()
     void fetchAvailableLots()
 
@@ -464,7 +467,7 @@ export default function SalesForm({
   }
 
   const createQuickCoBuyer = () => {
-    const targetDevelopmentId = developmentId ?? selectedLot?.block.development?.id
+    const targetDevelopmentId = formDevelopmentId || selectedLot?.block.development?.id
     if (!targetDevelopmentId) return setErrors((current) => ({ ...current, coBuyerId: 'Selecione primeiro o empreendimento da venda.' }))
     if (!quickCoBuyer.name.trim() || !quickCoBuyer.email.trim()) return setErrors((current) => ({ ...current, coBuyerId: 'Informe nome e email do conjuge.' }))
     const client = { id: 'new-sale-participant', name: quickCoBuyer.name.trim(), email: quickCoBuyer.email.trim() }
@@ -603,6 +606,7 @@ export default function SalesForm({
     const activeReservation = lot.reservations.find((reservation) => !reservation.cancelledAt && reservation.status !== 'cancelled')
     if (activeReservation && activeReservation.user.id !== formData.userId) return false
 
+    if (!formDevelopmentId || lot.block.development?.id !== formDevelopmentId) return false
     if (!lotSearch) return true
     const searchLower = lotSearch.toLowerCase()
     return (
@@ -928,7 +932,7 @@ export default function SalesForm({
       setUsers((current) => current.map((user) => (user.id === updatedUser.id ? { ...user, ...updatedUser } : user)))
       if (selectedCoBuyer) {
         const isNewParticipant = selectedCoBuyer.id === 'new-sale-participant'
-        const targetDevelopmentId = developmentId ?? selectedLot?.block.development?.id
+        const targetDevelopmentId = formDevelopmentId || selectedLot?.block.development?.id
         const coBuyerResponse = await fetch(isNewParticipant ? '/api/clients' : `/api/clients/${selectedCoBuyer.id}`, {
           method: isNewParticipant ? 'POST' : 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -1006,7 +1010,7 @@ export default function SalesForm({
     const timeout = window.setTimeout(async () => {
       setAdditionalSaveStatus('saving')
       const isNewParticipant = selectedCoBuyer.id === 'new-sale-participant'
-      const targetDevelopmentId = developmentId ?? selectedLot?.block.development?.id
+      const targetDevelopmentId = formDevelopmentId || selectedLot?.block.development?.id
       const memberships = isNewParticipant && targetDevelopmentId
         ? [{ developmentId: targetDevelopmentId, roleId: '' }]
         : selectedCoBuyer.memberships?.map((membership) => ({ developmentId: membership.development.id, roleId: membership.roles[0]?.role.id ?? '' })) ?? []
@@ -1160,6 +1164,13 @@ export default function SalesForm({
                   </div>
                 )}
 
+                {!developmentId && <label className='block'>
+                  <span className='mb-2 block text-sm font-semibold'>Loteamento da venda</span>
+                  <select value={chosenDevelopmentId} onChange={(event) => { setChosenDevelopmentId(event.target.value); setFormData((previous) => ({ ...previous, lotId: '', reservationId: '', proposalId: '' })) }} className='w-full rounded-xl border border-border bg-background px-4 py-3'>
+                    <option value=''>Selecione um loteamento</option>
+                    {Array.from(new Map(lots.filter((lot) => lot.block.development).map((lot) => [lot.block.development!.id, lot.block.development!])).values()).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                  </select>
+                </label>}
                 <div className='rounded-2xl border border-border bg-surface'>
                   <div className='border-b border-border bg-surface-secondary px-4 py-4'>
                     <label className='block'>

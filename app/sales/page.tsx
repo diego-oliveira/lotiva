@@ -1,6 +1,7 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
+import { specificDevelopmentId } from '@/lib/workspace'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import SalesForm from './components/SalesForm'
 import ContractViewer from './components/ContractViewer'
@@ -109,7 +110,7 @@ function getInitials(name: string) {
 
 function SalesContent() {
   const searchParams = useSearchParams()
-  const developmentFilter = searchParams.get('developmentId') ?? ''
+  const developmentFilter = specificDevelopmentId(searchParams.get('developmentId'))
   const [sales, setSales] = useState<Sale[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -512,7 +513,7 @@ function SalesContent() {
         sale={editingSale}
         initialData={initialSaleData}
         isOpen={showForm}
-        developmentId={developmentFilter}
+        developmentId={editingSale?.lot.block.development?.id || developmentFilter || undefined}
         onClose={handleFormClose}
         onSave={handleFormSave}
         correctionReason={correctionReason}

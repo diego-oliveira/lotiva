@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import { specificDevelopmentId } from '@/lib/workspace'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 
 type Proposal = {
@@ -104,7 +105,7 @@ function getLotAvailability(lot: PublicLotInterest['lot']) {
 
 function ProposalsContent() {
   const searchParams = useSearchParams()
-  const developmentFilter = searchParams.get('developmentId') ?? ''
+  const developmentFilter = specificDevelopmentId(searchParams.get('developmentId'))
   const [viewMode, setViewMode] = useState<'interests' | 'proposals'>(searchParams.get('tab') === 'interests' ? 'interests' : 'proposals')
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [interests, setInterests] = useState<PublicLotInterest[]>([])
