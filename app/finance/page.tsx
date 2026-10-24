@@ -22,6 +22,7 @@ type FinancePageProps = {
     view?: string
     month?: string
     day?: string
+    page?: string
     calendarBy?: string
   }>
 }
@@ -198,19 +199,33 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
     ],
   }
 
+  const pageSize = 50
+  const listTotals = view === 'list' ? await Promise.all([
+    prisma.receivable.aggregate({ where: receivableWhere, _sum: { amount: true, paidAmount: true }, _count: true }),
+    prisma.receivable.aggregate({ where: { AND: [receivableWhere, { status: { not: 'paid' } }] }, _sum: { balance: true } }),
+    prisma.receivable.aggregate({ where: { AND: [receivableWhere, { status: { not: 'paid' }, dueDate: { lt: today } }] }, _sum: { balance: true }, _count: true }),
+  ]) : null
+  const totalRecords = listTotals?.[0]._count ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize))
+  const requestedPage = Number(params?.page)
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? Math.min(requestedPage, totalPages) : 1
+  const pageHref = (target: number) => {
+    const query = new URLSearchParams({ developmentId: developmentScope, view: 'list', status, search, dueFrom: params?.dueFrom ?? '', dueTo: params?.dueTo ?? '', page: String(target) })
+    return `/finance?${query}`
+  }
+
   const receivables = await prisma.receivable.findMany({
     where: receivableWhere,
+    ...(view === 'list' ? { skip: (page - 1) * pageSize, take: pageSize } : {}),
     include: {
       sale: {
         include: {
-          user: true,
+          user: { select: { name: true, email: true } },
           lot: { include: { block: { include: { development: { select: { id: true, name: true } } } } } },
         },
       },
       externalCharges: {
-        include: {
-          connection: { select: { provider: true } },
-        },
+        select: { id: true, status: true, version: true, bankSlipUrl: true, invoiceUrl: true, connection: { select: { provider: true } } },
         orderBy: { version: 'desc' },
         take: 1,
       },
@@ -218,6 +233,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
     orderBy: [
       { dueDate: 'asc' },
       { sequence: 'asc' },
+      { id: 'asc' },
     ],
   })
 
@@ -235,14 +251,12 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
         include: {
           sale: {
             include: {
-              user: true,
+              user: { select: { name: true, email: true } },
               lot: { include: { block: { include: { development: { select: { id: true, name: true } } } } } },
             },
           },
           externalCharges: {
-            include: {
-              connection: { select: { provider: true } },
-            },
+            select: { id: true, status: true, version: true, bankSlipUrl: true, invoiceUrl: true, connection: { select: { provider: true } } },
             orderBy: { version: 'desc' },
             take: 1,
           },
@@ -269,6 +283,14 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
     { expected: 0, received: 0, open: 0, overdue: 0, overdueCount: 0, paidCount: 0 },
   )
 
+  if (listTotals) {
+    summary.expected = Number(listTotals[0]._sum.amount ?? 0)
+    summary.received = Number(listTotals[0]._sum.paidAmount ?? 0)
+    summary.open = Number(listTotals[1]._sum.balance ?? 0)
+    summary.overdue = Number(listTotals[2]._sum.balance ?? 0)
+    summary.overdueCount = listTotals[2]._count
+  }
+
   if (view !== 'list') {
     summary.received = paidInPeriod.reduce((total, receivable) => total + Number(receivable.paidAmount), 0)
     summary.paidCount = paidInPeriod.length
@@ -276,7 +298,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
 
   const calendarReceivables = calendarBy === 'payment' ? paidInPeriod : receivables
   const receivablesByDay = new Map<string, typeof calendarReceivables>()
-  calendarReceivables.forEach((receivable) => {
+  ;(view === 'calendar' ? calendarReceivables : []).forEach((receivable) => {
     const calendarDate = calendarBy === 'payment' ? receivable.paidAt! : receivable.dueDate
     const key = formatDateInput(calendarDate)
     receivablesByDay.set(key, [...(receivablesByDay.get(key) ?? []), receivable])
@@ -401,7 +423,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
           <div>
             <h2 className='text-2xl font-bold text-foreground'>{(selectedDevelopment?.name ?? 'Todos os loteamentos')}</h2>
             <p className='mt-1 text-sm text-muted'>
-              {(selectedDevelopment?.company.name ?? `${scopeIds.length} loteamentos`)} · {view === 'calendar' ? calendarReceivables.length : receivables.length} registro(s) no recorte financeiro atual.
+              {(selectedDevelopment?.company.name ?? `${scopeIds.length} loteamentos`)} · {view === 'calendar' ? calendarReceivables.length : view === 'list' ? totalRecords : receivables.length} registro(s) no recorte financeiro atual.
             </p>
           </div>
         </div>
@@ -800,6 +822,14 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
             </table>
           </div>
         )}
+        {totalRecords > 0 && <nav aria-label='Paginação de recebimentos' className='flex flex-wrap items-center justify-between gap-3 border-t border-border px-6 py-4 text-sm'>
+          <p className='text-muted'>Exibindo {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalRecords)} de {totalRecords} parcelas</p>
+          <div className='flex items-center gap-3'>
+            {page > 1 && <Link href={pageHref(page - 1)} prefetch={false} className='rounded-lg border border-border px-3 py-2 font-semibold hover:bg-surface-secondary'>Anterior</Link>}
+            <span className='text-muted'>Página {page} de {totalPages}</span>
+            {page < totalPages && <Link href={pageHref(page + 1)} prefetch={false} className='rounded-lg border border-border px-3 py-2 font-semibold hover:bg-surface-secondary'>Próxima</Link>}
+          </div>
+        </nav>}
       </section>
       )}
     </div>

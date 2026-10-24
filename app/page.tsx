@@ -1,3 +1,4 @@
+import { dashboardAlerts } from '@/lib/dashboard-alerts'
 import { resolveWorkspaceScope, scopedDevelopmentIds } from '@/lib/workspace'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
@@ -173,6 +174,7 @@ export default async function Home({ searchParams }: HomeProps) {
       select: {
         id: true,
         status: true,
+        block: { select: { developmentId: true } },
         price: true,
       },
     }),
@@ -212,7 +214,6 @@ export default async function Home({ searchParams }: HomeProps) {
         lot: { include: { block: { include: { development: { select: { name: true } } } } } },
       },
       orderBy: { expiresAt: 'asc' },
-      take: 5,
     }),
   ])
 
@@ -258,49 +259,13 @@ export default async function Home({ searchParams }: HomeProps) {
   const overdueReceivables = receivables
     .filter((receivable) => receivable.status !== 'paid' && receivable.dueDate < today)
     .slice(0, 5)
-  const settingsIncomplete = scopedDevelopments.some((item) => !item.settings || !item.settings.paymentMethods || item.settings.maxInstallments <= 0 || item.settings.minDownPaymentPercentage < 0)
-  const actionAlerts = [
-    ...(settingsIncomplete
-      ? [{
-          title: 'Revise as configuracoes comerciais',
-          description: 'Defina formas de pagamento, entrada minima, juros e prazo maximo antes de escalar vendas.',
-          href: '/developments',
-          tone: 'amber' as const,
-        }]
-      : []),
-    ...(lotMetrics.total === 0
-      ? [{
-          title: 'Cadastre quadras e lotes',
-          description: 'O empreendimento ainda nao tem estoque para o time comercial consultar.',
-          href: '/developments',
-          tone: 'amber' as const,
-        }]
-      : []),
-    ...(lotMetrics.total > 0 && lotMetrics.available === 0
-      ? [{
-          title: 'Sem lotes disponiveis',
-          description: 'Libere ou cadastre novos lotes para manter o funil de venda ativo.',
-          href: `/lots?developmentId=${developmentScope}`,
-          tone: 'red' as const,
-        }]
-      : []),
-    ...(financialMetrics.overdueCount > 0
-      ? [{
-          title: `${financialMetrics.overdueCount} parcela(s) vencida(s)`,
-          description: `${formatCurrency(financialMetrics.overdueAmount)} em aberto exige acompanhamento financeiro.`,
-          href: `/finance?developmentId=${developmentScope}&status=overdue`,
-          tone: 'red' as const,
-        }]
-      : []),
-    ...(expiringReservations.length > 0
-      ? [{
-          title: `${expiringReservations.length} reserva(s) vencem em ate 3 dias`,
-          description: 'Priorize contato com os clientes antes de liberar os lotes.',
-          href: `/lots?developmentId=${developmentScope}&status=reserved`,
-          tone: 'amber' as const,
-        }]
-      : []),
-  ]
+  const actionAlerts = dashboardAlerts({
+    developments: scopedDevelopments,
+    lots: lots.map((lot) => ({ developmentId: lot.block.developmentId, status: lot.status })),
+    receivables: receivables.map((item) => ({ developmentId: item.sale.lot.block.developmentId, status: item.status, dueDate: item.dueDate, balance: Number(item.balance) })),
+    reservations: expiringReservations.map((item) => ({ developmentId: item.lot.block.developmentId })),
+    today,
+  })
 
   return (
     <div className='space-y-6'>
@@ -355,12 +320,13 @@ export default async function Home({ searchParams }: HomeProps) {
           <div className='grid gap-4 px-6 py-6 lg:grid-cols-2'>
             {actionAlerts.map((alert) => (
               <Link
-                key={alert.title}
+                key={`${alert.developmentId}:${alert.kind}`}
                 href={alert.href}
                 className={`rounded-2xl border px-5 py-4 transition hover:bg-surface-secondary ${
                   alert.tone === 'red' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-800'
                 }`}
               >
+                <p className='mb-2 text-xs font-bold uppercase tracking-wide'>{alert.developmentName}</p>
                 <p className='text-sm font-semibold'>{alert.title}</p>
                 <p className='mt-1 text-sm leading-6 opacity-80'>{alert.description}</p>
               </Link>

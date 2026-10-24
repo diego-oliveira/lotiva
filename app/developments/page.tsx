@@ -128,6 +128,11 @@ export default function DevelopmentsPage() {
   }, [])
 
   useEffect(() => {
+    if (loading || !window.location.hash.startsWith('#development-')) return
+    document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: 'start' })
+  }, [loading, developments])
+
+  useEffect(() => {
     if (!successMessage) return
     const timeout = setTimeout(() => setSuccessMessage(null), 4000)
     return () => clearTimeout(timeout)
@@ -295,7 +300,7 @@ export default function DevelopmentsPage() {
               const shouldShowSetupStatus = !setup.ready || metrics.soldLots === 0
 
               return (
-                <article key={development.id} className='rounded-2xl border border-border bg-surface p-5 shadow-sm'>
+                <article id={`development-${development.id}`} key={development.id} className='scroll-mt-28 rounded-2xl border border-border bg-surface p-5 shadow-sm'>
                   <div className='flex items-start justify-between gap-4'>
                     <div className='flex min-w-0 items-center gap-3'>
                       {development.logo ? (
