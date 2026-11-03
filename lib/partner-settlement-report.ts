@@ -62,7 +62,9 @@ export async function createSettlementReportDocx(input: SettlementReportInput) {
   if (input.status === 'draft') body.push(paragraph('Prévia para conferência. Este mês ainda pode ser editado e os valores não constituem um fechamento confirmado.', { size: 19, color: '8C5B0A', after: 170 }))
   if (input.reason) body.push(paragraph(`Motivo da reabertura: ${input.reason}`, { size: 19, color: muted, after: 170 }))
   body.push(heading('Resumo do mês'), table(['Apuração', 'Valor'], [
+    [`Lotes vendidos (${snapshot.sales.length})`, money(snapshot.sales.reduce((sum, item) => sum + item.amount, 0))],
     ['Recebimentos dos clientes', money(snapshot.receiptsTotal)],
+    [`Parcelas inadimplentes (${snapshot.delinquencies.length})`, money(snapshot.delinquencies.reduce((sum, item) => sum + item.balance, 0))],
     ['(-) Comissões pagas', money(snapshot.commissionsTotal)],
     ['(-) Custos e despesas', money(snapshot.costsTotal)],
     ['(+/-) Ajustes de meses anteriores', money(snapshot.adjustmentsTotal)],
@@ -77,8 +79,13 @@ export async function createSettlementReportDocx(input: SettlementReportInput) {
   body.push(heading('Distribuição por participante'), table(['Participante', '%', 'Devido', 'Pago', 'Saldo'], allocations.map((item) => [item.name + (item.kind === 'company' ? ' (empresa)' : ''), item.percentage.toLocaleString('pt-BR') + '%', money(item.amount), money(item.paid), money(item.remaining)]), [36, 10, 18, 18, 18]))
   if (snapshot.netAmount < 0) body.push(paragraph('O mês teve resultado negativo e não gera distribuição. A compensação desse saldo em outro mês depende de um ajuste identificado.', { size: 18, color: '8C5B0A' }))
   if (allocations.some((item) => item.paid > item.amount)) body.push(paragraph('A prévia de um participante está abaixo do valor já pago a ele. Revise os ajustes antes de confirmar o fechamento.', { size: 18, color: '8C5B0A' }))
-  body.push(paragraph('Base: recebimentos pela data de pagamento da parcela; comissões pela data do pagamento registrado; custos pagos no mês. Período mensal no horário da Bahia. Os percentuais incidem sobre o líquido positivo. O restante fica na operação. Centavos são distribuídos sem exceder o total disponível.', { size: 17, color: muted, after: 100 }))
+  body.push(paragraph('Base: vendas pela data de registro; recebimentos pela data de pagamento da parcela; comissões pela data do pagamento registrado; custos pagos no mês. Parcelas inadimplentes vencidas até o fim do mês e abertas no momento da apuração. Período mensal no horário da Bahia. Os percentuais incidem sobre o líquido positivo. O restante fica na operação. Centavos são distribuídos sem exceder o total disponível.', { size: 17, color: muted, after: 100 }))
 
+  body.push(heading(`Lotes vendidos (${snapshot.sales.length})`))
+  body.push(snapshot.sales.length ? table(['Cliente / lote', 'Data da venda', 'Valor'], [...snapshot.sales].sort((a, b) => a.soldAt.localeCompare(b.soldAt)).map((item) => [item.description, date(item.soldAt), money(item.amount)]), [60, 19, 21]) : paragraph('Nenhuma venda no período.', { color: muted }))
+  body.push(heading(`Parcelas inadimplentes (${snapshot.delinquencies.length})`))
+  body.push(paragraph('Parcelas vencidas até o fim do mês e ainda em aberto no momento da apuração.', { size: 17, color: muted }))
+  body.push(snapshot.delinquencies.length ? table(['Cliente / lote / parcela', 'Vencimento', 'Saldo em aberto'], [...snapshot.delinquencies].sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map((item) => [item.description, date(item.dueDate), money(item.balance)]), [60, 19, 21]) : paragraph('Nenhuma parcela vencida em aberto na apuração.', { color: muted }))
   body.push(heading(`Recebimentos dos clientes (${snapshot.receipts.length})`))
   body.push(snapshot.receipts.length ? table(['Cliente / venda / parcela', 'Pagamento', 'Valor recebido'], [...snapshot.receipts].sort((a, b) => a.paidAt.localeCompare(b.paidAt)).map((item) => [item.description, date(item.paidAt), money(item.amount)]), [60, 19, 21]) : paragraph('Nenhum recebimento no período.', { color: muted }))
   body.push(heading(`Comissões pagas (${snapshot.commissions.length})`))

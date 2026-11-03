@@ -8,6 +8,8 @@ export type AllocatedParticipant = DistributionParticipant & { amount: number }
 export type SettlementExpense = RecurringCost & { paidAt: string; proofUrl: string }
 export type SettlementAdjustment = { description: string; amount: number; referenceMonth: string }
 export type SettlementReceipt = { id: string; saleId: string; description: string; paidAt: string; amount: number }
+export type SettlementSale = { id: string; saleId: string; description: string; soldAt: string; amount: number }
+export type SettlementDelinquency = { id: string; saleId: string; description: string; dueDate: string; balance: number }
 export type SettlementSnapshot = {
   developmentName: string
   participants: AllocatedParticipant[]
@@ -16,6 +18,8 @@ export type SettlementSnapshot = {
   month: string
   receipts: SettlementReceipt[]
   commissions: SettlementReceipt[]
+  sales: SettlementSale[]
+  delinquencies: SettlementDelinquency[]
   expenses: SettlementExpense[]
   adjustments: SettlementAdjustment[]
   receiptsTotal: number
@@ -123,7 +127,7 @@ export function legacyParticipant(value: { partnerName: string; percentage: unkn
   return [{ id: 'legacy', kind: 'person', name: value.partnerName, percentage: Number(value.percentage), pixKey: value.pixKey }]
 }
 
-type CalculationInput = Pick<SettlementSnapshot, 'developmentName' | 'month' | 'receipts' | 'commissions' | 'expenses' | 'adjustments'> & (
+type CalculationInput = Pick<SettlementSnapshot, 'developmentName' | 'month' | 'receipts' | 'commissions' | 'expenses' | 'adjustments'> & Partial<Pick<SettlementSnapshot, 'sales' | 'delinquencies'>> & (
   { participants: DistributionParticipant[] } | { partnerName: string; percentage: number; pixKey: string }
 )
 
@@ -152,7 +156,7 @@ export function calculateSettlement(input: CalculationInput): SettlementSnapshot
     developmentName: input.developmentName, month: input.month,
     participants: shares.map((share) => ({ ...share.item, amount: share.amount.toNumber() })),
     totalPercentage: totalPercentage.toNumber(), operationAmount: netAmount.minus(target).toNumber(),
-    receipts: input.receipts, commissions: input.commissions,
+    receipts: input.receipts, commissions: input.commissions, sales: input.sales ?? [], delinquencies: input.delinquencies ?? [],
     expenses: input.expenses.map((item) => ({ ...item, category: item.category || 'Outros' })), adjustments: input.adjustments,
     receiptsTotal: receiptsTotal.toNumber(), commissionsTotal: commissionsTotal.toNumber(), costsTotal: costsTotal.toNumber(), adjustmentsTotal: adjustmentsTotal.toNumber(), netAmount: netAmount.toNumber(), partnerAmount: target.toNumber(),
   }
@@ -166,7 +170,7 @@ export function normalizeSnapshot(value: unknown): SettlementSnapshot {
     developmentName: snapshot.developmentName, month: snapshot.month, participants: recipients,
     totalPercentage: snapshot.totalPercentage ?? recipients.reduce((sum, item) => sum + Number(item.percentage), 0),
     operationAmount: snapshot.operationAmount ?? decimal(snapshot.netAmount).minus(snapshot.partnerAmount).toNumber(),
-    receipts: snapshot.receipts, commissions: snapshot.commissions,
+    receipts: snapshot.receipts, commissions: snapshot.commissions, sales: snapshot.sales ?? [], delinquencies: snapshot.delinquencies ?? [],
     expenses: snapshot.expenses.map((item) => ({ ...item, category: item.category || 'Outros' })), adjustments: snapshot.adjustments,
     receiptsTotal: snapshot.receiptsTotal, commissionsTotal: snapshot.commissionsTotal, costsTotal: snapshot.costsTotal, adjustmentsTotal: snapshot.adjustmentsTotal, netAmount: snapshot.netAmount, partnerAmount: snapshot.partnerAmount,
   }

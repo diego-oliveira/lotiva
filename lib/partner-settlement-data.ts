@@ -16,7 +16,7 @@ export function snapshotToken(snapshot: SettlementSnapshot) {
 
 export async function buildSettlementSnapshot(db: Prisma.TransactionClient, developmentId: string, developmentName: string, draft: Draft) {
   const { start, end } = monthPeriod(draft.month)
-  const [receipts, commissions] = await Promise.all([
+  const [receipts, commissions, sales, delinquencies] = await Promise.all([
     db.receivable.findMany({
       where: { sale: { lot: { block: { developmentId } } }, paidAmount: { gt: 0 }, paidAt: { gte: start, lt: end } },
       select: { id: true, saleId: true, kind: true, sequence: true, paidAmount: true, paidAt: true, sale: { select: { user: { select: { name: true } }, lot: { select: { identifier: true, block: { select: { identifier: true } } } } } } },
@@ -27,6 +27,16 @@ export async function buildSettlementSnapshot(db: Prisma.TransactionClient, deve
       select: { id: true, amount: true, paidAt: true, commission: { select: { saleId: true, user: { select: { name: true } }, sale: { select: { lot: { select: { identifier: true, block: { select: { identifier: true } } } } } } } } },
       orderBy: { id: 'asc' },
     }),
+    db.sale.findMany({
+      where: { lot: { block: { developmentId } }, createdAt: { gte: start, lt: end } },
+      select: { id: true, createdAt: true, totalValue: true, user: { select: { name: true } }, lot: { select: { identifier: true, block: { select: { identifier: true } } } } },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    }),
+    db.receivable.findMany({
+      where: { sale: { lot: { block: { developmentId } } }, dueDate: { lt: end }, status: { not: 'paid' }, balance: { gt: 0 } },
+      select: { id: true, saleId: true, sequence: true, kind: true, dueDate: true, balance: true, sale: { select: { user: { select: { name: true } }, lot: { select: { identifier: true, block: { select: { identifier: true } } } } } } },
+      orderBy: [{ dueDate: 'asc' }, { id: 'asc' }],
+    }),
   ])
   return calculateSettlement({
     developmentName, month: draft.month, participants: draft.participants as DistributionParticipant[],
@@ -34,6 +44,14 @@ export async function buildSettlementSnapshot(db: Prisma.TransactionClient, deve
     receipts: receipts.map((receipt) => ({
       id: receipt.id, saleId: receipt.saleId, amount: Number(receipt.paidAmount), paidAt: receipt.paidAt!.toISOString(),
       description: `${receipt.sale.user.name} · Q${receipt.sale.lot.block.identifier} / L${receipt.sale.lot.identifier} · ${receipt.kind === 'down_payment' ? 'Entrada' : `Parcela ${receipt.sequence}`}`,
+    })),
+    sales: sales.map((sale) => ({
+      id: sale.id, saleId: sale.id, amount: Number(sale.totalValue), soldAt: sale.createdAt.toISOString(),
+      description: `${sale.user.name} · Q${sale.lot.block.identifier} / L${sale.lot.identifier}`,
+    })),
+    delinquencies: delinquencies.map((receivable) => ({
+      id: receivable.id, saleId: receivable.saleId, balance: Number(receivable.balance), dueDate: receivable.dueDate.toISOString(),
+      description: `${receivable.sale.user.name} · Q${receivable.sale.lot.block.identifier} / L${receivable.sale.lot.identifier} · ${receivable.kind === 'down_payment' ? 'Entrada' : `Parcela ${receivable.sequence}`}`,
     })),
     commissions: commissions.map((payment) => ({
       id: payment.id, saleId: payment.commission.saleId, amount: Number(payment.amount), paidAt: payment.paidAt.toISOString(),
