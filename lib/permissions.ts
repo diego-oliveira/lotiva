@@ -5,6 +5,8 @@ export type AppPermission =
   | 'manageSettings'
   | 'manageUsers'
   | 'sales'
+  | 'viewLots'
+  | 'viewSales'
   | 'finance'
   | 'connectPayments'
   | 'issuePayments'
@@ -13,13 +15,14 @@ export type AppPermission =
   | 'reconcilePayments'
 
 const roleAliases: Record<string, AppPermission[]> = {
-  owner: ['admin', 'manageSettings', 'manageUsers', 'sales', 'finance', 'connectPayments', 'issuePayments', 'cancelPayments', 'approveAdjustments', 'reconcilePayments'],
-  administrador: ['admin', 'manageSettings', 'manageUsers', 'sales', 'finance', 'connectPayments', 'issuePayments', 'cancelPayments', 'approveAdjustments', 'reconcilePayments'],
-  admin: ['admin', 'manageSettings', 'manageUsers', 'sales', 'finance', 'connectPayments', 'issuePayments', 'cancelPayments', 'approveAdjustments', 'reconcilePayments'],
-  gestor: ['manageSettings', 'manageUsers', 'sales', 'finance', 'connectPayments', 'issuePayments', 'cancelPayments', 'approveAdjustments', 'reconcilePayments'],
-  manager: ['manageSettings', 'manageUsers', 'sales', 'finance', 'connectPayments', 'issuePayments', 'cancelPayments', 'approveAdjustments', 'reconcilePayments'],
-  vendedor: ['sales'],
-  sales: ['sales'],
+  owner: ['admin', 'manageSettings', 'manageUsers', 'sales', 'viewLots', 'viewSales', 'finance', 'connectPayments', 'issuePayments', 'cancelPayments', 'approveAdjustments', 'reconcilePayments'],
+  administrador: ['admin', 'manageSettings', 'manageUsers', 'sales', 'viewLots', 'viewSales', 'finance', 'connectPayments', 'issuePayments', 'cancelPayments', 'approveAdjustments', 'reconcilePayments'],
+  admin: ['admin', 'manageSettings', 'manageUsers', 'sales', 'viewLots', 'viewSales', 'finance', 'connectPayments', 'issuePayments', 'cancelPayments', 'approveAdjustments', 'reconcilePayments'],
+  gestor: ['manageSettings', 'manageUsers', 'sales', 'viewLots', 'viewSales', 'finance', 'connectPayments', 'issuePayments', 'cancelPayments', 'approveAdjustments', 'reconcilePayments'],
+  manager: ['manageSettings', 'manageUsers', 'sales', 'viewLots', 'viewSales', 'finance', 'connectPayments', 'issuePayments', 'cancelPayments', 'approveAdjustments', 'reconcilePayments'],
+  vendedor: ['sales', 'viewLots', 'viewSales'],
+  sales: ['sales', 'viewLots', 'viewSales'],
+  'sócio — consulta': ['viewLots', 'viewSales', 'finance'],
   financeiro: ['finance', 'issuePayments', 'cancelPayments', 'reconcilePayments'],
   finance: ['finance', 'issuePayments', 'cancelPayments', 'reconcilePayments'],
 }
@@ -29,7 +32,9 @@ const permissionRoleNames: Record<AppPermission, string[]> = {
   manageSettings: ['owner', 'administrador', 'admin', 'gestor', 'manager'],
   manageUsers: ['owner', 'administrador', 'admin', 'gestor', 'manager'],
   sales: ['owner', 'administrador', 'admin', 'gestor', 'manager', 'vendedor', 'sales'],
-  finance: ['owner', 'administrador', 'admin', 'gestor', 'manager', 'financeiro', 'finance'],
+  viewLots: ['owner', 'administrador', 'admin', 'gestor', 'manager', 'vendedor', 'sales', 'sócio — consulta'],
+  viewSales: ['owner', 'administrador', 'admin', 'gestor', 'manager', 'vendedor', 'sales', 'sócio — consulta'],
+  finance: ['owner', 'administrador', 'admin', 'gestor', 'manager', 'financeiro', 'finance', 'sócio — consulta'],
   connectPayments: ['owner', 'administrador', 'admin', 'gestor', 'manager'],
   issuePayments: ['owner', 'administrador', 'admin', 'gestor', 'manager', 'financeiro', 'finance'],
   cancelPayments: ['owner', 'administrador', 'admin', 'gestor', 'manager', 'financeiro', 'finance'],
@@ -89,6 +94,8 @@ export async function getUserPermissions(userId: string) {
       manageSettings: permissions.has('manageSettings'),
       manageUsers: permissions.has('manageUsers'),
       sales: permissions.has('sales'),
+      viewLots: permissions.has('viewLots'),
+      viewSales: permissions.has('viewSales'),
       finance: permissions.has('finance'),
       connectPayments: permissions.has('connectPayments'),
       issuePayments: permissions.has('issuePayments'),
@@ -247,7 +254,7 @@ export async function hasCompanyPermission(userId: string, companyId: string, pe
 }
 
 export async function ensureBaseRoles() {
-  const names = ['Administrador', 'Gestor', 'Vendedor', 'Financeiro']
+  const names = ['Administrador', 'Gestor', 'Vendedor', 'Financeiro', 'Sócio — consulta']
 
   await Promise.all(
     names.map((name) =>

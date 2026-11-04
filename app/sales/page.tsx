@@ -126,6 +126,7 @@ function SalesContent() {
   const [contractSaleId, setContractSaleId] = useState<string>('')
   const [receivablesSale, setReceivablesSale] = useState<Sale | null>(null)
   const [canCorrectSales, setCanCorrectSales] = useState(false)
+  const [canCreateSales, setCanCreateSales] = useState(false)
   const [showLegacyImport, setShowLegacyImport] = useState(false)
   const [commissionSaleId, setCommissionSaleId] = useState('')
 
@@ -135,9 +136,11 @@ function SalesContent() {
       .then((response) => response.ok ? response.json() : null)
       .then((payload) => {
         setCanCorrectSales(Boolean(payload?.permissions?.admin))
+        setCanCreateSales(Boolean(payload?.permissions?.sales))
       })
       .catch(() => {
         setCanCorrectSales(false)
+        setCanCreateSales(false)
       })
 
     const params = new URLSearchParams(window.location.search)
@@ -150,9 +153,12 @@ function SalesContent() {
         reservationId: params.get('reservationId') ?? undefined,
         proposalId: params.get('proposalId') ?? undefined,
       })
-      setShowForm(true)
     }
   }, [])
+
+  useEffect(() => {
+    if (canCreateSales && initialSaleData?.lotId) setShowForm(true)
+  }, [canCreateSales, initialSaleData])
 
   useEffect(() => {
     const userId = searchParams.get('userId')
@@ -357,9 +363,9 @@ function SalesContent() {
               Importar vendas
             </button>
           )}
-          <button onClick={handleAddSale} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
+          {canCreateSales && <button onClick={handleAddSale} className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
             Nova venda
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -481,9 +487,9 @@ function SalesContent() {
                     <td className='whitespace-nowrap px-6 py-4 text-sm text-muted'>{formatDate(sale.createdAt)}</td>
                     <td className='whitespace-nowrap px-6 py-4 text-right text-sm font-semibold'>
                       <div className='flex items-center justify-end gap-2'>
-                        <button onClick={() => handleViewContract(sale.id)} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>
+                        {canCreateSales && <button onClick={() => handleViewContract(sale.id)} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>
                           Contrato
-                        </button>
+                        </button>}
                         <button onClick={() => handleViewReceivables(sale)} className='rounded-xl px-3 py-2 text-primary transition hover:bg-primary/8'>
                           Parcelas
                         </button>
@@ -509,7 +515,7 @@ function SalesContent() {
         )}
       </div>
 
-      <SalesForm
+      {canCreateSales && <SalesForm
         sale={editingSale}
         initialData={initialSaleData}
         isOpen={showForm}
@@ -517,7 +523,7 @@ function SalesContent() {
         onClose={handleFormClose}
         onSave={handleFormSave}
         correctionReason={correctionReason}
-      />
+      />}
 
       {canCorrectSales && (
         <LegacySalesImportDrawer

@@ -466,9 +466,10 @@ export async function DELETE(_: Request, { params }: Params) {
         id,
         ...saleAccessWhere(currentUserId),
       },
-      select: { id: true },
+      select: { id: true, lot: { select: { block: { select: { developmentId: true } } } } },
     })
-    if (!canAccessSale) return forbiddenResponse()
+    const developmentId = canAccessSale?.lot.block.developmentId
+    if (!developmentId || !(await hasDevelopmentPermission(currentUserId, developmentId, 'admin'))) return forbiddenResponse()
 
     // Start a transaction to ensure data consistency
     await prisma.$transaction(async (prisma) => {

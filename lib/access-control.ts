@@ -47,7 +47,7 @@ export function lotAccessWhere(userId: string) {
 }
 
 const administrativeRoleNames = ['owner', 'administrador', 'admin', 'gestor', 'manager']
-const financialRoleNames = [...administrativeRoleNames, 'financeiro', 'finance']
+const financialRoleNames = [...administrativeRoleNames, 'financeiro', 'finance', 'sócio — consulta']
 
 export function financialDevelopmentAccessWhere(userId: string) {
   return { deletedAt: null, ...developmentRoleAccessWhere(userId, financialRoleNames) }

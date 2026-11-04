@@ -3,7 +3,7 @@ import { specificDevelopmentId } from '@/lib/workspace'
 import { requireAuthenticatedUser } from '@/lib/auth'
 import { forbiddenResponse, membershipWhere, financialDevelopmentAccessWhere } from '@/lib/access-control'
 import { calculateCommissionAvailability, getCommissionReleaseContext, syncSaleCommissions } from '@/lib/commissions'
-import { hasAnyDevelopmentPermission } from '@/lib/permissions'
+import { hasAnyDevelopmentPermission, hasDevelopmentPermission } from '@/lib/permissions'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(req: NextRequest) {
@@ -38,9 +38,10 @@ export async function GET(req: NextRequest) {
     },
     orderBy: { createdAt: 'desc' },
   })
+  const paymentPermissions = new Map(await Promise.all([...new Set(refreshed.map((item) => item.sale.lot.block.development?.id).filter((id): id is string => Boolean(id)))].map(async (id) => [id, await hasDevelopmentPermission(userId, id, 'issuePayments')] as const)))
   const contexts = new Map(await Promise.all([...new Set(refreshed.map((item) => item.saleId))].map(async (saleId) => [saleId, await getCommissionReleaseContext(prisma, saleId)] as const)))
   return NextResponse.json(refreshed.map((commission) => {
     const paid = commission.payments.reduce((sum, payment) => sum + Number(payment.amount), 0)
-    return { ...commission, ...calculateCommissionAvailability(Number(commission.amount), paid, contexts.get(commission.saleId) ?? { entryPaidRatio: 0 }) }
+    return { ...commission, ...calculateCommissionAvailability(Number(commission.amount), paid, contexts.get(commission.saleId) ?? { entryPaidRatio: 0 }), canPay: paymentPermissions.get(commission.sale.lot.block.development?.id ?? '') ?? false }
   }))
 }

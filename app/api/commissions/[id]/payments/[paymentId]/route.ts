@@ -15,7 +15,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { id, paymentId } = await params
   const payment = await prisma.commissionPayment.findFirst({ where: { id: paymentId, commissionId: id }, include: { commission: { include: { sale: { select: { id: true, lot: { select: { block: { select: { developmentId: true, development: { select: { companyId: true } } } } } } } } } } } })
   const development = payment?.commission.sale.lot.block
-  if (!payment || !development?.developmentId || !development.development || !(await hasDevelopmentPermission(auth.session.user.id, development.developmentId, 'finance'))) return forbiddenResponse()
+  if (!payment || !development?.developmentId || !development.development || !(await hasDevelopmentPermission(auth.session.user.id, development.developmentId, 'issuePayments'))) return forbiddenResponse()
   let data: { paidAt?: unknown; previousPaidAt?: unknown }
   try { data = await req.json() } catch { return NextResponse.json({ error: 'Dados inválidos.' }, { status: 400 }) }
   let paidAt: Date

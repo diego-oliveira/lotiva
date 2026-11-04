@@ -12,7 +12,7 @@ type NavItem = {
   label: string
   description: string
   icon: 'dashboard' | 'setup' | 'company' | 'development' | 'document' | 'user' | 'lot' | 'sale' | 'finance'
-  permission?: 'admin' | 'manageSettings' | 'manageUsers' | 'sales' | 'finance'
+  permission?: 'admin' | 'manageSettings' | 'manageUsers' | 'sales' | 'viewLots' | 'viewSales' | 'finance'
 }
 
 type NavSection = {
@@ -25,6 +25,8 @@ type PermissionMap = {
   manageSettings: boolean
   manageUsers: boolean
   sales: boolean
+  viewLots: boolean
+  viewSales: boolean
   finance: boolean
 }
 
@@ -79,7 +81,7 @@ const navSections: NavSection[] = [
         label: 'Lotes',
         description: 'Estoque comercial',
         icon: 'lot',
-        permission: 'sales',
+        permission: 'viewLots',
       },
       {
         href: '/proposals',
@@ -93,7 +95,7 @@ const navSections: NavSection[] = [
         label: 'Vendas',
         description: 'Contratos e parcelas',
         icon: 'sale',
-        permission: 'sales',
+        permission: 'viewSales',
       },
     ],
   },

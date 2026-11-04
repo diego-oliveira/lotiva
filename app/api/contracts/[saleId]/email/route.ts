@@ -1,9 +1,10 @@
 import { prisma } from '@/lib/prisma';
 import { requireAuthenticatedUser } from '@/lib/auth'
-import { contractAccessWhere } from '@/lib/access-control'
+import { contractAccessWhere, forbiddenResponse } from '@/lib/access-control'
 import { NextResponse } from 'next/server';
 import { convertDocxToPdf } from '@/lib/docxDocuments'
 import { readDocumentFile, saveDocumentFile } from '@/lib/documentStorage'
+import { hasDevelopmentPermission } from '@/lib/permissions'
 import { emailService } from '@/lib/emailService';
 
 type Params = { params: Promise<{ saleId: string }> };
@@ -42,6 +43,8 @@ export async function POST(req: Request, { params }: Params) {
         { status: 404 }
       );
     }
+    const developmentId = contract.sale.lot.block.developmentId
+    if (!developmentId || !(await hasDevelopmentPermission(currentUserId, developmentId, 'sales'))) return forbiddenResponse()
 
     const pdfBuffer = contract.pdfPath
       ? await readDocumentFile(contract.pdfPath)

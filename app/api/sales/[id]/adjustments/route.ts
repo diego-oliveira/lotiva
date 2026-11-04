@@ -57,7 +57,7 @@ export async function POST(req: Request, { params }: Params) {
   if (auth.response) return auth.response
   const { id } = await params
   const authorized = await authorize(auth.session.user.id, id)
-  if (!authorized?.companyId) return forbiddenResponse()
+  if (!authorized?.companyId || !(await hasDevelopmentPermission(auth.session.user.id, authorized.developmentId, 'issuePayments'))) return forbiddenResponse()
 
   try {
     const data = await req.json()

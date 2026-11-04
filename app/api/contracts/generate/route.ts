@@ -1,7 +1,8 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuthenticatedUser } from '@/lib/auth'
-import { saleAccessWhere } from '@/lib/access-control'
+import { saleAccessWhere, forbiddenResponse } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
+import { hasDevelopmentPermission } from '@/lib/permissions'
 import { generateContractNumber } from '@/lib/document-templates'
 import { generateContractDocuments } from '@/lib/contractDocuments'
 
@@ -66,6 +67,8 @@ export async function POST(req: Request) {
     if (!sale) {
       return NextResponse.json({ error: 'Sale not found' }, { status: 404 })
     }
+    const developmentId = sale.lot.block.developmentId
+    if (!developmentId || !(await hasDevelopmentPermission(currentUserId, developmentId, 'sales'))) return forbiddenResponse()
 
     if (sale.contract && !force) {
       return NextResponse.json({

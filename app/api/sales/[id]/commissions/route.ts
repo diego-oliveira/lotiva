@@ -33,7 +33,7 @@ async function getPayload(saleId: string, developmentId: string, companyId: stri
       select: { user: { select: { id: true, name: true, email: true } } },
     }),
     hasDevelopmentPermission(userId, developmentId, 'manageSettings'),
-    hasDevelopmentPermission(userId, developmentId, 'finance'),
+    hasDevelopmentPermission(userId, developmentId, 'issuePayments'),
   ])
   const brokers = [...developmentUsers, ...companyUsers].map((item) => item.user).concat(commissions.map((item) => item.user))
   const uniqueBrokers = [...new Map(brokers.map((broker) => [broker.id, broker])).values()].sort((a, b) => a.name.localeCompare(b.name))

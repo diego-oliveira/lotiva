@@ -16,7 +16,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     include: { payments: true, sale: { include: { lot: { include: { block: true } } } } },
   })
   const developmentId = commission?.sale.lot.block.developmentId
-  if (!commission || !developmentId || !(await hasDevelopmentPermission(auth.session.user.id, developmentId, 'finance'))) return forbiddenResponse()
+  if (!commission || !developmentId || !(await hasDevelopmentPermission(auth.session.user.id, developmentId, 'issuePayments'))) return forbiddenResponse()
   await syncSaleCommissions(prisma, commission.saleId)
   const current = await prisma.saleCommission.findUnique({ where: { id }, include: { payments: true } })
   if (!current) return NextResponse.json({ error: 'Comissao nao encontrada.' }, { status: 404 })

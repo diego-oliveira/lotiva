@@ -358,6 +358,7 @@ function LotsContent() {
   const [canManageUsers, setCanManageUsers] = useState(false)
   const [canManageSettings, setCanManageSettings] = useState(false)
   const [canAdmin, setCanAdmin] = useState(false)
+  const [canCreateSales, setCanCreateSales] = useState(false)
   const handledProposalInterestRef = useRef<string | null>(null)
   const lotsRequestIdRef = useRef(0)
   const [editingLot, setEditingLot] = useState(false)
@@ -402,6 +403,7 @@ function LotsContent() {
         setCanManageUsers(Boolean(payload?.permissions?.manageUsers))
         setCanManageSettings(Boolean(payload?.permissions?.manageSettings || payload?.permissions?.admin))
         setCanAdmin(Boolean(payload?.permissions?.admin))
+        setCanCreateSales(Boolean(payload?.permissions?.sales))
         const permissions = payload?.permissions
         const salesOnly = Boolean(permissions?.sales &&
           !permissions.admin &&
@@ -414,6 +416,7 @@ function LotsContent() {
         setCanManageUsers(false)
         setCanManageSettings(false)
         setCanAdmin(false)
+        setCanCreateSales(false)
       })
   }, [])
 
@@ -802,6 +805,7 @@ function LotsContent() {
   }
 
   const openSimulator = async (lotOverride?: Lot, interest?: PublicLotInterest) => {
+    if (!canCreateSales) return
     const activeLot = lotOverride ?? selectedLot
     if (!activeLot) return
 
@@ -847,6 +851,7 @@ function LotsContent() {
   }
 
   const openReservationForm = async (lotOverride?: Lot) => {
+    if (!canCreateSales) return
     const activeLot = lotOverride ?? selectedLot
     if (!activeLot) return
 
@@ -1903,7 +1908,8 @@ function LotsContent() {
                     </div>
                   )}
                   <div className='mt-4 space-y-3'>
-                    {selectedLotStatus === 'available' && (
+                    {!canCreateSales && <p className='rounded-xl bg-background px-4 py-3 text-sm text-muted'>Acesso somente para consulta.</p>}
+                    {canCreateSales && selectedLotStatus === 'available' && (
                       <>
                         <button onClick={() => void openSimulator()} className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
                           Criar proposta
@@ -1917,7 +1923,7 @@ function LotsContent() {
                       </>
                     )}
 
-                    {selectedLotStatus === 'reserved' && (
+                    {canCreateSales && selectedLotStatus === 'reserved' && (
                       <>
                         {hasReservationDataIssue ? (
                           <>
@@ -1969,7 +1975,7 @@ function LotsContent() {
                       </>
                     )}
 
-                    {selectedLotStatus === 'on_hold' && (
+                    {canCreateSales && selectedLotStatus === 'on_hold' && (
                       <>
                         {selectedLot.canReleaseHold ? (
                           <button onClick={() => updateLotStatus('available')} disabled={reservationSaving} className='w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:opacity-60'>
@@ -2001,7 +2007,7 @@ function LotsContent() {
 
                   </div>
 
-                  {showReservationForm && (
+                  {canCreateSales && showReservationForm && (
                     <div className='mt-5 rounded-2xl border border-border bg-surface p-4'>
                       <h4 className='text-sm font-semibold text-foreground'>Nova reserva</h4>
                       <div className='mt-4 space-y-4'>

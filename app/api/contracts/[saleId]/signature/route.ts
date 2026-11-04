@@ -11,6 +11,8 @@ import { requireAuthenticatedUser } from '@/lib/auth'
 import { convertDocxToPdf } from '@/lib/docxDocuments'
 import { readDocumentFile, saveDocumentFile } from '@/lib/documentStorage'
 import { prisma } from '@/lib/prisma'
+import { hasDevelopmentPermission } from '@/lib/permissions'
+import { forbiddenResponse } from '@/lib/access-control'
 import { NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
@@ -81,6 +83,8 @@ export async function POST(request: Request, { params }: Params) {
   try {
     const contract = await getContract(saleId, auth.session.user.id)
     if (!contract) return NextResponse.json({ error: 'Contrato nao encontrado.' }, { status: 404 })
+    const developmentId = contract.sale.lot.block.developmentId
+    if (!developmentId || !(await hasDevelopmentPermission(auth.session.user.id, developmentId, 'sales'))) return forbiddenResponse()
     if (contract.signatureDocumentId) {
       return NextResponse.json({ error: 'Este contrato ja foi enviado para assinatura.' }, { status: 409 })
     }
@@ -129,6 +133,8 @@ export async function PATCH(_: Request, { params }: Params) {
   try {
     const contract = await getContract(saleId, auth.session.user.id)
     if (!contract) return NextResponse.json({ error: 'Contrato nao encontrado.' }, { status: 404 })
+    const developmentId = contract.sale.lot.block.developmentId
+    if (!developmentId || !(await hasDevelopmentPermission(auth.session.user.id, developmentId, 'sales'))) return forbiddenResponse()
     if (!contract.signatureDocumentId || !Array.isArray(contract.signatureSigners)) {
       return NextResponse.json({ error: 'Contrato ainda nao foi enviado para assinatura.' }, { status: 400 })
     }
