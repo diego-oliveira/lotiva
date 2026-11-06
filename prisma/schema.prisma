@@ -77,6 +77,19 @@ model DevelopmentSettings {
   interestCalculation      String   @default("none")
   correctionIndex          String   @default("none")
   correctionFrequency      String   @default("monthly")
+  autoIssueBoleto          Boolean  @default(false)
+  autoIssueBoletoDaysBefore Int    @default(7)
+  automaticBoletoProvider  String   @default("auto")
+  autoSendBoletoEmail      Boolean  @default(false)
+  overdueEmailEnabled      Boolean  @default(false)
+  overdueFirstReminderDays Int     @default(3)
+  overdueSecondReminderDays Int    @default(10)
+  boletoEmailSubject       String   @default("Boleto da parcela - {{empreendimento}}")
+  boletoEmailTemplate      String   @default("Ola, {{cliente}}!\n\nSegue o boleto da parcela {{parcela}} do empreendimento {{empreendimento}}, no valor de {{valor}}, com vencimento em {{vencimento}}.\n\n{{link_boleto}}\n\nSe ja realizou o pagamento, desconsidere esta mensagem.") @db.Text
+  overdueEmailSubject      String   @default("Parcela em aberto - {{empreendimento}}")
+  overdueEmailTemplate     String   @default("Ola, {{cliente}}!\n\nA parcela {{parcela}} do empreendimento {{empreendimento}}, no valor de {{valor}}, venceu em {{vencimento}} e consta em aberto.\n\n{{link_boleto}}\n\nSe ja realizou o pagamento, desconsidere esta mensagem.") @db.Text
+  overdueSecondEmailSubject String  @default("Segundo aviso de parcela em aberto - {{empreendimento}}")
+  overdueSecondEmailTemplate String @default("Ola, {{cliente}}!\n\nEsta e uma nova tentativa de contato sobre a parcela {{parcela}} do empreendimento {{empreendimento}}, no valor de {{valor}}, vencida em {{vencimento}}. Ela ainda consta em aberto em nosso sistema.\n\n{{link_boleto}}\n\nSe ja realizou o pagamento, desconsidere esta mensagem.") @db.Text
   minDownPaymentPercentage Float    @default(10)
   defaultCommissionPercentage Float @default(6)
   allowDownPaymentInstallments Boolean @default(false)
@@ -174,6 +187,7 @@ model User {
   partnerSettlementsClosed PartnerSettlement[] @relation("PartnerSettlementCloser")
   partnerPaymentsCreated PartnerPayment[]
   partnerSettlementRevisions PartnerSettlementRevision[]
+  receivableContactLogs ReceivableContactLog[]
   impersonationSessionsStarted ImpersonationSession[] @relation("ImpersonationActor")
   impersonationSessionsReceived ImpersonationSession[] @relation("ImpersonationTarget")
 }
@@ -677,10 +691,30 @@ model Receivable {
   sale            Sale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
   externalCharges ExternalCharge[]
   adjustmentItems AdjustmentReviewItem[]
+  contactLogs      ReceivableContactLog[]
 
   @@unique([saleId, kind, sequence])
   @@index([dueDate])
   @@index([status])
+}
+
+model ReceivableContactLog {
+  id           String   @id @default(uuid())
+  receivableId String
+  userId       String?
+  category     String
+  channel      String
+  message      String?  @db.Text
+  source       String   @default("manual")
+  deliveryStatus String @default("sent")
+  deduplicationKey String? @unique
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  receivable Receivable @relation(fields: [receivableId], references: [id], onDelete: Cascade)
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([receivableId, createdAt])
 }
 
 model PaymentProviderConnection {

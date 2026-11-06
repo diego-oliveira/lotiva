@@ -10,6 +10,7 @@ const paymentMethodKeys = ['cash', 'installments', 'financing', 'bank_slip', 'pi
 const interestCalculations = new Set(['none', 'simple', 'compound'])
 const correctionIndexes = new Set(['none', 'ipca', 'incc', 'igpm', 'fixed'])
 const correctionFrequencies = new Set(['monthly', 'annual'])
+const automaticBoletoProviders = new Set(['auto', 'asaas', 'inter'])
 
 function asNumber(value: unknown) {
   const parsed = Number(value)
@@ -76,6 +77,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
   const defaultCommissionPercentage = asNumber(data.defaultCommissionPercentage)
   const maxInstallments = asNumber(data.maxInstallments)
   const maxDownPaymentInstallments = asNumber(data.maxDownPaymentInstallments)
+  const autoIssueBoletoDaysBefore = asNumber(data.autoIssueBoletoDaysBefore)
+  const overdueFirstReminderDays = asNumber(data.overdueFirstReminderDays)
+  const overdueSecondReminderDays = asNumber(data.overdueSecondReminderDays)
+  const automaticBoletoProvider = typeof data.automaticBoletoProvider === 'string' ? data.automaticBoletoProvider : 'auto'
   const paymentMethods = normalizePaymentMethods(data.paymentMethods)
 
   if (!reservationValidityDays || reservationValidityDays < 1 || reservationValidityDays > 180) {
@@ -116,6 +121,24 @@ export async function PUT(req: NextRequest, { params }: Params) {
     errors.paymentMethods = 'Selecione pelo menos uma forma de pagamento.'
   }
 
+  if (autoIssueBoletoDaysBefore === null || autoIssueBoletoDaysBefore < 1 || autoIssueBoletoDaysBefore > 60) {
+    errors.autoIssueBoletoDaysBefore = 'Informe antecedencia entre 1 e 60 dias.'
+  }
+  if (!automaticBoletoProviders.has(automaticBoletoProvider)) {
+    errors.automaticBoletoProvider = 'Selecione um provedor valido.'
+  }
+  if (overdueFirstReminderDays === null || overdueFirstReminderDays < 1 || overdueFirstReminderDays > 60) {
+    errors.overdueFirstReminderDays = 'Informe um prazo entre 1 e 60 dias.'
+  }
+  if (overdueSecondReminderDays === null || overdueSecondReminderDays <= (overdueFirstReminderDays ?? 0) || overdueSecondReminderDays > 90) {
+    errors.overdueSecondReminderDays = 'O segundo aviso deve ser posterior ao primeiro e ocorrer em ate 90 dias.'
+  }
+  for (const field of ['boletoEmailSubject', 'boletoEmailTemplate', 'overdueEmailSubject', 'overdueEmailTemplate', 'overdueSecondEmailSubject', 'overdueSecondEmailTemplate'] as const) {
+    if (typeof data[field] !== 'string' || !data[field].trim() || data[field].length > 10000) {
+      errors[field] = 'Preencha este campo com ate 10.000 caracteres.'
+    }
+  }
+
   if (Object.keys(errors).length > 0) {
     return NextResponse.json({ errors }, { status: 400 })
   }
@@ -128,6 +151,19 @@ export async function PUT(req: NextRequest, { params }: Params) {
       interestCalculation: data.interestCalculation,
       correctionIndex: data.correctionIndex,
       correctionFrequency: data.correctionFrequency,
+      autoIssueBoleto: Boolean(data.autoIssueBoleto),
+      autoIssueBoletoDaysBefore: Math.round(autoIssueBoletoDaysBefore!),
+      automaticBoletoProvider,
+      autoSendBoletoEmail: Boolean(data.autoSendBoletoEmail),
+      overdueEmailEnabled: Boolean(data.overdueEmailEnabled),
+      overdueFirstReminderDays: Math.round(overdueFirstReminderDays!),
+      overdueSecondReminderDays: Math.round(overdueSecondReminderDays!),
+      boletoEmailSubject: data.boletoEmailSubject.trim(),
+      boletoEmailTemplate: data.boletoEmailTemplate.trim(),
+      overdueEmailSubject: data.overdueEmailSubject.trim(),
+      overdueEmailTemplate: data.overdueEmailTemplate.trim(),
+      overdueSecondEmailSubject: data.overdueSecondEmailSubject.trim(),
+      overdueSecondEmailTemplate: data.overdueSecondEmailTemplate.trim(),
       minDownPaymentPercentage: minDownPaymentPercentage!,
       defaultCommissionPercentage: defaultCommissionPercentage!,
       allowDownPaymentInstallments: Boolean(data.allowDownPaymentInstallments),
@@ -143,6 +179,19 @@ export async function PUT(req: NextRequest, { params }: Params) {
       interestCalculation: data.interestCalculation,
       correctionIndex: data.correctionIndex,
       correctionFrequency: data.correctionFrequency,
+      autoIssueBoleto: Boolean(data.autoIssueBoleto),
+      autoIssueBoletoDaysBefore: Math.round(autoIssueBoletoDaysBefore!),
+      automaticBoletoProvider,
+      autoSendBoletoEmail: Boolean(data.autoSendBoletoEmail),
+      overdueEmailEnabled: Boolean(data.overdueEmailEnabled),
+      overdueFirstReminderDays: Math.round(overdueFirstReminderDays!),
+      overdueSecondReminderDays: Math.round(overdueSecondReminderDays!),
+      boletoEmailSubject: data.boletoEmailSubject.trim(),
+      boletoEmailTemplate: data.boletoEmailTemplate.trim(),
+      overdueEmailSubject: data.overdueEmailSubject.trim(),
+      overdueEmailTemplate: data.overdueEmailTemplate.trim(),
+      overdueSecondEmailSubject: data.overdueSecondEmailSubject.trim(),
+      overdueSecondEmailTemplate: data.overdueSecondEmailTemplate.trim(),
       minDownPaymentPercentage: minDownPaymentPercentage!,
       defaultCommissionPercentage: defaultCommissionPercentage!,
       allowDownPaymentInstallments: Boolean(data.allowDownPaymentInstallments),

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { processPendingWebhookEvents } from '@/lib/payments/webhooks'
 import { reconcileAllActiveConnections } from '@/lib/payments/reconciliation'
 import { createAdjustmentCycleAlerts } from '@/lib/payments/adjustment-alerts'
+import { processAutomaticCollections } from '@/lib/payments/automatic-collections'
 
 export const runtime = 'nodejs'
 
@@ -27,13 +28,15 @@ export async function POST(req: Request) {
 
   const reconciliation = await reconcileAllActiveConnections()
   const alerts = await createAdjustmentCycleAlerts()
+  const collections = await processAutomaticCollections()
   console.info(JSON.stringify({
     scope: 'payments_job',
     mode,
     webhooks,
     reconciliationRuns: reconciliation.length,
     alerts,
+    collections,
     completedAt: new Date().toISOString(),
   }))
-  return NextResponse.json({ webhooks, reconciliation, alerts })
+  return NextResponse.json({ webhooks, reconciliation, alerts, collections })
 }

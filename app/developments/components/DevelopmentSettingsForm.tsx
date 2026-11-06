@@ -15,6 +15,19 @@ type DevelopmentSettings = {
   interestCalculation: 'none' | 'simple' | 'compound'
   correctionIndex: 'none' | 'ipca' | 'incc' | 'igpm' | 'fixed'
   correctionFrequency: 'monthly' | 'annual'
+  autoIssueBoleto: boolean
+  autoIssueBoletoDaysBefore: number
+  automaticBoletoProvider: 'auto' | 'asaas' | 'inter'
+  autoSendBoletoEmail: boolean
+  overdueEmailEnabled: boolean
+  overdueFirstReminderDays: number
+  overdueSecondReminderDays: number
+  boletoEmailSubject: string
+  boletoEmailTemplate: string
+  overdueEmailSubject: string
+  overdueEmailTemplate: string
+  overdueSecondEmailSubject: string
+  overdueSecondEmailTemplate: string
   minDownPaymentPercentage: number
   defaultCommissionPercentage: number
   allowDownPaymentInstallments: boolean
@@ -37,6 +50,19 @@ const defaultSettings: DevelopmentSettings = {
   interestCalculation: 'none',
   correctionIndex: 'none',
   correctionFrequency: 'monthly',
+  autoIssueBoleto: false,
+  autoIssueBoletoDaysBefore: 7,
+  automaticBoletoProvider: 'auto',
+  autoSendBoletoEmail: false,
+  overdueEmailEnabled: false,
+  overdueFirstReminderDays: 3,
+  overdueSecondReminderDays: 10,
+  boletoEmailSubject: 'Boleto da parcela - {{empreendimento}}',
+  boletoEmailTemplate: 'Olá, {{cliente}}!\n\nSegue o boleto da parcela {{parcela}} do empreendimento {{empreendimento}}, no valor de {{valor}}, com vencimento em {{vencimento}}.\n\n{{link_boleto}}\n\nSe já realizou o pagamento, desconsidere esta mensagem.',
+  overdueEmailSubject: 'Parcela em aberto - {{empreendimento}}',
+  overdueEmailTemplate: 'Olá, {{cliente}}!\n\nA parcela {{parcela}} do empreendimento {{empreendimento}}, no valor de {{valor}}, venceu em {{vencimento}} e consta em aberto.\n\n{{link_boleto}}\n\nSe já realizou o pagamento, desconsidere esta mensagem.',
+  overdueSecondEmailSubject: 'Segundo aviso de parcela em aberto - {{empreendimento}}',
+  overdueSecondEmailTemplate: 'Olá, {{cliente}}!\n\nEsta é uma nova tentativa de contato sobre a parcela {{parcela}} do empreendimento {{empreendimento}}, no valor de {{valor}}, vencida em {{vencimento}}. Ela ainda consta em aberto em nosso sistema.\n\n{{link_boleto}}\n\nSe já realizou o pagamento, desconsidere esta mensagem.',
   minDownPaymentPercentage: 10,
   defaultCommissionPercentage: 6,
   allowDownPaymentInstallments: false,
@@ -123,6 +149,19 @@ export default function DevelopmentSettingsForm({
           interestCalculation: settings.interestCalculation,
           correctionIndex: settings.correctionIndex,
           correctionFrequency: settings.correctionFrequency,
+          autoIssueBoleto: settings.autoIssueBoleto,
+          autoIssueBoletoDaysBefore: settings.autoIssueBoletoDaysBefore,
+          automaticBoletoProvider: settings.automaticBoletoProvider,
+          autoSendBoletoEmail: settings.autoSendBoletoEmail,
+          overdueEmailEnabled: settings.overdueEmailEnabled,
+          overdueFirstReminderDays: settings.overdueFirstReminderDays,
+          overdueSecondReminderDays: settings.overdueSecondReminderDays,
+          boletoEmailSubject: settings.boletoEmailSubject,
+          boletoEmailTemplate: settings.boletoEmailTemplate,
+          overdueEmailSubject: settings.overdueEmailSubject,
+          overdueEmailTemplate: settings.overdueEmailTemplate,
+          overdueSecondEmailSubject: settings.overdueSecondEmailSubject,
+          overdueSecondEmailTemplate: settings.overdueSecondEmailTemplate,
           minDownPaymentPercentage: settings.minDownPaymentPercentage,
           defaultCommissionPercentage: settings.defaultCommissionPercentage,
           allowDownPaymentInstallments: settings.allowDownPaymentInstallments,
@@ -172,6 +211,9 @@ export default function DevelopmentSettingsForm({
     if (formData.maxInstallments < 1 || formData.maxInstallments > 240) nextErrors.maxInstallments = 'Informe ate 240 parcelas.'
     if (formData.allowDownPaymentInstallments && (formData.maxDownPaymentInstallments < 2 || formData.maxDownPaymentInstallments > 24)) nextErrors.maxDownPaymentInstallments = 'Informe entre 2 e 24 parcelas.'
     if (formData.paymentMethods.length === 0) nextErrors.paymentMethods = 'Selecione pelo menos uma forma de pagamento.'
+    if (formData.autoIssueBoletoDaysBefore < 1 || formData.autoIssueBoletoDaysBefore > 60) nextErrors.autoIssueBoletoDaysBefore = 'Informe entre 1 e 60 dias.'
+    if (formData.overdueFirstReminderDays < 1 || formData.overdueFirstReminderDays > 60) nextErrors.overdueFirstReminderDays = 'Informe entre 1 e 60 dias.'
+    if (formData.overdueSecondReminderDays <= formData.overdueFirstReminderDays || formData.overdueSecondReminderDays > 90) nextErrors.overdueSecondReminderDays = 'O segundo aviso deve ser posterior ao primeiro e ocorrer em ate 90 dias.'
 
     setErrors(nextErrors)
     return Object.keys(nextErrors).length === 0
@@ -310,6 +352,41 @@ export default function DevelopmentSettingsForm({
                 </div>
                 {errors.paymentMethods && <p className='mt-2 text-sm text-red-600'>{errors.paymentMethods}</p>}
               </div>
+            </section>
+
+            <section className='rounded-2xl border border-border bg-surface-secondary p-5'>
+              <h3 className='text-sm font-semibold text-foreground'>Automação de cobranças</h3>
+              <p className='mt-1 text-xs leading-5 text-muted'>As rotinas são executadas diariamente. Boletos dependentes de reajuste aguardam a aprovação do valor.</p>
+              <label className='mt-4 flex items-center gap-3 text-sm font-medium text-foreground'>
+                <input type='checkbox' checked={formData.autoIssueBoleto} onChange={(event) => setFormData((current) => ({ ...current, autoIssueBoleto: event.target.checked }))} className='h-4 w-4 rounded border-border text-primary focus:ring-primary' />
+                Gerar boletos automaticamente antes do vencimento
+              </label>
+              {formData.autoIssueBoleto && <div className='mt-4 grid gap-4 sm:grid-cols-2'>
+                <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Provedor para emissão automática</span><select name='automaticBoletoProvider' value={formData.automaticBoletoProvider} onChange={updateText} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground'><option value='auto'>Usar automaticamente se houver apenas um ativo</option><option value='asaas'>Asaas</option><option value='inter'>Banco Inter</option></select><p className='mt-2 text-xs text-muted'>Se houver mais de um provedor ativo, escolha qual deve emitir.</p></label>
+                <div className='max-w-xs'><NumberInput label='Gerar com antecedência' name='autoIssueBoletoDaysBefore' value={formData.autoIssueBoletoDaysBefore} min={1} max={60} suffix='dias' errors={errors} onChange={updateNumber} /></div>
+              </div>}
+              <label className='mt-4 flex items-center gap-3 text-sm font-medium text-foreground'>
+                <input type='checkbox' checked={formData.autoSendBoletoEmail} onChange={(event) => setFormData((current) => ({ ...current, autoSendBoletoEmail: event.target.checked }))} className='h-4 w-4 rounded border-border text-primary focus:ring-primary' />
+                Enviar o boleto por e-mail quando estiver disponível
+              </label>
+              {formData.autoSendBoletoEmail && <div className='mt-4 space-y-3'>
+                <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Assunto do e-mail</span><input value={formData.boletoEmailSubject} onChange={(event) => setFormData((current) => ({ ...current, boletoEmailSubject: event.target.value }))} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground' /></label>
+                <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Mensagem</span><textarea rows={6} value={formData.boletoEmailTemplate} onChange={(event) => setFormData((current) => ({ ...current, boletoEmailTemplate: event.target.value }))} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground' /></label>
+              </div>}
+              <label className='mt-5 flex items-center gap-3 text-sm font-medium text-foreground'>
+                <input type='checkbox' checked={formData.overdueEmailEnabled} onChange={(event) => setFormData((current) => ({ ...current, overdueEmailEnabled: event.target.checked }))} className='h-4 w-4 rounded border-border text-primary focus:ring-primary' />
+                Enviar avisos de inadimplência por e-mail
+              </label>
+              {formData.overdueEmailEnabled && <div className='mt-4 space-y-3'>
+                <div className='grid gap-4 sm:grid-cols-2'><NumberInput label='Primeiro aviso após o vencimento' name='overdueFirstReminderDays' value={formData.overdueFirstReminderDays} min={1} max={60} suffix='dias' errors={errors} onChange={updateNumber} /><NumberInput label='Segundo aviso após o vencimento' name='overdueSecondReminderDays' value={formData.overdueSecondReminderDays} min={2} max={90} suffix='dias' errors={errors} onChange={updateNumber} /></div>
+                <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Assunto do e-mail</span><input value={formData.overdueEmailSubject} onChange={(event) => setFormData((current) => ({ ...current, overdueEmailSubject: event.target.value }))} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground' /></label>
+                <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Mensagem</span><textarea rows={6} value={formData.overdueEmailTemplate} onChange={(event) => setFormData((current) => ({ ...current, overdueEmailTemplate: event.target.value }))} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground' /></label>
+                <div className='border-t border-border pt-4'><p className='mb-3 text-sm font-semibold text-foreground'>Segundo aviso</p>
+                  <label className='mb-3 block'><span className='mb-2 block text-sm font-semibold text-foreground'>Assunto do e-mail</span><input value={formData.overdueSecondEmailSubject} onChange={(event) => setFormData((current) => ({ ...current, overdueSecondEmailSubject: event.target.value }))} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground' /></label>
+                  <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Mensagem</span><textarea rows={6} value={formData.overdueSecondEmailTemplate} onChange={(event) => setFormData((current) => ({ ...current, overdueSecondEmailTemplate: event.target.value }))} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground' /></label>
+                </div>
+              </div>}
+              <p className='mt-4 text-xs leading-5 text-muted'>Variáveis: {'{{cliente}}'}, {'{{empreendimento}}'}, {'{{parcela}}'}, {'{{valor}}'}, {'{{vencimento}}'} e {'{{link_boleto}}'}.</p>
             </section>
           </>
         )}

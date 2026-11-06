@@ -37,6 +37,19 @@ type DevelopmentSettings = {
   interestCalculation: 'none' | 'simple' | 'compound'
   correctionIndex: 'none' | 'ipca' | 'incc' | 'igpm' | 'fixed'
   correctionFrequency: 'monthly' | 'annual'
+  autoIssueBoleto: boolean
+  autoIssueBoletoDaysBefore: number
+  automaticBoletoProvider: 'auto' | 'asaas' | 'inter'
+  autoSendBoletoEmail: boolean
+  overdueEmailEnabled: boolean
+  overdueFirstReminderDays: number
+  overdueSecondReminderDays: number
+  boletoEmailSubject: string
+  boletoEmailTemplate: string
+  overdueEmailSubject: string
+  overdueEmailTemplate: string
+  overdueSecondEmailSubject: string
+  overdueSecondEmailTemplate: string
   minDownPaymentPercentage: number
   defaultCommissionPercentage: number
   allowDownPaymentInstallments: boolean
@@ -77,6 +90,19 @@ const defaultSettings: DevelopmentSettingsFormData = {
   interestCalculation: 'none',
   correctionIndex: 'none',
   correctionFrequency: 'monthly',
+  autoIssueBoleto: false,
+  autoIssueBoletoDaysBefore: 7,
+  automaticBoletoProvider: 'auto',
+  autoSendBoletoEmail: false,
+  overdueEmailEnabled: false,
+  overdueFirstReminderDays: 3,
+  overdueSecondReminderDays: 10,
+  boletoEmailSubject: 'Boleto da parcela - {{empreendimento}}',
+  boletoEmailTemplate: 'Olá, {{cliente}}!\n\nSegue o boleto da parcela {{parcela}} do empreendimento {{empreendimento}}, no valor de {{valor}}, com vencimento em {{vencimento}}.\n\n{{link_boleto}}\n\nSe já realizou o pagamento, desconsidere esta mensagem.',
+  overdueEmailSubject: 'Parcela em aberto - {{empreendimento}}',
+  overdueEmailTemplate: 'Olá, {{cliente}}!\n\nA parcela {{parcela}} do empreendimento {{empreendimento}}, no valor de {{valor}}, venceu em {{vencimento}} e consta em aberto.\n\n{{link_boleto}}\n\nSe já realizou o pagamento, desconsidere esta mensagem.',
+  overdueSecondEmailSubject: 'Segundo aviso de parcela em aberto - {{empreendimento}}',
+  overdueSecondEmailTemplate: 'Olá, {{cliente}}!\n\nEsta é uma nova tentativa de contato sobre a parcela {{parcela}} do empreendimento {{empreendimento}}, no valor de {{valor}}, vencida em {{vencimento}}. Ela ainda consta em aberto em nosso sistema.\n\n{{link_boleto}}\n\nSe já realizou o pagamento, desconsidere esta mensagem.',
   minDownPaymentPercentage: 10,
   defaultCommissionPercentage: 6,
   allowDownPaymentInstallments: false,
@@ -102,7 +128,7 @@ type ConfigSection = 'basic' | 'commercial' | 'documents'
 
 const configSections: Array<{ id: ConfigSection; title: string; description: string }> = [
   { id: 'basic', title: 'Empresa e dados', description: 'Empresa, nome e logo opcional' },
-  { id: 'commercial', title: 'Regras comerciais', description: 'Reservas, juros e pagamento' },
+  { id: 'commercial', title: 'Regras comerciais', description: 'Reservas, pagamentos e cobranças' },
   { id: 'documents', title: 'Documento de venda', description: 'Modelo de contrato' },
 ]
 
@@ -191,6 +217,9 @@ export default function DevelopmentForm({
       if (settingsData.maxInstallments < 1 || settingsData.maxInstallments > 240) newErrors.maxInstallments = 'Informe ate 240 parcelas.'
       if (settingsData.allowDownPaymentInstallments && (settingsData.maxDownPaymentInstallments < 2 || settingsData.maxDownPaymentInstallments > 24)) newErrors.maxDownPaymentInstallments = 'Informe entre 2 e 24 parcelas.'
       if (settingsData.paymentMethods.length === 0) newErrors.paymentMethods = 'Selecione pelo menos uma forma de pagamento.'
+      if (settingsData.autoIssueBoletoDaysBefore < 1 || settingsData.autoIssueBoletoDaysBefore > 60) newErrors.autoIssueBoletoDaysBefore = 'Informe entre 1 e 60 dias.'
+      if (settingsData.overdueFirstReminderDays < 1 || settingsData.overdueFirstReminderDays > 60) newErrors.overdueFirstReminderDays = 'Informe entre 1 e 60 dias.'
+      if (settingsData.overdueSecondReminderDays <= settingsData.overdueFirstReminderDays || settingsData.overdueSecondReminderDays > 90) newErrors.overdueSecondReminderDays = 'O segundo aviso deve ser posterior ao primeiro e ocorrer em ate 90 dias.'
     }
 
     if (section === 'documents' && !formData.documentTemplateId) {
@@ -246,6 +275,18 @@ export default function DevelopmentForm({
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Erro ao salvar empreendimento')
+      }
+      if (development?.id && currentSection === 'commercial') {
+        const settingsResponse = await fetch(`/api/developments/${development.id}/settings`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(settingsData),
+        })
+        if (!settingsResponse.ok) {
+          const payload = await settingsResponse.json().catch(() => ({}))
+          if (payload.errors) setErrors(payload.errors)
+          throw new Error(payload.error || 'Erro ao salvar automações de cobrança.')
+        }
       }
       const savedDevelopment = await response.json()
       onSave(development?.id ? 'update' : 'create', savedDevelopment)
@@ -509,6 +550,54 @@ export default function DevelopmentForm({
                 <span className='mt-1 block text-sm text-muted'>Quando ativo, a equipe pode ajustar condicoes na simulacao com criterio comercial.</span>
               </span>
             </label>
+
+            <section className='mt-5 rounded-2xl border border-border bg-surface-secondary p-5'>
+              <h3 className='text-base font-semibold text-foreground'>Automação de cobranças</h3>
+              <p className='mt-1 text-sm text-muted'>Configure a emissão de boletos e os e-mails deste empreendimento. As automações começam desativadas.</p>
+              <label className='mt-4 flex items-start gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground'>
+                <input type='checkbox' checked={settingsData.autoIssueBoleto} onChange={(event) => setSettingsData((current) => ({ ...current, autoIssueBoleto: event.target.checked }))} className='mt-1' />
+                <span>Gerar boletos automaticamente antes do vencimento</span>
+              </label>
+              {settingsData.autoIssueBoleto && <div className='mt-4 grid gap-4 sm:grid-cols-2'>
+                <label className='block'>
+                  <span className='mb-2 block text-sm font-semibold text-foreground'>Provedor para emissão automática</span>
+                  <select name='automaticBoletoProvider' value={settingsData.automaticBoletoProvider} onChange={updateSettingText} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground'>
+                    <option value='auto'>Usar automaticamente se houver apenas um ativo</option>
+                    <option value='asaas'>Asaas</option>
+                    <option value='inter'>Banco Inter</option>
+                  </select>
+                  <p className='mt-2 text-xs text-muted'>Se houver mais de um provedor ativo, escolha qual deve emitir os boletos.</p>
+                </label>
+                <label className='block max-w-xs'>
+                <span className='mb-2 block text-sm font-semibold text-foreground'>Antecedência (dias)</span>
+                <NumberTextInput min={1} max={60} value={settingsData.autoIssueBoletoDaysBefore} onValueChange={(value) => updateSettingNumber('autoIssueBoletoDaysBefore', Math.trunc(value))} className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground ${errors.autoIssueBoletoDaysBefore ? 'border-red-300' : 'border-border'}`} />
+                {errors.autoIssueBoletoDaysBefore && <p className='mt-2 text-sm text-red-600'>{errors.autoIssueBoletoDaysBefore}</p>}
+                </label>
+              </div>}
+              <label className='mt-4 flex items-start gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground'>
+                <input type='checkbox' checked={settingsData.autoSendBoletoEmail} onChange={(event) => setSettingsData((current) => ({ ...current, autoSendBoletoEmail: event.target.checked }))} className='mt-1' />
+                <span>Enviar o boleto por e-mail quando estiver disponível</span>
+              </label>
+              {settingsData.autoSendBoletoEmail && <div className='mt-4 space-y-3'>
+                <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Assunto do e-mail do boleto</span><input value={settingsData.boletoEmailSubject} onChange={(event) => setSettingsData((current) => ({ ...current, boletoEmailSubject: event.target.value }))} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground' /></label>
+                <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Mensagem</span><textarea rows={5} value={settingsData.boletoEmailTemplate} onChange={(event) => setSettingsData((current) => ({ ...current, boletoEmailTemplate: event.target.value }))} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground' /></label>
+              </div>}
+              <label className='mt-5 flex items-start gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground'>
+                <input type='checkbox' checked={settingsData.overdueEmailEnabled} onChange={(event) => setSettingsData((current) => ({ ...current, overdueEmailEnabled: event.target.checked }))} className='mt-1' />
+                <span>Enviar avisos de inadimplência por e-mail</span>
+              </label>
+              {settingsData.overdueEmailEnabled && <div className='mt-4 space-y-4'>
+                <div className='grid gap-4 sm:grid-cols-2'>
+                  <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Primeiro aviso após (dias)</span><NumberTextInput min={1} max={60} value={settingsData.overdueFirstReminderDays} onValueChange={(value) => updateSettingNumber('overdueFirstReminderDays', Math.trunc(value))} className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground ${errors.overdueFirstReminderDays ? 'border-red-300' : 'border-border'}`} />{errors.overdueFirstReminderDays && <p className='mt-2 text-sm text-red-600'>{errors.overdueFirstReminderDays}</p>}</label>
+                  <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Segundo aviso após (dias)</span><NumberTextInput min={2} max={90} value={settingsData.overdueSecondReminderDays} onValueChange={(value) => updateSettingNumber('overdueSecondReminderDays', Math.trunc(value))} className={`w-full rounded-xl border bg-surface px-4 py-3 text-sm text-foreground ${errors.overdueSecondReminderDays ? 'border-red-300' : 'border-border'}`} />{errors.overdueSecondReminderDays && <p className='mt-2 text-sm text-red-600'>{errors.overdueSecondReminderDays}</p>}</label>
+                </div>
+                <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Assunto do primeiro aviso</span><input value={settingsData.overdueEmailSubject} onChange={(event) => setSettingsData((current) => ({ ...current, overdueEmailSubject: event.target.value }))} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground' /></label>
+                <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Mensagem do primeiro aviso</span><textarea rows={5} value={settingsData.overdueEmailTemplate} onChange={(event) => setSettingsData((current) => ({ ...current, overdueEmailTemplate: event.target.value }))} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground' /></label>
+                <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Assunto do segundo aviso</span><input value={settingsData.overdueSecondEmailSubject} onChange={(event) => setSettingsData((current) => ({ ...current, overdueSecondEmailSubject: event.target.value }))} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground' /></label>
+                <label className='block'><span className='mb-2 block text-sm font-semibold text-foreground'>Mensagem do segundo aviso</span><textarea rows={5} value={settingsData.overdueSecondEmailTemplate} onChange={(event) => setSettingsData((current) => ({ ...current, overdueSecondEmailTemplate: event.target.value }))} className='w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground' /></label>
+              </div>}
+              <p className='mt-4 text-xs leading-5 text-muted'>Variáveis disponíveis: {'{{cliente}}'}, {'{{empreendimento}}'}, {'{{parcela}}'}, {'{{valor}}'}, {'{{vencimento}}'} e {'{{link_boleto}}'}.</p>
+            </section>
           </div>
           )}
 

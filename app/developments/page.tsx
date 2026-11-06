@@ -24,6 +24,19 @@ interface Development {
     interestCalculation: 'none' | 'simple' | 'compound'
     correctionIndex: 'none' | 'ipca' | 'incc' | 'igpm' | 'fixed'
     correctionFrequency: 'monthly' | 'annual'
+    autoIssueBoleto: boolean
+    autoIssueBoletoDaysBefore: number
+    automaticBoletoProvider: 'auto' | 'asaas' | 'inter'
+    autoSendBoletoEmail: boolean
+    overdueEmailEnabled: boolean
+    overdueFirstReminderDays: number
+    overdueSecondReminderDays: number
+    boletoEmailSubject: string
+    boletoEmailTemplate: string
+    overdueEmailSubject: string
+    overdueEmailTemplate: string
+    overdueSecondEmailSubject: string
+    overdueSecondEmailTemplate: string
     minDownPaymentPercentage: number
     defaultCommissionPercentage: number
     allowDownPaymentInstallments: boolean

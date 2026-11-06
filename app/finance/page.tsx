@@ -11,6 +11,7 @@ import { hasAnyDevelopmentPermission, hasDevelopmentPermission } from '@/lib/per
 import ReceivableActions from './components/ReceivableActions'
 import PaymentOperationsPanel from './components/PaymentOperationsPanel'
 import { hasCompanyPermission } from '@/lib/permissions'
+import ReceivableFollowUp from './components/ReceivableFollowUp'
 
 type FinancePageProps = {
   searchParams?: Promise<{
@@ -27,7 +28,7 @@ type FinancePageProps = {
   }>
 }
 
-type FinanceView = 'calendar' | 'list' | 'summary'
+type FinanceView = 'calendar' | 'list' | 'summary' | 'collections'
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', {
@@ -106,7 +107,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
   if (!(await hasAnyDevelopmentPermission(session.user.id, 'finance'))) redirect('/')
 
   const params = await searchParams
-  const view: FinanceView = params?.view === 'list' || params?.view === 'summary' ? params.view : 'calendar'
+  const view: FinanceView = params?.view === 'list' || params?.view === 'summary' || params?.view === 'collections' ? params.view : 'calendar'
   const calendarBy = params?.calendarBy === 'payment' ? 'payment' : 'due'
   const now = new Date()
   const selectedMonth = parseMonth(params?.month, now)
@@ -114,7 +115,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
   const monthEnd = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 0, 23, 59, 59, 999)
   const defaultSummaryFrom = new Date(now.getFullYear(), 0, 1)
   const defaultSummaryTo = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999)
-  const status = params?.status || (view === 'list' ? 'open' : 'all')
+  const status = params?.status || (view === 'list' || view === 'collections' ? 'open' : 'all')
   const search = params?.search?.trim() || ''
   const dueFrom = view === 'calendar' ? monthStart : parseDateOnly(params?.dueFrom) ?? (view === 'summary' ? defaultSummaryFrom : null)
   const dueTo = view === 'calendar' ? monthEnd : parseDateOnly(params?.dueTo) ?? (view === 'summary' ? defaultSummaryTo : null)
@@ -200,7 +201,8 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
   }
 
   const pageSize = 50
-  const listTotals = view === 'list' ? await Promise.all([
+  const isTableView = view === 'list' || view === 'collections'
+  const listTotals = isTableView ? await Promise.all([
     prisma.receivable.aggregate({ where: receivableWhere, _sum: { amount: true, paidAmount: true }, _count: true }),
     prisma.receivable.aggregate({ where: { AND: [receivableWhere, { status: { not: 'paid' } }] }, _sum: { balance: true } }),
     prisma.receivable.aggregate({ where: { AND: [receivableWhere, { status: { not: 'paid' }, dueDate: { lt: today } }] }, _sum: { balance: true }, _count: true }),
@@ -210,13 +212,13 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
   const requestedPage = Number(params?.page)
   const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? Math.min(requestedPage, totalPages) : 1
   const pageHref = (target: number) => {
-    const query = new URLSearchParams({ developmentId: developmentScope, view: 'list', status, search, dueFrom: params?.dueFrom ?? '', dueTo: params?.dueTo ?? '', page: String(target) })
+    const query = new URLSearchParams({ developmentId: developmentScope, view, status, search, dueFrom: params?.dueFrom ?? '', dueTo: params?.dueTo ?? '', page: String(target) })
     return `/finance?${query}`
   }
 
   const receivables = await prisma.receivable.findMany({
     where: receivableWhere,
-    ...(view === 'list' ? { skip: (page - 1) * pageSize, take: pageSize } : {}),
+    ...(isTableView ? { skip: (page - 1) * pageSize, take: pageSize } : {}),
     include: {
       sale: {
         include: {
@@ -229,6 +231,8 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
         orderBy: { version: 'desc' },
         take: 1,
       },
+      contactLogs: { where: { deliveryStatus: { in: ['sent', 'failed'] } }, orderBy: { createdAt: 'desc' }, take: 1, include: { user: { select: { name: true } } } },
+      _count: { select: { contactLogs: { where: { category: 'boleto', deliveryStatus: 'sent' } } } },
     },
     orderBy: [
       { dueDate: 'asc' },
@@ -423,7 +427,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
           <div>
             <h2 className='text-2xl font-bold text-foreground'>{(selectedDevelopment?.name ?? 'Todos os loteamentos')}</h2>
             <p className='mt-1 text-sm text-muted'>
-              {(selectedDevelopment?.company.name ?? `${scopeIds.length} loteamentos`)} · {view === 'calendar' ? calendarReceivables.length : view === 'list' ? totalRecords : receivables.length} registro(s) no recorte financeiro atual.
+              {(selectedDevelopment?.company.name ?? `${scopeIds.length} loteamentos`)} · {view === 'calendar' ? calendarReceivables.length : isTableView ? totalRecords : receivables.length} registro(s) no recorte financeiro atual.
             </p>
           </div>
         </div>
@@ -433,6 +437,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
         {([
           ['calendar', 'Calendario'],
           ['list', 'Lista'],
+          ['collections', 'Acompanhamento de cobranças'],
           ['summary', 'Resumo mensal'],
         ] as const).map(([value, label]) => (
           <Link
@@ -675,11 +680,12 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
         }))}
       />}
 
-      {view === 'list' && (
+      {isTableView && (
       <section className='panel overflow-hidden'>
+        {view === 'collections' && <div className='panel-header px-6 py-4'><p className='text-sm text-muted'>Acompanhe boletos pendentes de envio e parcelas vencidas. O contato é registrado manualmente depois que você enviar a mensagem.</p></div>}
         <Form action='/finance' className='panel-header grid gap-4 px-6 py-5 lg:grid-cols-[1fr_180px_150px_150px_auto] lg:items-end'>
           <input type='hidden' name='developmentId' value={developmentScope} />
-          <input type='hidden' name='view' value='list' />
+          <input type='hidden' name='view' value={view} />
           <label className='block'>
             <span className='mb-2 block text-xs font-semibold uppercase text-muted'>Busca</span>
             <input
@@ -725,7 +731,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
             <button type='submit' className='rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-strong'>
               Filtrar
             </button>
-            <Link href={`/finance?developmentId=${developmentScope}&view=list`} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
+            <Link href={`/finance?developmentId=${developmentScope}&view=${view}`} className='rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-secondary'>
               Limpar
             </Link>
           </div>
@@ -814,6 +820,20 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                             } : null,
                           }}
                         />
+                        {view === 'collections' && <ReceivableFollowUp
+                          receivableId={receivable.id}
+                          clientName={receivable.sale.user.name}
+                          email={receivable.sale.user.email}
+                          developmentName={receivable.sale.lot.block.development?.name ?? 'empreendimento'}
+                          installment={getReceivableLabel(receivable)}
+                          dueDate={receivable.dueDate.toISOString()}
+                          amount={Number(receivable.balance)}
+                          overdue={receivable.status !== 'paid' && receivable.dueDate < today}
+                          boletoGenerated={Boolean(receivable.externalCharges[0] && !['cancelled', 'refunded'].includes(receivable.externalCharges[0].status))}
+                          boletoSent={receivable._count.contactLogs > 0}
+                          boletoUrl={receivable.externalCharges[0] ? [receivable.externalCharges[0].bankSlipUrl, receivable.externalCharges[0].invoiceUrl].find((url) => url?.startsWith('https://')) ?? null : null}
+                          lastContact={receivable.contactLogs[0] ? { category: receivable.contactLogs[0].category, channel: receivable.contactLogs[0].channel, deliveryStatus: receivable.contactLogs[0].deliveryStatus, createdAt: receivable.contactLogs[0].createdAt.toISOString(), userName: receivable.contactLogs[0].user?.name ?? null } : null}
+                        />}
                       </td>
                     </tr>
                   )
